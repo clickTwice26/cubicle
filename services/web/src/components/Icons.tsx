@@ -194,6 +194,13 @@ export const Layers = (p: Props) => (
   </Svg>
 )
 
+export const Table = (p: Props) => (
+  <Svg strokeWidth={1.7} {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 9.5h18M9 9.5V20" />
+  </Svg>
+)
+
 export const File = (p: Props) => (
   <Svg strokeWidth={1.6} {...p}>
     <path d="M6 2h8l4 4v16H6z" />

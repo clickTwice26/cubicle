@@ -100,7 +100,8 @@ export const DOCS: DocPage[] = [
         {p('One command builds the images, generates secrets and starts the stack.')}
         {code(
           <>
-            <span className="text-ink-3">$</span> git clone https://github.com/clickTwice26/cubicle{'\n'}
+            <span className="text-ink-3">$</span> git clone
+            https://github.com/clickTwice26/cubicle{'\n'}
             <span className="text-ink-3">$</span> cd cubicle{'\n'}
             <span className="text-ink-3">$</span> ./install.sh{'\n\n'}
             {'  '}▸ Generating .env{'\n'}
@@ -393,6 +394,24 @@ export const DOCS: DocPage[] = [
             Nothing runs until you create it. Pick a version and a size under{' '}
             <strong>Data services</strong>, and the control plane starts a container on the
             function network with a generated password stored envelope-encrypted.
+          </>,
+        )}
+
+        {h2('browse', 'Browsing and editing the data')}
+        {p(
+          <>
+            <strong>Browse data</strong> on the PostgreSQL page opens a database manager: tables
+            with their sizes, paginated rows with sorting and a search across every column, an
+            editor for inserting, changing and deleting rows, the structure of each table, and a
+            SQL console.
+          </>,
+        )}
+        {note(
+          <>
+            Row editing needs a primary key — without one a single row cannot be identified, so
+            those tables are read-only in the grid and you use the console instead. The console
+            itself is unrestricted, including DDL: it is your database. What bounds it is the
+            admin role, a 15 second statement timeout and a 500 row cap on results.
           </>,
         )}
 

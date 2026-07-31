@@ -54,6 +54,10 @@ ignore = ["S101", "B008", "S104"]
 "cubicle/runtime/pool.py" = ["S108", "ASYNC109"]
 # The scaffolded handler contains example SQL as a string literal.
 "cubicle/templates.py" = ["S608"]
+# The data browser interpolates identifiers, which cannot be bound as
+# parameters. Each one is checked against pg_catalog before it is quoted, and
+# every value is still bound — see the module docstring.
+"cubicle/runtime/dbadmin.py" = ["S608"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

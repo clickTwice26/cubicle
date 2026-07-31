@@ -58,6 +58,7 @@ never rotated.
 | **Logs & monitoring** | Handler stdout/stderr and control-plane events, streamed live over SSE |
 | **Cluster & metering** | Node capacity and allocation, GB-seconds, measured egress, chargeback by namespace, and a cost comparison against public list prices |
 | **PostgreSQL / Redis** | Real instances provisioned on the cluster on demand, wired into every function with no credentials to copy |
+| **Database manager** | Browse and edit the managed PostgreSQL — tables, paginated rows with search and sorting, a row editor, table structure, and a SQL console |
 | **Settings** | Instance configuration, API keys, and local user accounts with roles |
 | **Docs** | Installation, quickstart, the handler contract, secrets, `cubicle.toml`, and the CLI |
 

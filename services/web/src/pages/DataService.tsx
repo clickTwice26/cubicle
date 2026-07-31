@@ -1,12 +1,14 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Bolt, Database, Layers, Power } from '../components/Icons'
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { Bolt, Database, Layers, Power, Table, Trash } from '../components/Icons'
 import {
   Button,
   Card,
   Chip,
-  ConfirmButton,
+  Checkbox,
   CopyButton,
+  Field,
+  Modal,
   PageHeader,
   Skeleton,
   StatusDot,
@@ -51,6 +53,7 @@ export default function DataService() {
   const [eviction, setEviction] = useState<string>(config.eviction?.[1] ?? 'allkeys-lru')
   const [pool, setPool] = useState('general')
   const [url, setUrl] = useState<string | null>(null)
+  const [destroying, setDestroying] = useState(false)
 
   if (isLoading || !services) {
     return (
@@ -86,24 +89,40 @@ export default function DataService() {
                 {service.node ? ` · ${service.node}` : ''}
               </div>
             </div>
-            <Button
-              variant={service.status === 'running' ? 'danger' : 'primary'}
-              icon={<Power size={14} />}
-              loading={actions.start.isPending || actions.stop.isPending}
-              onClick={() =>
-                service.status === 'running'
-                  ? actions.stop.mutate(undefined, {
-                      onSuccess: () => toast.push(`${config.title} stopped`),
-                      onError: (error) => toast.push(error.message, 'err'),
-                    })
-                  : actions.start.mutate(undefined, {
-                      onSuccess: () => toast.push(`${config.title} started`),
-                      onError: (error) => toast.push(error.message, 'err'),
-                    })
-              }
-            >
-              {service.status === 'running' ? 'Stop' : 'Start'}
-            </Button>
+            <div className="flex flex-none flex-wrap items-center gap-2">
+              {safeKind === 'postgres' && service.status === 'running' ? (
+                <Link to="/console/services/postgres/data">
+                  <Button variant="primary" icon={<Table size={14} />}>
+                    Browse data
+                  </Button>
+                </Link>
+              ) : null}
+              <Button
+                variant={service.status === 'running' ? 'secondary' : 'primary'}
+                icon={<Power size={14} />}
+                loading={actions.start.isPending || actions.stop.isPending}
+                onClick={() =>
+                  service.status === 'running'
+                    ? actions.stop.mutate(undefined, {
+                        onSuccess: () => toast.push(`${config.title} stopped`),
+                        onError: (error) => toast.push(error.message, 'err'),
+                      })
+                    : actions.start.mutate(undefined, {
+                        onSuccess: () => toast.push(`${config.title} started`),
+                        onError: (error) => toast.push(error.message, 'err'),
+                      })
+                }
+              >
+                {service.status === 'running' ? 'Stop' : 'Start'}
+              </Button>
+              <Button
+                variant="danger"
+                icon={<Trash size={13} />}
+                onClick={() => setDestroying(true)}
+              >
+                Destroy
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 border-b border-line px-5 py-4.5 sm:grid-cols-3">
@@ -170,18 +189,30 @@ export default function DataService() {
             </div>
           ) : null}
 
-          <div className="flex justify-end px-5 py-4">
-            <ConfirmButton
-              label="Destroy instance"
-              confirmLabel="Click again — this deletes the data volume"
-              onConfirm={() =>
-                actions.destroy.mutate(undefined, {
-                  onSuccess: () => toast.push(`${config.title} destroyed`),
-                  onError: (error) => toast.push(error.message, 'err'),
-                })
-              }
-            />
-          </div>
+          <DestroyDialog
+            open={destroying}
+            onClose={() => setDestroying(false)}
+            title={config.title}
+            confirmWord={safeKind}
+            pending={actions.destroy.isPending}
+            detail={
+              <>
+                This stops the container and, unless you keep the volume, deletes{' '}
+                <b>every table and row</b> in this cluster's {config.title}. Functions using{' '}
+                <span className="font-mono">cubicle_db</span> will see it as unavailable on
+                their next invocation. There is no undo.
+              </>
+            }
+            onConfirm={(keepData) =>
+              actions.destroy.mutate(keepData, {
+                onSuccess: () => {
+                  toast.push(`${config.title} destroyed`)
+                  setDestroying(false)
+                },
+                onError: (error) => toast.push(error.message, 'err'),
+              })
+            }
+          />
         </Card>
       ) : (
         <Card className="p-6">
@@ -256,6 +287,87 @@ export default function DataService() {
         </Card>
       )}
     </div>
+  )
+}
+
+/**
+ * Destroying a data service deletes its volume. A second click is not enough
+ * confirmation for that, so this asks for the name — the same bar every tool
+ * that can lose your data should set.
+ */
+function DestroyDialog({
+  open,
+  onClose,
+  title,
+  confirmWord,
+  detail,
+  pending,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  title: string
+  confirmWord: string
+  detail: React.ReactNode
+  pending: boolean
+  onConfirm: (keepData: boolean) => void
+}) {
+  const [typed, setTyped] = useState('')
+  const [keepData, setKeepData] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setTyped('')
+      setKeepData(false)
+    }
+  }, [open])
+
+  const armed = typed.trim() === confirmWord
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      width={520}
+      title={`Destroy ${title}?`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            disabled={!armed}
+            loading={pending}
+            icon={<Trash size={13} />}
+            onClick={() => onConfirm(keepData)}
+            className={armed ? 'border-err bg-err-bg' : undefined}
+          >
+            Destroy {title}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[10px] border border-err bg-err-bg px-3.5 py-3 text-[13px] leading-relaxed">
+          {detail}
+        </div>
+
+        <Checkbox
+          checked={keepData}
+          onChange={setKeepData}
+          label="Keep the data volume — the container goes, the data stays on disk for a manual restore"
+        />
+
+        <Field
+          label={`Type ${confirmWord} to confirm`}
+          value={typed}
+          autoFocus
+          placeholder={confirmWord}
+          onChange={(event) => setTyped(event.target.value)}
+        />
+      </div>
+    </Modal>
   )
 }
 

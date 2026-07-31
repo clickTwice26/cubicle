@@ -421,7 +421,8 @@ export function useServiceAction(kind: 'postgres' | 'redis') {
       onSuccess: invalidate,
     }),
     destroy: useMutation({
-      mutationFn: () => api.delete<void>(`/api/services/${kind}`),
+      mutationFn: (keepData?: boolean) =>
+        api.delete<void>(`/api/services/${kind}?keep_data=${keepData ? 'true' : 'false'}`),
       onSuccess: invalidate,
     }),
     reveal: () => api.get<ManagedService>(`/api/services/${kind}/connection`),

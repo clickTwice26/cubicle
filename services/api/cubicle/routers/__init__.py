@@ -4,6 +4,7 @@ from . import (
     clusters,
     config,
     data_services,
+    database,
     functions,
     invoke,
     observability,
@@ -20,6 +21,7 @@ ROUTERS = [
     observability.router,
     cluster.router,
     data_services.router,
+    database.router,
     settings.router,
     invoke.router,
 ]

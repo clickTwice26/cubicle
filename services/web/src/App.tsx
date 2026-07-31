@@ -16,6 +16,7 @@ const GlobalEnv = lazy(() => import('./pages/GlobalEnv'))
 const Logs = lazy(() => import('./pages/Logs'))
 const Cluster = lazy(() => import('./pages/Cluster'))
 const DataService = lazy(() => import('./pages/DataService'))
+const DatabaseBrowser = lazy(() => import('./pages/DatabaseBrowser'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 function Loading() {
@@ -104,6 +105,14 @@ export default function App() {
           element={
             <Guarded>
               <Cluster />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/services/postgres/data"
+          element={
+            <Guarded>
+              <DatabaseBrowser />
             </Guarded>
           }
         />

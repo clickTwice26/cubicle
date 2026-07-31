@@ -4,7 +4,7 @@ import { Skeleton } from './ui'
 export interface EditorProps {
   value: string
   onChange?: (next: string) => void
-  language?: 'python' | 'text'
+  language?: 'python' | 'sql' | 'text'
   minHeight?: number
   readOnly?: boolean
 }
