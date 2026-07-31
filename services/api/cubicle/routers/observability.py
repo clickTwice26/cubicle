@@ -18,7 +18,7 @@ from ..deps import CurrentCluster, CurrentPrincipal, DbSession
 from ..models import Function, Group, LogEntry, Node
 from ..runtime.invoker import LOG_CHANNEL
 from ..runtime.pool import pool
-from ..schemas import LogOut
+from ..schemas import LogPage
 from .functions import _log_out, current_version, serialize_function
 
 router = APIRouter(prefix="/api", tags=["observability"])
@@ -90,7 +90,7 @@ async def dashboard(
     }
 
 
-@router.get("/logs", response_model=list[LogOut])
+@router.get("/logs", response_model=LogPage)
 async def list_logs(
     db: DbSession,
     cluster: CurrentCluster,
@@ -98,23 +98,60 @@ async def list_logs(
     level: str = Query("all"),
     function: str | None = None,
     search: str | None = None,
-    limit: int = Query(120, ge=1, le=1000),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    stmt = (
-        select(LogEntry)
-        .where(LogEntry.cluster_id == cluster.id)
-        .order_by(LogEntry.ts.desc())
-        .limit(limit)
-    )
-    if level.upper() in LEVELS:
-        stmt = stmt.where(LogEntry.level == level.upper())
-    if function:
-        stmt = stmt.where(LogEntry.function_name == function)
-    if search:
-        stmt = stmt.where(LogEntry.message.ilike(f"%{search}%"))
+    """A page of recorded log lines, newest first.
 
-    rows = (await db.execute(stmt)).scalars().all()
-    return [_log_out(row) for row in rows]
+    Filtering happens here rather than in the console so the total is the count
+    of what matches, not the count of what happened to be fetched.
+    """
+    filters = [LogEntry.cluster_id == cluster.id]
+    if level.upper() in LEVELS:
+        filters.append(LogEntry.level == level.upper())
+    if function:
+        filters.append(LogEntry.function_name == function)
+    if search:
+        filters.append(LogEntry.message.ilike(f"%{search}%"))
+
+    total = (await db.execute(select(func.count(LogEntry.id)).where(*filters))).scalar_one()
+    rows = (
+        (
+            await db.execute(
+                select(LogEntry)
+                .where(*filters)
+                .order_by(LogEntry.ts.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return LogPage(
+        items=[_log_out(row) for row in rows],
+        total=int(total),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/logs/functions", response_model=list[str])
+async def log_function_names(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
+    """Function names that appear in this cluster's logs, for the filter."""
+    rows = (
+        (
+            await db.execute(
+                select(LogEntry.function_name)
+                .where(LogEntry.cluster_id == cluster.id, LogEntry.function_name != "")
+                .distinct()
+                .order_by(LogEntry.function_name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
 
 
 @router.get("/logs/stream")

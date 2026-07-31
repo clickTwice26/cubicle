@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Chip, EmptyState, PageHeader, Skeleton, cx } from '../components/ui'
-import { subscribe } from '../lib/api'
-import { useLogs } from '../lib/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Refresh } from '../components/Icons'
+import {
+  Badge,
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  PAGE_SIZES,
+  PageHeader,
+  Pagination,
+  Skeleton,
+  cx,
+} from '../components/ui'
+import { api, subscribe } from '../lib/api'
+import { useQuery } from '@tanstack/react-query'
 import { levelColour } from '../lib/format'
 import type { LogLine } from '../lib/types'
 
@@ -12,60 +25,142 @@ const LEVELS = [
   { value: 'ERROR', label: 'Error' },
 ]
 
+const DEFAULT_SIZE = 100
+/** How many live lines to hold before the oldest are dropped. */
+const LIVE_BUFFER = 400
+
+interface LogPage {
+  items: LogLine[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export default function Logs() {
-  const [level, setLevel] = useState('all')
-  const [search, setSearch] = useState('')
-  const [live, setLive] = useState<LogLine[]>([])
+  const [params, setParams] = useSearchParams()
+
+  const level = LEVELS.some((l) => l.value === params.get('level'))
+    ? params.get('level')!
+    : 'all'
+  const fn = params.get('fn') ?? ''
+  const search = params.get('q') ?? ''
+  const page = Math.max(1, Number(params.get('page') ?? 1) || 1)
+  const size = PAGE_SIZES.includes(Number(params.get('size')))
+    ? Number(params.get('size'))
+    : DEFAULT_SIZE
+
+  const [term, setTerm] = useState(search)
+  useEffect(() => setTerm(search), [search])
+
+  const patch = useCallback(
+    (changes: Record<string, string | null>, push = false) => {
+      const updated = new URLSearchParams(params)
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === null || value === '') updated.delete(key)
+        else updated.set(key, value)
+      }
+      setParams(updated, { replace: !push })
+    },
+    [params, setParams],
+  )
+
+  // Live tail belongs to the newest page. Anywhere else it would be prepending
+  // rows to a page whose position in the log has already moved on, so it is
+  // paused and says so.
+  const live = page === 1
+
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['logs', level, fn, search, page, size],
+    queryFn: () => {
+      const query = new URLSearchParams({
+        level,
+        limit: String(size),
+        offset: String((page - 1) * size),
+      })
+      if (fn) query.set('function', fn)
+      if (search) query.set('search', search)
+      return api.get<LogPage>(`/api/logs?${query}`)
+    },
+    placeholderData: (previous) => previous,
+  })
+
+  const { data: functions } = useQuery({
+    queryKey: ['log-functions'],
+    queryFn: () => api.get<string[]>('/api/logs/functions'),
+    staleTime: 60_000,
+  })
+
+  const [streamed, setStreamed] = useState<LogLine[]>([])
   const [connected, setConnected] = useState(false)
-  const { data: history, isLoading } = useLogs(level)
-  const seen = useRef(new Set<string>())
 
   useEffect(() => {
-    setLive([])
-    seen.current = new Set()
+    setStreamed([])
+    if (!live) {
+      setConnected(false)
+      return
+    }
     const stop = subscribe<Omit<LogLine, 'id'>[]>(
       `/api/logs/stream?level=${level}`,
       (entries) => {
         setConnected(true)
-        setLive((current) =>
+        const matching = entries.filter((entry) => {
+          if (fn && entry.function_name !== fn) return false
+          if (search && !entry.message.toLowerCase().includes(search.toLowerCase()))
+            return false
+          return true
+        })
+        if (matching.length === 0) return
+        setStreamed((current) =>
           [
-            ...entries.map((entry, index) => ({
+            ...matching.map((entry, index) => ({
               ...entry,
               id: `live-${entry.ts}-${index}-${Math.random().toString(16).slice(2, 8)}`,
             })),
             ...current,
-          ].slice(0, 300),
+          ].slice(0, LIVE_BUFFER),
         )
       },
       () => setConnected(false),
     )
     return stop
-  }, [level])
+  }, [live, level, fn, search])
 
-  const lines = useMemo(() => {
-    const combined = [...live, ...(history ?? [])].filter((line) => {
-      if (!seen.current.has(line.id)) seen.current.add(line.id)
-      if (!search) return true
-      const needle = search.toLowerCase()
-      return (
-        line.message.toLowerCase().includes(needle) ||
-        line.function_name.toLowerCase().includes(needle)
-      )
-    })
-    return combined.slice(0, 300)
-  }, [live, history, search])
+  // Live lines sit above the fetched page; the page itself is never reordered.
+  // Each carries a generated id, so no de-duplication against the page is
+  // needed — a line that arrives on the stream is one the page predates.
+  const lines = useMemo(
+    () => (live ? [...streamed, ...(data?.items ?? [])] : (data?.items ?? [])),
+    [live, streamed, data],
+  )
+
+  const total = (data?.total ?? 0) + (live ? streamed.length : 0)
+  const pages = data ? Math.max(1, Math.ceil(data.total / size)) : 1
 
   return (
-    <div className="mx-auto max-w-[1240px] px-5 py-7 sm:px-8">
+    <div className="mx-auto max-w-[1400px] px-5 py-7 sm:px-8">
       <PageHeader
         title="Logs & monitoring"
         subtitle={
           <>
-            Streaming across every function ·{' '}
-            <span style={{ color: connected ? 'var(--ok)' : 'var(--text-3)' }}>
-              {connected ? 'live' : 'connecting…'}
-            </span>
+            Handler output and control-plane events ·{' '}
+            {live ? (
+              <span style={{ color: connected ? 'var(--ok)' : 'var(--text-3)' }}>
+                {connected ? 'live' : 'connecting…'}
+              </span>
+            ) : (
+              <span className="text-warn">paused — viewing older entries</span>
+            )}
           </>
+        }
+        action={
+          <Button
+            size="sm"
+            icon={<Refresh size={14} />}
+            loading={isFetching}
+            onClick={() => refetch()}
+          >
+            Refresh
+          </Button>
         }
       />
 
@@ -74,23 +169,65 @@ export default function Logs() {
           <Chip
             key={option.value}
             active={level === option.value}
-            onClick={() => setLevel(option.value)}
+            onClick={() =>
+              patch({ level: option.value === 'all' ? null : option.value, page: null })
+            }
           >
             {option.label}
           </Chip>
         ))}
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Filter messages…"
-          className="h-8 w-full max-w-[260px] rounded-lg border border-line bg-panel px-3 text-[12.5px] text-ink outline-none placeholder:text-ink-3 focus:border-accent sm:w-auto"
-        />
+
+        {functions?.length ? (
+          <select
+            value={fn}
+            onChange={(event) => patch({ fn: event.target.value || null, page: null })}
+            className="h-8 rounded-lg border border-line bg-panel px-2.5 text-[12.5px] text-ink-2 outline-none focus:border-accent"
+          >
+            <option value="">All functions</option>
+            {functions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            patch({ q: term.trim() || null, page: null })
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            value={term}
+            onChange={(event) => setTerm(event.target.value)}
+            placeholder="Filter messages…"
+            className="h-8 w-full max-w-[240px] rounded-lg border border-line bg-panel px-3 text-[12.5px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
+          />
+          <Button size="sm" type="submit">
+            Search
+          </Button>
+          {search || fn ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => patch({ q: null, fn: null, page: null })}
+            >
+              Clear
+            </Button>
+          ) : null}
+        </form>
+
         <div className="ml-auto flex items-center gap-2 text-[12.5px] text-ink-2">
           <span
-            className={cx('h-[7px] w-[7px] rounded-full', connected && 'animate-pulse-dot')}
-            style={{ background: connected ? 'var(--ok)' : 'var(--text-3)' }}
+            className={cx(
+              'h-[7px] w-[7px] rounded-full',
+              live && connected && 'animate-pulse-dot',
+            )}
+            style={{ background: live && connected ? 'var(--ok)' : 'var(--text-3)' }}
           />
-          Tailing
+          {live ? 'Tailing' : 'Paused'}
         </div>
       </div>
 
@@ -98,10 +235,13 @@ export default function Logs() {
         <Skeleton className="h-72 w-full" />
       ) : lines.length ? (
         <Card className="overflow-hidden font-mono text-[12.5px]">
-          {lines.map((line) => (
+          {lines.map((line, index) => (
             <div
               key={line.id}
-              className="flex items-baseline gap-3.5 border-b border-line px-4.5 py-2.5 transition last:border-b-0 hover:bg-panel-2"
+              className={cx(
+                'flex items-baseline gap-3.5 border-b border-line px-4.5 py-2.5 transition last:border-b-0 hover:bg-panel-2',
+                live && index < streamed.length && 'bg-accent-soft/40',
+              )}
             >
               <span className="flex-none text-ink-3">{line.time}</span>
               <span
@@ -117,11 +257,50 @@ export default function Logs() {
               <span className="flex-none text-ink-3">{line.duration ?? ''}</span>
             </div>
           ))}
+
+          {data ? (
+            <Pagination
+              page={page}
+              pages={pages}
+              size={size}
+              total={total}
+              from={data.total === 0 ? 0 : data.offset + 1}
+              to={Math.min(data.offset + data.limit, data.total)}
+              onPage={(next) => patch({ page: next === 1 ? null : String(next) })}
+              onSize={(next) =>
+                patch({ size: next === DEFAULT_SIZE ? null : String(next), page: null })
+              }
+              note={
+                live && streamed.length ? (
+                  <Badge tone="accent">+{streamed.length} live</Badge>
+                ) : !live ? (
+                  <Button size="sm" variant="ghost" onClick={() => patch({ page: null })}>
+                    Jump to live
+                  </Button>
+                ) : null
+              }
+            />
+          ) : null}
         </Card>
       ) : (
         <EmptyState
-          title="Nothing logged yet"
-          body="Invoke a function and its output shows up here as it happens."
+          title={
+            search || fn || level !== 'all'
+              ? 'Nothing matches those filters'
+              : 'Nothing logged yet'
+          }
+          body={
+            search || fn || level !== 'all'
+              ? 'Widen the filters, or clear them to see everything.'
+              : 'Invoke a function and its output shows up here as it happens.'
+          }
+          action={
+            search || fn || level !== 'all' ? (
+              <Button onClick={() => patch({ q: null, fn: null, level: null, page: null })}>
+                Clear filters
+              </Button>
+            ) : undefined
+          }
         />
       )}
     </div>

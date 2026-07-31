@@ -393,6 +393,13 @@ class LogOut(BaseModel):
     request_id: str = ""
 
 
+class LogPage(BaseModel):
+    items: list[LogOut]
+    total: int
+    limit: int
+    offset: int
+
+
 class Kpi(BaseModel):
     label: str
     value: str

@@ -5,7 +5,6 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
-  ChevronRight,
   Database,
   Play,
   Plus,
@@ -19,7 +18,9 @@ import {
   EmptyState,
   Field,
   Modal,
+  PAGE_SIZES,
   PageHeader,
+  Pagination,
   Skeleton,
   Tabs,
   cx,
@@ -291,8 +292,6 @@ function TablePicker({
 
 // ── rows ─────────────────────────────────────────────────────────────────────
 
-const PAGE_SIZES = [25, 50, 100, 200]
-
 function RowsTab({ table }: { table: TableRef }) {
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -511,95 +510,6 @@ function RowsTab({ table }: { table: TableRef }) {
         onClose={() => setCreating(false)}
       />
     </>
-  )
-}
-
-/** Always present, even on a single page — the page-size control lives here. */
-function Pagination({
-  page,
-  pages,
-  size,
-  total,
-  from,
-  to,
-  onPage,
-  onSize,
-}: {
-  page: number
-  pages: number
-  size: number
-  total: number
-  from: number
-  to: number
-  onPage: (page: number) => void
-  onSize: (size: number) => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-2.5 text-[12.5px] text-ink-2">
-      <span className="flex items-center gap-1.5">
-        <span className="text-ink-3">Rows per page</span>
-        {PAGE_SIZES.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => onSize(option)}
-            className={cx(
-              'rounded-md border px-2 py-0.5 font-mono text-[11.5px] transition',
-              option === size
-                ? 'border-accent bg-accent-soft text-ink'
-                : 'border-line text-ink-3 hover:text-ink',
-            )}
-          >
-            {option}
-          </button>
-        ))}
-      </span>
-
-      <span className="font-mono">
-        {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
-      </span>
-
-      <span className="ml-auto flex items-center gap-1.5">
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={page <= 1}
-          onClick={() => onPage(1)}
-          title="First page"
-        >
-          «
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={page <= 1}
-          onClick={() => onPage(page - 1)}
-          icon={<ChevronLeft size={13} />}
-        >
-          Previous
-        </Button>
-        <span className="px-2 font-mono whitespace-nowrap">
-          Page {page.toLocaleString()} of {pages.toLocaleString()}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={page >= pages}
-          onClick={() => onPage(page + 1)}
-        >
-          Next <ChevronRight size={13} />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={page >= pages}
-          onClick={() => onPage(pages)}
-          title="Last page"
-        >
-          »
-        </Button>
-      </span>
-    </div>
   )
 }
 
