@@ -39,15 +39,13 @@ def _run(connection) -> None:
     # together — would otherwise both see the same head and both try to apply
     # it, and the loser can leave the schema half-built. The second one now
     # waits, then finds nothing to do.
-    connection.exec_driver_sql(f"SELECT pg_advisory_lock({MIGRATION_LOCK})")
-    try:
-        context.configure(
-            connection=connection, target_metadata=target_metadata, compare_type=True
-        )
-        with context.begin_transaction():
-            context.run_migrations()
-    finally:
-        connection.exec_driver_sql(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
+    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    with context.begin_transaction():
+        # Taken inside the transaction, and released with it. Issuing it
+        # before begin_transaction would open a transaction of its own that
+        # alembic never commits, and every migration would roll back.
+        connection.exec_driver_sql(f"SELECT pg_advisory_xact_lock({MIGRATION_LOCK})")
+        context.run_migrations()
 
 
 async def run_migrations_online() -> None:
