@@ -10,6 +10,8 @@ domain at it, and nothing that calls home.
 
 Apache-2.0 · Python 3.12 and 3.11 runtimes · entirely Docker-based
 
+<img src="docs/screenshots/02-overview.png" alt="The Cubicle console overview, showing invocation KPIs, an invocations chart and the function table" width="900">
+
 </div>
 
 ---
@@ -58,6 +60,41 @@ never rotated.
 | **PostgreSQL / Redis** | Real instances provisioned on the cluster on demand, wired into every function with no credentials to copy |
 | **Settings** | Instance configuration, API keys, and local user accounts with roles |
 | **Docs** | Installation, quickstart, the handler contract, secrets, `cubicle.toml`, and the CLI |
+
+### Screenshots
+
+<table>
+<tr>
+<td width="50%">
+<a href="docs/screenshots/03-playground.png"><img src="docs/screenshots/03-playground.png" alt="Function playground with the code editor" width="100%"></a>
+<sub><b>Function playground</b> — namespaces, a real editor, and a test console that runs the function on the cluster.</sub>
+</td>
+<td width="50%">
+<a href="docs/screenshots/04-cluster-metering.png"><img src="docs/screenshots/04-cluster-metering.png" alt="Cluster and metering page" width="100%"></a>
+<sub><b>Cluster &amp; metering</b> — node allocation, GB-seconds, chargeback, and what the same workload would cost hosted.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<a href="docs/screenshots/05-settings-clusters.png"><img src="docs/screenshots/05-settings-clusters.png" alt="Settings page showing cluster management" width="100%"></a>
+<sub><b>Clusters</b> — several isolated scheduling domains on one instance, switchable from the sidebar.</sub>
+</td>
+<td width="50%">
+<a href="docs/screenshots/06-logs.png"><img src="docs/screenshots/06-logs.png" alt="Logs and monitoring page with a live tail" width="100%"></a>
+<sub><b>Logs &amp; monitoring</b> — handler output and control-plane events, streamed live over SSE.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<a href="docs/screenshots/01-landing.png"><img src="docs/screenshots/01-landing.png" alt="The landing page" width="100%"></a>
+<sub><b>Landing</b> — served by the same instance, no marketing site to host.</sub>
+</td>
+<td width="50%">
+<a href="docs/screenshots/07-docs.png"><img src="docs/screenshots/07-docs.png" alt="Built-in documentation" width="100%"></a>
+<sub><b>Docs</b> — bundled and versioned with the instance, so they match what you are running.</sub>
+</td>
+</tr>
+</table>
 
 ---
 
