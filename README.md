@@ -19,7 +19,7 @@ Apache-2.0 · Python 3.12 and 3.11 runtimes · entirely Docker-based
 ## Install
 
 ```bash
-git clone https://github.com/you/cubicle && cd cubicle
+git clone https://github.com/clickTwice26/cubicle && cd cubicle
 ./install.sh
 ```
 
@@ -95,6 +95,11 @@ never rotated.
 </td>
 </tr>
 </table>
+
+> **How it all works.** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) walks the
+> whole platform with use-case, sequence, activity and state diagrams — what
+> happens on a deploy, what happens on an invocation, the isolate lifecycle,
+> the trust boundaries and the failure modes.
 
 ---
 
@@ -277,6 +282,16 @@ boundary even when two clusters sit on the same engine.
   front of it.
 - The console makes no third-party request. Fonts are bundled; nothing is
   fetched from a CDN and nothing is reported anywhere.
+
+---
+
+## Documentation
+
+| | |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the platform runs: actors and use cases, deployment view, data model, sequence diagrams for setup / deploy / invoke, the request pipeline, isolate lifecycle, trust boundaries, failure modes |
+| The console's **Docs** section | Writing functions, env and secrets, data services, `cubicle.toml`, the CLI — bundled with the instance so they match what you are running |
+| `/api/docs` | Browsable OpenAPI for the whole control-plane API |
 
 ---
 

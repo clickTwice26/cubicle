@@ -100,7 +100,7 @@ export const DOCS: DocPage[] = [
         {p('One command builds the images, generates secrets and starts the stack.')}
         {code(
           <>
-            <span className="text-ink-3">$</span> git clone https://github.com/you/cubicle{'\n'}
+            <span className="text-ink-3">$</span> git clone https://github.com/clickTwice26/cubicle{'\n'}
             <span className="text-ink-3">$</span> cd cubicle{'\n'}
             <span className="text-ink-3">$</span> ./install.sh{'\n\n'}
             {'  '}▸ Generating .env{'\n'}
