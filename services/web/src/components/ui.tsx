@@ -11,7 +11,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from 'react'
-import { Bolt, Check, Copy, X } from './Icons'
+import { Bolt, Check, Copy, Trash, X } from './Icons'
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(' ')
@@ -566,21 +566,63 @@ export function Modal({
   )
 }
 
+/**
+ * A destructive action that needs a second click.
+ *
+ * `as="button"` renders it as a real, outlined button — use that anywhere the
+ * action sits in open space, where a bare link reads as a caption rather than
+ * something you can press. The default text style stays for dense table rows,
+ * where a row of outlined buttons would drown the data.
+ */
 export function ConfirmButton({
   onConfirm,
   label,
   confirmLabel = 'Click again to confirm',
   className,
+  as = 'text',
+  size = 'sm',
+  hint,
 }: {
   onConfirm: () => void
   label: string
   confirmLabel?: string
   className?: string
+  as?: 'text' | 'button'
+  size?: 'sm' | 'md'
+  /** Shown on hover, and to screen readers, in button mode. */
+  hint?: string
 }) {
   const [armed, setArmed] = useState(false)
   const timer = useRef<number | undefined>(undefined)
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  const fire = () => {
+    if (armed) {
+      window.clearTimeout(timer.current)
+      setArmed(false)
+      onConfirm()
+      return
+    }
+    setArmed(true)
+    timer.current = window.setTimeout(() => setArmed(false), 4000)
+  }
+
+  if (as === 'button') {
+    return (
+      <Button
+        variant="danger"
+        size={size}
+        onClick={fire}
+        title={hint}
+        aria-label={hint ? `${label} — ${hint}` : label}
+        className={cx(armed && 'border-err bg-err-bg font-semibold', className)}
+        icon={<Trash size={13} />}
+      >
+        {armed ? confirmLabel : label}
+      </Button>
+    )
+  }
 
   return (
     <button
@@ -590,16 +632,7 @@ export function ConfirmButton({
         armed ? 'font-semibold text-err' : 'text-err hover:underline',
         className,
       )}
-      onClick={() => {
-        if (armed) {
-          window.clearTimeout(timer.current)
-          setArmed(false)
-          onConfirm()
-          return
-        }
-        setArmed(true)
-        timer.current = window.setTimeout(() => setArmed(false), 4000)
-      }}
+      onClick={fire}
     >
       {armed ? confirmLabel : label}
     </button>

@@ -91,44 +91,52 @@ function ClustersCard() {
                 {cluster.base_url} · {cluster.namespace_count} ns · {cluster.function_count} fn
               </div>
             </div>
-            {!selected ? (
-              <button
-                type="button"
-                onClick={() => switchCluster(cluster.is_default ? null : cluster.slug)}
-                className="text-[12.5px] text-ink-3 transition hover:text-ink"
-              >
-                Switch to
-              </button>
-            ) : null}
-            {!cluster.is_default ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDefault.mutate(cluster.slug, {
-                      onSuccess: () => toast.push(`${cluster.name} is now the default`),
-                      onError: (error) => toast.push(error.message, 'err'),
-                    })
-                  }
-                  className="text-[12.5px] text-ink-3 transition hover:text-ink"
+            <div className="flex flex-none flex-wrap items-center gap-2">
+              {!selected ? (
+                <Button
+                  size="sm"
+                  onClick={() => switchCluster(cluster.is_default ? null : cluster.slug)}
                 >
-                  Make default
-                </button>
-                <ConfirmButton
-                  label="Delete"
-                  confirmLabel="Click again — this destroys its functions and data"
-                  onConfirm={() =>
-                    remove.mutate(cluster.slug, {
-                      onSuccess: () => {
-                        toast.push(`${cluster.name} deleted`)
-                        if (selected) switchCluster(null)
-                      },
-                      onError: (error) => toast.push(error.message, 'err'),
-                    })
-                  }
-                />
-              </>
-            ) : null}
+                  Switch to
+                </Button>
+              ) : (
+                <span className="rounded-lg border border-accent bg-accent-soft px-3 py-1.5 text-[12.5px] font-semibold">
+                  Active
+                </span>
+              )}
+              {!cluster.is_default ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={setDefault.isPending}
+                    onClick={() =>
+                      setDefault.mutate(cluster.slug, {
+                        onSuccess: () => toast.push(`${cluster.name} is now the default`),
+                        onError: (error) => toast.push(error.message, 'err'),
+                      })
+                    }
+                  >
+                    Make default
+                  </Button>
+                  <ConfirmButton
+                    as="button"
+                    label="Delete"
+                    confirmLabel="Confirm"
+                    hint="Deletes this cluster's functions, data services and history"
+                    onConfirm={() =>
+                      remove.mutate(cluster.slug, {
+                        onSuccess: () => {
+                          toast.push(`${cluster.name} deleted`)
+                          if (selected) switchCluster(null)
+                        },
+                        onError: (error) => toast.push(error.message, 'err'),
+                      })
+                    }
+                  />
+                </>
+              ) : null}
+            </div>
           </div>
         )
       })}
