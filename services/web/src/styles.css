@@ -361,3 +361,95 @@ button {
     animation: none;
   }
 }
+
+/* ── landing page ───────────────────────────────────────────────────────────
+   Scroll reveals and the hero's ambient motion. Transform and opacity only,
+   so none of it costs a layout pass. */
+
+@keyframes cubicle-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, -3%, 0) scale(1.08);
+  }
+}
+
+@keyframes cubicle-travel {
+  0% {
+    opacity: 0;
+    transform: translateX(0) scale(0.6);
+  }
+  10%,
+  90% {
+    opacity: 1;
+    transform: translateX(var(--travel, 200px)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(var(--travel, 200px)) scale(0.6);
+  }
+}
+
+@keyframes cubicle-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes cubicle-type {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* Revealed by an IntersectionObserver toggling `data-shown`. Elements start
+   hidden only when JS is running, so a no-JS or crawler view still reads. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.6s cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform 0.6s cubic-bezier(0.2, 0.7, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal[data-shown='true'] {
+  opacity: 1;
+  transform: none;
+}
+
+.animate-drift {
+  animation: cubicle-drift 18s ease-in-out infinite;
+}
+.animate-travel {
+  animation: cubicle-travel var(--travel-ms, 2400ms) linear infinite;
+  animation-delay: var(--travel-delay, 0ms);
+}
+.animate-blink {
+  animation: cubicle-blink 1.4s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .animate-drift,
+  .animate-travel,
+  .animate-blink {
+    animation: none;
+  }
+  .animate-travel {
+    opacity: 1;
+  }
+}

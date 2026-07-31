@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { CodeBlock } from './CodeBlock'
 
 export interface DocPage {
   id: string
@@ -23,16 +24,7 @@ const p = (children: ReactNode) => (
 )
 
 const code = (children: ReactNode, filename?: string) => (
-  <div className="mb-6 overflow-hidden rounded-xl border border-line bg-panel">
-    {filename ? (
-      <div className="border-b border-line px-3.5 py-2 font-mono text-[11.5px] text-ink-3">
-        {filename}
-      </div>
-    ) : null}
-    <pre className="m-0 overflow-x-auto px-4.5 py-4 font-mono text-[13px] leading-[1.75] text-ink">
-      {children}
-    </pre>
-  </div>
+  <CodeBlock filename={filename}>{children}</CodeBlock>
 )
 
 const table = (head: string[], rows: ReactNode[][]) => (
