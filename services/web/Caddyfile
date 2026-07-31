@@ -1,0 +1,14 @@
+# Serves the built console. TLS, routing and the function endpoints are all
+# handled by the edge Caddy in front of this container.
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	# Hashed assets can be cached forever; index.html never is.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+
+	try_files {path} /index.html
+	file_server
+}

@@ -1,0 +1,2161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics="">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@100..800&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:Sora,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;background:#0a0a0c}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+a{color:inherit;text-decoration:none}
+.app{
+  --bg:#fbfbfa;--panel:#ffffff;--panel-2:#f5f5f4;--panel-3:#efefed;
+  --border:rgba(17,17,20,.09);--border-strong:rgba(17,17,20,.16);
+  --text:#131316;--text-2:#57575f;--text-3:#8a8a92;
+  --accent:#b4ec1f;--accent-ink:#131316;--accent-soft:rgba(180,236,31,.16);
+  --shadow:0 1px 2px rgba(17,17,20,.06),0 1px 3px rgba(17,17,20,.04);
+  --ok:#15a34a;--okbg:rgba(21,163,74,.12);--warn:#c2760a;--warnbg:rgba(194,118,10,.13);
+  --err:#dc2626;--errbg:rgba(220,38,38,.11);--info:#2563eb;--infobg:rgba(37,99,235,.11);
+  color-scheme:light;
+}
+.app[data-theme=dark]{
+  --bg:#08080a;--panel:#0f0f12;--panel-2:#17171b;--panel-3:#1e1e23;
+  --border:rgba(255,255,255,.08);--border-strong:rgba(255,255,255,.16);
+  --text:#f3f3f5;--text-2:#9b9ba4;--text-3:#65656e;
+  --accent:#c6f741;--accent-ink:#0a0a0c;--accent-soft:rgba(198,247,65,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.5);
+  --ok:#4ade80;--okbg:rgba(74,222,128,.13);--warn:#fbbf24;--warnbg:rgba(251,191,36,.13);
+  --err:#f87171;--errbg:rgba(248,113,113,.13);--info:#60a5fa;--infobg:rgba(96,165,250,.13);
+  color-scheme:dark;
+}
+@keyframes cubicleup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes cubiclepulse{0%,100%{opacity:.35}50%{opacity:1}}
+</style>
+</helmet>
+<div class="app" data-theme="{{ theme }}" style="background:var(--bg);color:var(--text);min-height:100vh">
+
+<sc-if value="{{ isLanding }}" hint-placeholder-val="{{ true }}">
+<div style="max-width:100%;overflow:hidden">
+  <!-- landing nav -->
+  <div style="position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--border)">
+    <div style="max-width:1180px;margin:0 auto;padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:38px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="display:grid;place-items:center;width:26px;height:26px;background:var(--accent);border-radius:7px;color:var(--accent-ink)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg></span>
+          <span style="font-weight:700;font-size:17px;letter-spacing:-.02em">Cubicle</span>
+        </div>
+        <div style="display:flex;gap:26px;font-size:14px;color:var(--text-2)">
+          <span onClick="{{ goDocs }}" style="cursor:pointer" style-hover="color:var(--text)">Docs</span><span>Runtimes</span><span onClick="{{ goDocs }}" style="cursor:pointer" style-hover="color:var(--text)">Self-hosting</span><span>Community</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onClick="{{ toggleTheme }}" style="height:34px;width:34px;display:grid;place-items:center;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-2);cursor:pointer" style-hover="background:var(--panel-2)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"></path></svg></button>
+        <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.94.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0012 2z"></path></svg><span style="font-family:'IBM Plex Mono',monospace">12.4k</span></div>
+        <button onClick="{{ enterApp }}" style="height:36px;padding:0 16px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-weight:600;font-size:13.5px;cursor:pointer" style-hover="filter:brightness(1.06)">Open console</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <div style="max-width:1180px;margin:0 auto;padding:96px 32px 40px;text-align:center">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 13px;border:1px solid var(--border);border-radius:100px;font-size:12.5px;color:var(--text-2);margin-bottom:28px">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block"></span>
+      v1.4.2 released · Apache-2.0 · no vendor, no bill
+    </div>
+    <h1 style="font-size:60px;line-height:1.03;letter-spacing:-.035em;font-weight:700;margin:0 auto;max-width:820px;text-wrap:balance">Serverless.<br>On your own metal.</h1>
+    <p style="font-size:19px;line-height:1.55;color:var(--text-2);max-width:600px;margin:22px auto 0;text-wrap:pretty">Cubicle is an open-source functions platform you run yourself. One binary, your hardware, your data. Python 3.12 and 3.11, sub-40ms cold starts, scale-to-zero, and per-invocation metering you actually own.</p>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:34px">
+      <button onClick="{{ enterApp }}" style="height:46px;padding:0 24px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:11px;font-weight:600;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:9px" style-hover="filter:brightness(1.06)">Install in 60 seconds<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+      <button style="height:46px;padding:0 22px;background:var(--panel);color:var(--text);border:1px solid var(--border-strong);border-radius:11px;font-weight:600;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:9px" style-hover="background:var(--panel-2)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.94.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0012 2z"></path></svg>Star on GitHub</button>
+    </div>
+
+    <!-- code card -->
+    <div style="max-width:760px;margin:56px auto 0;text-align:left;background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--border)">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--border-strong)"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--border-strong)"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--border-strong)"></span>
+        <span style="margin-left:8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-3)">handler.py</span>
+        <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ok)">● deployed 0.9s</span>
+      </div>
+      <pre style="margin:0;padding:20px 22px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)"># scheduled onto node-01 · node-02 · node-03</span>
+<span style="color:var(--info)">def</span> <span style="color:var(--accent-ink);background:var(--accent-soft);padding:0 4px;border-radius:4px">handler</span>(event, context):
+    body  = event.get(<span style="color:var(--ok)">"body"</span>, {})
+    user  = verify(body[<span style="color:var(--ok)">"token"</span>])
+    <span style="color:var(--info)">return</span> {<span style="color:var(--ok)">"statusCode"</span>: <span style="color:var(--warn)">200</span>, <span style="color:var(--ok)">"body"</span>: {<span style="color:var(--ok)">"ok"</span>: <span style="color:var(--warn)">True</span>, <span style="color:var(--ok)">"user"</span>: user}}</pre>
+      <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-top:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-2)">
+        <span>$ cubicle deploy</span><span style="color:var(--text-3)">→</span><span style="color:var(--ok)">https://checkout-webhook.fn.internal</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:34px;flex-wrap:wrap">
+      <span style="font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:5px 13px">Docker</span>
+      <span style="font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:5px 13px">Kubernetes</span>
+      <span style="font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:5px 13px">Nomad</span>
+      <span style="font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:5px 13px">systemd</span>
+      <span style="font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:5px 13px">Bare metal</span>
+      <span style="font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:5px 13px">Air-gapped</span>
+    </div>
+  </div>
+
+  <!-- feature band -->
+  <div style="max-width:1180px;margin:0 auto;padding:70px 32px">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px">
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;color:var(--text);margin-bottom:16px"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg></div>
+        <h3 style="margin:0 0 8px;font-size:16.5px;letter-spacing:-.01em">Sub-40ms cold starts</h3>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:var(--text-2)">Snapshot-restore isolates keep p50 cold starts under 40ms on commodity hardware. Full cold-start telemetry per function — never sampled, never aggregated away.</p>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px">
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;color:var(--text);margin-bottom:16px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 018 0v3"></path></svg></div>
+        <h3 style="margin:0 0 8px;font-size:16.5px;letter-spacing:-.01em">Encrypted secrets</h3>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:var(--text-2)">Envelope-encrypted secrets injected at runtime, never written to disk. Bring your own KMS or Vault — keys never leave your network.</p>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px">
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;color:var(--text);margin-bottom:16px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"></path></svg></div>
+        <h3 style="margin:0 0 8px;font-size:16.5px;letter-spacing:-.01em">Per-invocation metering</h3>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:var(--text-2)">Every invocation metered to the millisecond and attributed to a team. Export to Prometheus for internal chargeback — no external billing pipe.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- install -->
+  <div style="max-width:1180px;margin:0 auto;padding:30px 32px 40px">
+    <h2 style="text-align:center;font-size:34px;letter-spacing:-.03em;margin:0 0 8px">Free forever. Yours to run.</h2>
+    <p style="text-align:center;color:var(--text-2);font-size:16px;margin:0 0 40px;max-width:620px;margin-left:auto;margin-right:auto;text-wrap:pretty">Apache-2.0 licensed, no open-core bait, no seat limits. Install on one box or a hundred — the whole platform is the same binary.</p>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;max-width:1000px;margin:0 auto">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div>
+          <div style="font-size:15.5px;font-weight:600;letter-spacing:-.01em">Docker Compose</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:4px">Single host, batteries included</div>
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:13px 14px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--text);overflow-x:auto;white-space:pre"><span style="color:var(--text-3)">$</span> curl -sSL get.cubicle.dev | sh
+<span style="color:var(--text-3)">$</span> cubicle up</div>
+        <div style="font-size:12.5px;color:var(--text-3);margin-top:auto">Ready at localhost:7000 in ~40s</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div>
+          <div style="font-size:15.5px;font-weight:600;letter-spacing:-.01em">Kubernetes</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:4px">Helm chart, HA control plane</div>
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:13px 14px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--text);overflow-x:auto;white-space:pre"><span style="color:var(--text-3)">$</span> helm repo add cubicle \
+    oci://ghcr.io/cubicle
+<span style="color:var(--text-3)">$</span> helm install cubicle cubicle/core</div>
+        <div style="font-size:12.5px;color:var(--text-3);margin-top:auto">Operator + CRDs, multi-node scheduling</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div>
+          <div style="font-size:15.5px;font-weight:600;letter-spacing:-.01em">Binary</div>
+          <div style="font-size:13px;color:var(--text-2);margin-top:4px">systemd, bare metal, air-gapped</div>
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:13px 14px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--text);overflow-x:auto;white-space:pre"><span style="color:var(--text-3)">$</span> cubicle server \
+    --data /var/lib/cubicle</div>
+        <div style="font-size:12.5px;color:var(--text-3);margin-top:auto">Single static binary, no runtime deps</div>
+      </div>
+    </div>
+
+    <div style="max-width:1000px;margin:22px auto 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px 28px">
+      <div><div style="font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;letter-spacing:-.02em">Apache-2.0</div><div style="font-size:12.5px;color:var(--text-2);margin-top:5px">Permissive license</div></div>
+      <div><div style="font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;letter-spacing:-.02em">12,431</div><div style="font-size:12.5px;color:var(--text-2);margin-top:5px">GitHub stars</div></div>
+      <div><div style="font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;letter-spacing:-.02em">284</div><div style="font-size:12.5px;color:var(--text-2);margin-top:5px">Contributors</div></div>
+      <div><div style="font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;letter-spacing:-.02em">0</div><div style="font-size:12.5px;color:var(--text-2);margin-top:5px">Telemetry calls home</div></div>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div style="border-top:1px solid var(--border)">
+    <div style="max-width:1180px;margin:0 auto;padding:34px 32px;display:flex;align-items:center;justify-content:space-between;color:var(--text-3);font-size:13px">
+      <div style="display:flex;align-items:center;gap:9px;color:var(--text-2)"><span style="display:grid;place-items:center;width:22px;height:22px;background:var(--accent);border-radius:6px;color:var(--accent-ink)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg></span> Cubicle — open source, Apache-2.0</div>
+      <div style="display:flex;gap:22px"><span>GitHub</span><span onClick="{{ goDocs }}" style="cursor:pointer" style-hover="color:var(--text)">Docs</span><span>Discord</span><span>Security</span><span>Apache-2.0</span></div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSetup }}">
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <div style="border-bottom:1px solid var(--border)">
+    <div style="max-width:840px;margin:0 auto;padding:0 32px;height:62px;display:flex;align-items:center;gap:12px">
+      <div onClick="{{ goLanding }}" style="display:flex;align-items:center;gap:9px;cursor:pointer">
+        <span style="display:grid;place-items:center;width:26px;height:26px;background:var(--accent);border-radius:7px;color:var(--accent-ink)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>
+        <span style="font-weight:700;font-size:16px;letter-spacing:-.02em">Cubicle</span>
+      </div>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3);border:1px solid var(--border);border-radius:100px;padding:3px 10px">first run</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+        <span onClick="{{ goDocs }}" style="font-size:13.5px;color:var(--text-2);cursor:pointer" style-hover="color:var(--text)">Docs</span>
+        <button onClick="{{ toggleTheme }}" style="height:32px;width:32px;display:grid;place-items:center;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-2);cursor:pointer" style-hover="background:var(--panel-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;max-width:840px;width:100%;margin:0 auto;padding:44px 32px 72px">
+    <sc-if value="{{ setupIdle }}">
+      <h1 style="margin:0 0 8px;font-size:32px;letter-spacing:-.03em;font-weight:600">Create your cluster</h1>
+      <p style="margin:0 0 30px;font-size:16px;line-height:1.6;color:var(--text-2);max-width:560px;text-wrap:pretty">Cubicle needs a cluster before it can schedule functions. This takes about a minute and can be re-run against more nodes later.</p>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:32px">
+        <sc-for list="{{ steps }}" as="st" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:10px;flex:1">
+            <span style="{{ st.dot }}">{{ st.n }}</span>
+            <span style="{{ st.text }}">{{ st.label }}</span>
+            <span style="flex:1;height:1px;background:var(--border)"></span>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- step 1 -->
+      <sc-if value="{{ step1 }}">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:26px;margin-bottom:20px">
+          <div style="font-size:15.5px;font-weight:600;margin-bottom:4px">Cluster basics</div>
+          <div style="font-size:13.5px;color:var(--text-2);margin-bottom:20px">Written to the control plane config on first boot. All of it is editable later in Settings.</div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
+            <div>
+              <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Cluster name</label>
+              <input value="{{ clusterName }}" onChange="{{ setName }}" style="width:100%;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none">
+            </div>
+            <div>
+              <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Ingress domain</label>
+              <input value="{{ ingressDomain }}" onChange="{{ setDomain }}" style="width:100%;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none">
+              <div style="margin-top:7px;font-size:12px;color:var(--text-3);font-family:'IBM Plex Mono',monospace">functions resolve at {{ samplePreview }}</div>
+            </div>
+            <div>
+              <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Data directory</label>
+              <input value="{{ dataDir }}" onChange="{{ setDataDir }}" style="width:100%;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none">
+            </div>
+            <div>
+              <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Secrets backend</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <sc-for list="{{ kmsOpts }}" as="k" hint-placeholder-count="3"><div onClick="{{ k.pick }}" style="{{ k.style }}">{{ k.label }}</div></sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- step 2 -->
+      <sc-if value="{{ step2 }}">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:16px">
+          <div style="padding:20px 24px 16px">
+            <div style="font-size:15.5px;font-weight:600;margin-bottom:4px">Join nodes</div>
+            <div style="font-size:13.5px;color:var(--text-2)">Run the join command on each machine that should run isolates. Nodes appear here as they register — a single-node cluster is perfectly valid.</div>
+          </div>
+          <div style="margin:0 24px 20px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:13px 15px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--text);overflow-x:auto;white-space:pre"><span style="color:var(--text-3)">$</span> cubicle node join --token cbcl_join_7f21ae --server https://{{ clusterName }}.internal:7000</div>
+          <div style="display:grid;grid-template-columns:auto 1.4fr 1.6fr .8fr;gap:14px;padding:11px 24px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">
+            <span style="width:18px"></span><span>Node</span><span>Capacity</span><span>Status</span>
+          </div>
+          <sc-for list="{{ joinNodes }}" as="n" hint-placeholder-count="3">
+            <div onClick="{{ n.toggle }}" style="display:grid;grid-template-columns:auto 1.4fr 1.6fr .8fr;gap:14px;padding:14px 24px;border-bottom:1px solid var(--border);align-items:center;font-size:13.5px;cursor:pointer" style-hover="background:var(--panel-2)">
+              <span style="{{ n.box }}">{{ n.tick }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ n.name }}</span>
+              <span style="color:var(--text-2);font-family:'IBM Plex Mono',monospace;font-size:12.5px">{{ n.spec }}</span>
+              <span style="display:flex;align-items:center;gap:7px;color:var(--text-2);font-size:12.5px"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>registered</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:13px;color:var(--text-3);margin-bottom:20px">{{ selCount }} selected · isolates are scheduled only onto selected nodes</div>
+      </sc-if>
+
+      <!-- step 3 -->
+      <sc-if value="{{ step3 }}">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:20px">
+          <div style="padding:20px 24px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-size:15.5px;font-weight:600;margin-bottom:4px">Review</div>
+            <div style="font-size:13.5px;color:var(--text-2)">Creating the cluster writes state to disk and starts the scheduler. Nothing leaves your network.</div>
+          </div>
+          <sc-for list="{{ review }}" as="r" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;padding:13px 24px;border-bottom:1px solid var(--border);font-size:13.5px">
+              <span style="color:var(--text-2)">{{ r.k }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace">{{ r.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <button onClick="{{ setupBack }}" style="{{ backStyle }}">Back</button>
+        <sc-if value="{{ notLastStep }}">
+          <button onClick="{{ setupNext }}" style="height:42px;padding:0 22px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="filter:brightness(1.06)">Continue</button>
+        </sc-if>
+        <sc-if value="{{ step3 }}">
+          <button onClick="{{ createCluster }}" style="height:42px;padding:0 22px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-family:inherit" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>Create cluster</button>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- provisioning -->
+    <sc-if value="{{ provisioning }}">
+      <h1 style="margin:0 0 8px;font-size:32px;letter-spacing:-.03em;font-weight:600">{{ provHeading }}</h1>
+      <p style="margin:0 0 30px;font-size:16px;line-height:1.6;color:var(--text-2)">{{ provSub }}</p>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:22px">
+        <sc-for list="{{ provSteps }}" as="p" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:13px;padding:15px 22px;border-bottom:1px solid var(--border)">
+            <span style="{{ p.icon }}">{{ p.glyph }}</span>
+            <span style="font-size:13.5px;color:{{ p.color }};flex:1">{{ p.label }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3)">{{ p.meta }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ provComplete }}">
+        <div style="display:flex;align-items:center;gap:14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:18px 20px">
+          <div style="flex:1">
+            <div style="font-size:14.5px;font-weight:600;margin-bottom:3px">{{ clusterName }} is ready</div>
+            <div style="font-size:13px;color:var(--text-2);font-family:'IBM Plex Mono',monospace">{{ selCount }} nodes · *.{{ ingressDomain }} · scheduler warm</div>
+          </div>
+          <button onClick="{{ finishSetup }}" style="height:40px;padding:0 20px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="filter:brightness(1.06)">Open console</button>
+        </div>
+      </sc-if>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isApp }}">
+<div style="display:flex;min-height:100vh">
+  <!-- sidebar -->
+  <aside style="width:236px;flex:none;border-right:1px solid var(--border);background:var(--panel);display:flex;flex-direction:column;position:sticky;top:0;height:100vh">
+    <div style="padding:18px 16px 14px;display:flex;align-items:center;justify-content:space-between">
+      <div onClick="{{ enterApp }}" style="display:flex;align-items:center;gap:9px;cursor:pointer">
+        <span style="display:grid;place-items:center;width:26px;height:26px;background:var(--accent);border-radius:7px;color:var(--accent-ink)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg></span>
+        <span style="font-weight:700;font-size:16px;letter-spacing:-.02em">Cubicle</span>
+      </div>
+    </div>
+    <div style="padding:6px 12px 10px">
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer" style-hover="background:var(--panel-2)">
+        <span style="width:20px;height:20px;border-radius:5px;background:var(--accent-soft);border:1px solid var(--accent);flex:none;display:grid;place-items:center"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span></span>
+        <div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:600;line-height:1.2">{{ clusterName }}</div><div style="font-size:11.5px;color:var(--text-3);font-family:'IBM Plex Mono',monospace">self-hosted · v1.4.2</div></div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><path d="M8 9l4 4 4-4"></path></svg>
+      </div>
+    </div>
+    <div style="padding:4px 12px;flex:1;display:flex;flex-direction:column;gap:3px">
+      <button onClick="{{ goDashboard }}" style="{{ ovStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>Overview</button>
+      <button onClick="{{ goPlayground }}" style="{{ plNavStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5h16v13H4z"></path><path d="M7.5 10l2.5 2-2.5 2M12.5 14h4"></path></svg>Function playground</button>
+      <button onClick="{{ goEnv }}" style="{{ envNavStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.5 12h17M12 3.5c4 4.5 4 12.5 0 17M12 3.5c-4 4.5-4 12.5 0 17"></path></svg>Global env</button>
+      <button onClick="{{ goLogs }}" style="{{ logsNavStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>Logs &amp; monitoring</button>
+      <button onClick="{{ goBilling }}" style="{{ billingNavStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>Cluster &amp; metering</button>
+      <button onClick="{{ goSettings }}" style="{{ settingsNavStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"></path><circle cx="15" cy="8" r="2.3"></circle><circle cx="7" cy="16" r="2.3"></circle></svg>Settings</button>
+    </div>
+    <div style="padding:14px 12px 4px 22px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em">Data services</div>
+    <div style="padding:0 12px;display:flex;flex-direction:column;gap:3px">
+      <button onClick="{{ goPostgres }}" style="{{ postgresNavStyle }}" style-hover="background:var(--panel-2)"><span style="{{ pgDotStyle }}"></span>PostgreSQL</button>
+      <button onClick="{{ goRedis }}" style="{{ redisNavStyle }}" style-hover="background:var(--panel-2)"><span style="{{ redisDotStyle }}"></span>Redis</button>
+    </div>
+    <div style="padding:0 12px 10px">
+      <button onClick="{{ goDocs }}" style="{{ docsNavStyle }}" style-hover="background:var(--panel-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5A2.5 2.5 0 016.5 3H19v15H6.5A2.5 2.5 0 004 20.5z"></path><path d="M8 7.5h7M8 11h5"></path></svg>Docs</button>
+    </div>
+    <div style="padding:12px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px">
+        <span style="width:28px;height:28px;border-radius:50%;background:var(--panel-3);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--text-2)">JD</span>
+        <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;line-height:1.2">Jordan Diaz</div><div style="font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">jordan@internal.corp</div></div>
+        <button onClick="{{ toggleTheme }}" title="Toggle theme" style="width:28px;height:28px;display:grid;place-items:center;background:transparent;border:1px solid var(--border);border-radius:7px;color:var(--text-2);cursor:pointer" style-hover="background:var(--panel-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"></path></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- main -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)">
+    <!-- topbar -->
+    <div style="height:60px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 26px;position:sticky;top:0;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(10px);z-index:10">
+      <div style="font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:8px">
+        <span onClick="{{ goDashboard }}" style="cursor:pointer;font-family:'IBM Plex Mono',monospace;white-space:nowrap;flex-shrink:0">{{ clusterName }}</span>
+        <span style="color:var(--text-3)">/</span>
+        <span style="color:var(--text);font-weight:600;white-space:nowrap;flex-shrink:0">{{ crumb }}</span>
+      </div>
+      <div style="margin-left:16px;flex:1;max-width:420px">
+        <div style="display:flex;align-items:center;gap:9px;height:36px;padding:0 12px;background:var(--panel);border:1px solid var(--border);border-radius:9px;color:var(--text-3)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3-3"></path></svg>
+          <span style="font-size:13.5px;white-space:nowrap">Search functions, logs…</span>
+          <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;border:1px solid var(--border);border-radius:5px;padding:1px 6px">⌘K</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow:auto">
+
+    <!-- ============ DASHBOARD ============ -->
+    <sc-if value="{{ isDashboard }}">
+    <div style="padding:28px 32px;max-width:1240px;margin:0 auto">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px">
+        <div>
+          <h1 style="margin:0;font-size:24px;letter-spacing:-.02em">Overview</h1>
+          <p style="margin:6px 0 0;color:var(--text-2);font-size:14px">6 functions · {{ selCount }} nodes · last 24 hours</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button style="height:34px;padding:0 13px;background:var(--panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:500;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:7px" style-hover="background:var(--panel-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v13M7 11l5 5 5-5M4 21h16"></path></svg>Export</button>
+          <button style="height:34px;padding:0 13px;background:var(--panel);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:500;color:var(--text);cursor:pointer" style-hover="background:var(--panel-2)">Last 24h ▾</button>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 18px 16px">
+            <div style="font-size:12.5px;color:var(--text-2);margin-bottom:10px">{{ k.label }}</div>
+            <div style="display:flex;align-items:flex-end;gap:9px">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1">{{ k.value }}</div>
+              <div style="font-size:12px;font-weight:600;color:{{ k.deltaColor }};padding-bottom:3px">{{ k.delta }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- chart -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <div style="font-size:14px;font-weight:600">Invocations</div>
+          <div style="display:flex;gap:16px;font-size:12px;color:var(--text-2)">
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:var(--accent)"></span>Success</span>
+            <span style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:var(--err)"></span>Errors</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:5px;height:130px">
+          <sc-for list="{{ chartBars }}" as="b" hint-placeholder-count="28">
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%">
+              <div style="height:{{ b.err }};background:var(--err);border-radius:2px 2px 0 0;min-height:0"></div>
+              <div style="height:{{ b.ok }};background:var(--accent);border-radius:2px"></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- functions table -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:2.2fr 1fr 1fr .9fr .9fr .9fr;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Function</span><span>Runtime</span><span>Node</span><span>Invocations</span><span>p95</span><span>Errors</span>
+        </div>
+        <sc-for list="{{ functions }}" as="f" hint-placeholder-count="6">
+          <div onClick="{{ f.open }}" style="display:grid;grid-template-columns:2.2fr 1fr 1fr .9fr .9fr .9fr;gap:12px;padding:15px 20px;border-bottom:1px solid var(--border);cursor:pointer;align-items:center" style-hover="background:var(--panel-2)">
+            <div style="display:flex;align-items:center;gap:11px;min-width:0">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ f.statusColor }};flex:none"></span>
+              <div style="min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.name }}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">{{ f.url }}</div></div>
+            </div>
+            <div style="font-size:13px;color:var(--text-2)">{{ f.runtimeLabel }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text-2)">{{ f.region }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px">{{ f.inv }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px">{{ f.p95 }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:{{ f.errColor }}">{{ f.err }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ FUNCTION DETAIL ============ -->
+    <sc-if value="{{ isDetail }}">
+    <div style="padding:24px 32px;max-width:1240px;margin:0 auto">
+      <div onClick="{{ goDashboard }}" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);cursor:pointer;margin-bottom:16px" style-hover="color:var(--text)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"></path></svg>All functions</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:13px">
+          <span style="width:11px;height:11px;border-radius:50%;background:{{ fn.statusColor }}"></span>
+          <div>
+            <h1 style="margin:0;font-size:23px;letter-spacing:-.02em">{{ fn.name }}</h1>
+            <div style="margin-top:5px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text-2)">{{ fn.url }} · {{ fn.runtime }} · {{ fn.region }}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onClick="{{ goEditor }}" style="height:36px;padding:0 14px;background:var(--panel);border:1px solid var(--border-strong);border-radius:9px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:7px" style-hover="background:var(--panel-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20l4-1 10-10-3-3L5 16z"></path></svg>Edit code</button>
+          <button style="height:36px;padding:0 14px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px" style-hover="filter:brightness(1.06)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13M7 11l5 5 5-5M4 21h16"></path></svg>Redeploy</button>
+        </div>
+      </div>
+
+      <!-- tabs -->
+      <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:22px">
+        <button onClick="{{ tabOverview }}" style="{{ tabOvStyle }}">Overview</button>
+        <button onClick="{{ tabMetrics }}" style="{{ tabMetStyle }}">Metrics</button>
+        <button onClick="{{ tabLogs }}" style="{{ tabLogStyle }}">Logs</button>
+        <button onClick="{{ tabSecrets }}" style="{{ tabSecStyle }}">Secrets</button>
+      </div>
+
+      <sc-if value="{{ showOverview }}">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
+          <sc-for list="{{ fnKpis }}" as="k" hint-placeholder-count="4">
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px">
+              <div style="font-size:12.5px;color:var(--text-2);margin-bottom:9px">{{ k.label }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:23px;font-weight:600;letter-spacing:-.02em">{{ k.value }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:18px">Latency (p95, ms)</div>
+            <div style="display:flex;align-items:flex-end;gap:5px;height:120px">
+              <sc-for list="{{ latBars }}" as="b" hint-placeholder-count="24">
+                <div style="flex:1;height:{{ b.h }};background:var(--accent-soft);border-radius:2px;position:relative"><div style="position:absolute;bottom:0;left:0;right:0;height:{{ b.fill }};background:var(--accent);border-radius:2px"></div></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:16px">Configuration</div>
+            <div style="display:grid;gap:13px;font-size:13.5px">
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text-2)">Trigger</span><span style="font-family:'IBM Plex Mono',monospace">HTTP</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text-2)">Memory</span><span style="font-family:'IBM Plex Mono',monospace">512 MB</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text-2)">Timeout</span><span style="font-family:'IBM Plex Mono',monospace">30s</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text-2)">Concurrency</span><span style="font-family:'IBM Plex Mono',monospace">auto</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text-2)">Entrypoint</span><span style="font-family:'IBM Plex Mono',monospace">handler</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text-2)">Last deploy</span><span style="font-family:'IBM Plex Mono',monospace">{{ fn.deployed }}</span></div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showMetrics }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:6px">Cold starts</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:600">{{ fn.cold }}<span style="font-size:15px;color:var(--text-3)"> of invocations</span></div>
+            <div style="display:flex;align-items:flex-end;gap:4px;height:90px;margin-top:18px">
+              <sc-for list="{{ latBars }}" as="b" hint-placeholder-count="24"><div style="flex:1;height:{{ b.fill }};background:var(--warn);opacity:.7;border-radius:2px"></div></sc-for>
+            </div>
+          </div>
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:16px">Percentiles (last 1h)</div>
+            <div style="display:grid;gap:14px">
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:var(--text-2)">p50</span><span style="font-family:'IBM Plex Mono',monospace">{{ fn.p50 }}</span></div><div style="height:6px;background:var(--panel-3);border-radius:3px"><div style="width:22%;height:100%;background:var(--accent);border-radius:3px"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:var(--text-2)">p90</span><span style="font-family:'IBM Plex Mono',monospace">{{ fn.p90 }}</span></div><div style="height:6px;background:var(--panel-3);border-radius:3px"><div style="width:48%;height:100%;background:var(--accent);border-radius:3px"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:var(--text-2)">p95</span><span style="font-family:'IBM Plex Mono',monospace">{{ fn.p95 }}</span></div><div style="height:6px;background:var(--panel-3);border-radius:3px"><div style="width:64%;height:100%;background:var(--warn);border-radius:3px"></div></div></div>
+              <div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span style="color:var(--text-2)">p99</span><span style="font-family:'IBM Plex Mono',monospace">{{ fn.p99 }}</span></div><div style="height:6px;background:var(--panel-3);border-radius:3px"><div style="width:88%;height:100%;background:var(--err);border-radius:3px"></div></div></div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showLogsTab }}">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;font-family:'IBM Plex Mono',monospace;font-size:12.5px">
+          <sc-for list="{{ fnLogs }}" as="l" hint-placeholder-count="8">
+            <div style="display:flex;gap:14px;padding:9px 18px;border-bottom:1px solid var(--border);align-items:baseline">
+              <span style="color:var(--text-3);flex:none">{{ l.time }}</span>
+              <span style="flex:none;width:52px;font-weight:600;color:{{ l.color }}">{{ l.level }}</span>
+              <span style="flex:1;color:var(--text)">{{ l.msg }}</span>
+              <span style="color:var(--text-3);flex:none">{{ l.dur }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showSecrets }}">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+            <div style="font-size:14px;font-weight:600">Environment secrets <span style="color:var(--text-3);font-weight:400">· injected at runtime, encrypted at rest</span></div>
+            <button style="height:32px;padding:0 12px;background:var(--panel);border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px" style-hover="background:var(--panel-2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Add secret</button>
+          </div>
+          <sc-for list="{{ secrets }}" as="s" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:1.2fr 1.4fr .8fr auto;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ s.key }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-3);letter-spacing:1px">{{ s.val }}</span>
+              <span style="color:var(--text-2)">{{ s.updated }}</span>
+              <span style="display:flex;gap:14px;color:var(--text-3);justify-content:flex-end"><span style="cursor:pointer" style-hover="color:var(--text)">Reveal</span><span style="cursor:pointer" style-hover="color:var(--err)">Delete</span></span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- ============ CREATE ============ -->
+    <sc-if value="{{ isCreate }}">
+    <div style="padding:28px 32px;max-width:760px;margin:0 auto">
+      <h1 style="margin:0 0 6px;font-size:24px;letter-spacing:-.02em">New function</h1>
+      <p style="margin:0 0 26px;color:var(--text-2);font-size:14px">Deploys to your own cluster. Configure now — everything is editable later, or declare it in cubicle.toml.</p>
+
+      <div style="display:grid;gap:20px">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:8px">Function name</label>
+          <input value="payments-reconcile" style="width:100%;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none">
+          <div style="margin-top:8px;font-size:12.5px;color:var(--text-3);font-family:'IBM Plex Mono',monospace">→ https://payments-reconcile.{{ ingressDomain }}</div>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:11px">Runtime</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div onClick="{{ pickPython }}" style="{{ segPython }}"><div style="font-weight:600;font-size:14px">Python 3.12</div><div style="font-size:12px;color:var(--text-2);margin-top:2px">pip · handler.py</div></div>
+            <div onClick="{{ pickNode }}" style="{{ segNode }}"><div style="font-weight:600;font-size:14px">Python 3.11</div><div style="font-size:12px;color:var(--text-2);margin-top:2px">pip · handler.py</div></div>
+          </div>
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:11px">Trigger</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div onClick="{{ pickHttp }}" style="{{ segHttp }}">HTTP endpoint</div>
+            <div onClick="{{ pickCron }}" style="{{ segCron }}">Cron schedule</div>
+            <div onClick="{{ pickEvent }}" style="{{ segEvent }}">Event queue</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:11px">Memory</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <sc-for list="{{ memOpts }}" as="m" hint-placeholder-count="5"><div onClick="{{ m.pick }}" style="{{ m.style }}">{{ m.label }}</div></sc-for>
+            </div>
+          </div>
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:11px">Node pool</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <sc-for list="{{ regionOpts }}" as="r" hint-placeholder-count="4"><div onClick="{{ r.pick }}" style="{{ r.style }}">{{ r.label }}</div></sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:4px">
+          <button onClick="{{ goDashboard }}" style="height:42px;padding:0 18px;background:transparent;border:1px solid var(--border);border-radius:10px;font-size:14px;font-weight:600;color:var(--text-2);cursor:pointer" style-hover="background:var(--panel-2)">Cancel</button>
+          <button onClick="{{ deploy }}" style="height:42px;padding:0 22px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg>Deploy function</button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ EDITOR ============ -->
+    <sc-if value="{{ isEditor }}">
+    <div style="display:flex;height:100%;min-height:560px">
+      <!-- file tree -->
+      <div style="width:210px;flex:none;border-right:1px solid var(--border);background:var(--panel);padding:14px 10px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;padding:4px 8px 8px">{{ fn.name }}</div>
+        <sc-for list="{{ files }}" as="f" hint-placeholder-count="4">
+          <div style="{{ f.style }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="opacity:.6"><path d="M6 2h8l4 4v16H6z"></path><path d="M14 2v4h4"></path></svg>{{ f.name }}</div>
+        </sc-for>
+      </div>
+      <!-- code -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)">
+        <div style="height:42px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 18px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-2)">handler.py</span>
+          <span style="font-size:11px;color:var(--warn)">● unsaved</span>
+          <button style="margin-left:auto;height:30px;padding:0 13px;background:var(--panel);border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer" style-hover="background:var(--panel-2)">Format</button>
+          <button style="height:30px;padding:0 13px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px" style-hover="filter:brightness(1.06)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>Run test</button>
+        </div>
+        <div style="flex:1;display:flex;overflow:auto;font-family:'IBM Plex Mono',monospace;font-size:13.5px;line-height:1.7">
+          <div style="flex:none;padding:16px 12px;text-align:right;color:var(--text-3);user-select:none;border-right:1px solid var(--border)">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12</div>
+          <pre style="margin:0;padding:16px 20px;color:var(--text);overflow-x:auto"><span style="color:var(--info)">import</span> json, os
+<span style="color:var(--info)">from</span> cubicle <span style="color:var(--info)">import</span> secrets
+
+STRIPE = secrets.get(<span style="color:var(--ok)">"STRIPE_KEY"</span>)
+
+<span style="color:var(--info)">def</span> <span style="color:var(--accent-ink);background:var(--accent-soft);padding:0 4px;border-radius:4px">handler</span>(event, context):
+    body = json.loads(event[<span style="color:var(--ok)">"body"</span>])
+    order = body[<span style="color:var(--ok)">"orderId"</span>]
+    <span style="color:var(--text-3)"># reconcile against ledger</span>
+    result = reconcile(order, STRIPE)
+    <span style="color:var(--info)">return</span> {<span style="color:var(--ok)">"statusCode"</span>: <span style="color:var(--warn)">200</span>,
+            <span style="color:var(--ok)">"body"</span>: {<span style="color:var(--ok)">"reconciled"</span>: result}}</pre>
+        </div>
+      </div>
+      <!-- test panel -->
+      <div style="width:300px;flex:none;border-left:1px solid var(--border);background:var(--panel);display:flex;flex-direction:column">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Test event</div>
+        <pre style="margin:0;padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)">{
+  <span style="color:var(--ok)">"body"</span>: {
+    <span style="color:var(--ok)">"orderId"</span>: <span style="color:var(--ok)">"ord_8fk2"</span>
+  }
+}</pre>
+        <div style="padding:14px 16px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">Output <span style="font-size:11px;color:var(--ok);font-family:'IBM Plex Mono',monospace">200 · 41ms</span></div>
+        <pre style="margin:0;padding:0 16px 16px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.6;color:var(--ok)">{
+  "reconciled": true,
+  "delta": 0.00
+}</pre>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ LOGS ============ -->
+    <sc-if value="{{ isLogs }}">
+    <div style="padding:28px 32px;max-width:1240px;margin:0 auto">
+      <h1 style="margin:0 0 6px;font-size:24px;letter-spacing:-.02em">Logs &amp; monitoring</h1>
+      <p style="margin:0 0 20px;color:var(--text-2);font-size:14px">Streaming across all functions · <span style="color:var(--ok)">live</span></p>
+      <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+        <sc-for list="{{ logFilters }}" as="c" hint-placeholder-count="4"><button onClick="{{ c.pick }}" style="{{ c.style }}">{{ c.label }}</button></sc-for>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok);animation:cubiclepulse 1.6s infinite"></span>Tailing</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;font-family:'IBM Plex Mono',monospace;font-size:12.5px">
+        <sc-for list="{{ filteredLogs }}" as="l" hint-placeholder-count="12">
+          <div style="display:flex;gap:14px;padding:9px 18px;border-bottom:1px solid var(--border);align-items:baseline" style-hover="background:var(--panel-2)">
+            <span style="color:var(--text-3);flex:none">{{ l.time }}</span>
+            <span style="flex:none;width:46px;font-weight:600;color:{{ l.color }}">{{ l.level }}</span>
+            <span style="flex:none;width:150px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.fn }}</span>
+            <span style="flex:1;color:var(--text)">{{ l.msg }}</span>
+            <span style="color:var(--text-3);flex:none">{{ l.dur }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ CLUSTER & METERING ============ -->
+    <sc-if value="{{ isBilling }}">
+    <div style="padding:28px 32px;max-width:1240px;margin:0 auto">
+      <h1 style="margin:0 0 6px;font-size:24px;letter-spacing:-.02em">Cluster &amp; metering</h1>
+      <p style="margin:0 0 22px;color:var(--text-2);font-size:14px">{{ selCount }} nodes · self-hosted · metering window Jul 1 – Jul 31, 2026</p>
+
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;margin-bottom:20px">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px">
+          <div style="font-size:13px;color:var(--text-2)">Invocations this window</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:42px;font-weight:600;letter-spacing:-.03em;margin:6px 0 2px">128,412,904</div>
+          <div style="font-size:13px;color:var(--text-2)">62% through window · <span style="color:var(--ok)">cluster headroom 3.1× at current rate</span></div>
+          <div style="height:8px;background:var(--panel-3);border-radius:5px;margin-top:16px"><div style="width:62%;height:100%;background:var(--accent);border-radius:5px"></div></div>
+        </div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;display:flex;flex-direction:column;justify-content:space-between">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px">Metering export</div>
+          <div style="display:flex;align-items:center;gap:11px"><span style="width:8px;height:8px;border-radius:50%;background:var(--ok)"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px">prometheus · /metrics</span></div>
+          <button style="margin-top:16px;height:34px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer" style-hover="background:var(--panel-3)">Configure exporters</button>
+        </div>
+      </div>
+
+      <!-- nodes -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+        <div style="padding:15px 20px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600">Nodes</div>
+        <div style="display:grid;grid-template-columns:1.3fr .9fr 1.6fr 1.6fr .9fr;gap:14px;padding:11px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Node</span><span>Status</span><span>CPU</span><span>Memory</span><span>Isolates</span>
+        </div>
+        <sc-for list="{{ nodes }}" as="n" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:1.3fr .9fr 1.6fr 1.6fr .9fr;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px">
+            <div><div style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ n.name }}</div><div style="font-size:11.5px;color:var(--text-3)">{{ n.spec }}</div></div>
+            <span style="display:flex;align-items:center;gap:7px;color:var(--text-2)"><span style="width:7px;height:7px;border-radius:50%;background:{{ n.statusColor }}"></span>{{ n.status }}</span>
+            <div><div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-2);margin-bottom:5px"><span>{{ n.cpu }}</span></div><div style="height:5px;background:var(--panel-3);border-radius:3px"><div style="width:{{ n.cpu }};height:100%;background:var(--accent);border-radius:3px"></div></div></div>
+            <div><div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-2);margin-bottom:5px"><span>{{ n.memLabel }}</span></div><div style="height:5px;background:var(--panel-3);border-radius:3px"><div style="width:{{ n.mem }};height:100%;background:{{ n.memColor }};border-radius:3px"></div></div></div>
+            <span style="font-family:'IBM Plex Mono',monospace">{{ n.isolates }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- resource meters -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+        <sc-for list="{{ usage }}" as="u" hint-placeholder-count="3">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="font-size:12.5px;color:var(--text-2);margin-bottom:9px">{{ u.label }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;margin-bottom:4px">{{ u.value }}</div>
+            <div style="font-size:12px;color:var(--text-3);font-family:'IBM Plex Mono',monospace">{{ u.rate }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- cost comparison -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px 20px 18px;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-size:14px;font-weight:600">What this workload would cost hosted</div>
+            <div style="font-size:12.5px;color:var(--text-2);margin-top:3px">Same 128.4M invocations, 3.21M GB-s and 2.1 TB egress, priced at each vendor's public list rate.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:12px;color:var(--text-2)">Avoided this window vs AWS Lambda</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:600;letter-spacing:-.02em;color:var(--ok);line-height:1.1">$215.39</div>
+            <div style="font-size:12px;color:var(--text-3);font-family:'IBM Plex Mono',monospace">≈ $4,169 / yr at this rate</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.5fr .8fr .8fr .8fr .9fr .9fr;gap:14px;padding:11px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Platform</span><span>Requests</span><span>Compute</span><span>Egress</span><span style="text-align:right">Window</span><span style="text-align:right">You save</span>
+        </div>
+        <sc-for list="{{ costRows }}" as="c" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:1.5fr .8fr .8fr .8fr .9fr .9fr;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px">
+            <div style="min-width:0">
+              <div style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:2px;background:{{ c.color }};flex:none"></span><span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span></div>
+              <div style="height:4px;background:var(--panel-3);border-radius:3px;margin-top:8px"><div style="width:{{ c.bar }};height:100%;background:{{ c.color }};border-radius:3px"></div></div>
+            </div>
+            <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-2)">{{ c.req }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-2)">{{ c.compute }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-2)">{{ c.egress }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;text-align:right;font-weight:600">{{ c.total }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;text-align:right;color:{{ c.saveColor }}">{{ c.save }}</span>
+          </div>
+        </sc-for>
+        <div style="padding:14px 20px;font-size:12px;color:var(--text-3);line-height:1.6">List prices as of Jul 2026, us-east equivalents, no committed-use discounts. Cubicle line is marginal power draw only ($0.11/kWh) — nodes are owned hardware already in the rack, so capex, rack space and operator time are excluded. Egress is free inside your own network.</div>
+      </div>
+
+      <!-- chargeback -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:14px;font-weight:600">Internal chargeback <span style="color:var(--text-3);font-weight:400">· showback only, rates set in cubicle.toml</span></div>
+          <button style="height:30px;padding:0 12px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer" style-hover="background:var(--panel-3)">Export CSV</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 1.2fr 1.2fr 1fr;gap:14px;padding:11px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Namespace</span><span>Invocations</span><span>GB-seconds</span><span style="text-align:right">Attributed</span>
+        </div>
+        <sc-for list="{{ lineItems }}" as="li" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:1.4fr 1.2fr 1.2fr 1fr;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13.5px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-weight:500">{{ li.name }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-2)">{{ li.qty }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-2)">{{ li.gbs }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;text-align:right">{{ li.amount }}</span>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:1.4fr 1.2fr 1.2fr 1fr;gap:14px;padding:15px 20px;align-items:center;font-size:14px;font-weight:700">
+          <span>Total</span><span style="font-family:'IBM Plex Mono',monospace">128,412,904</span><span style="font-family:'IBM Plex Mono',monospace">3,210,400</span><span style="font-family:'IBM Plex Mono',monospace;text-align:right">$4,281.60</span>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ GLOBAL ENV ============ -->
+    <sc-if value="{{ isEnv }}">
+    <div style="padding:28px 32px;max-width:960px;margin:0 auto">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:6px">
+        <h1 style="margin:0;font-size:24px;letter-spacing:-.02em">Global env</h1>
+        <button onClick="{{ openNewEnv }}" style="height:36px;padding:0 15px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Add variable</button>
+      </div>
+      <p style="margin:0 0 22px;color:var(--text-2);font-size:14px">One store per cluster. Any function in any namespace can read these at runtime with <span style="font-family:'IBM Plex Mono',monospace">env.get()</span> — no redeploy needed when a value changes.</p>
+
+      <sc-if value="{{ envNew }}">
+      <div style="background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:22px;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:16px">New variable</div>
+        <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:14px">
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:8px">Key</label>
+            <input value="{{ envKey }}" onChange="{{ setEnvKey }}" placeholder="PAYMENTS_API_BASE" style="width:100%;box-sizing:border-box;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none" />
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:8px">Value</label>
+            <input value="{{ envVal }}" onChange="{{ setEnvVal }}" placeholder="https://payments.internal/v2" style="width:100%;box-sizing:border-box;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none" />
+          </div>
+        </div>
+        <div onClick="{{ toggleEnvSecret }}" style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer">
+          <span style="{{ envSecretBox }}"></span>
+          <span style="font-size:13px;color:var(--text-2)">Store as secret — envelope-encrypted, masked in the console</span>
+        </div>
+        <div style="display:flex;gap:9px;margin-top:18px">
+          <button onClick="{{ addEnv }}" style="height:38px;padding:0 18px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit">Save variable</button>
+          <button onClick="{{ cancelEnv }}" style="height:38px;padding:0 16px;background:transparent;color:var(--text-2);border:1px solid var(--border-strong);border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit" style-hover="background:var(--panel-2)">Cancel</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:1.1fr 1.6fr 90px 100px 58px;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Key</span><span>Value</span><span>Type</span><span>Updated</span><span></span>
+        </div>
+        <sc-for list="{{ envVars }}" as="v" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:1.1fr 1.6fr 90px 100px 58px;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.key }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.shown }}</div>
+            <div style="{{ v.typeStyle }}">{{ v.type }}</div>
+            <div style="font-size:12.5px;color:var(--text-3)">{{ v.updated }}</div>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+              <span onClick="{{ v.reveal }}" style="{{ v.revealStyle }}">{{ v.revealLabel }}</span>
+              <span onClick="{{ v.del }}" style="font-size:12px;color:var(--text-3);cursor:pointer" style-hover="color:var(--err)">Delete</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-top:20px;padding:18px 20px">
+        <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">Reading from a function</div>
+        <div style="font-size:12.5px;color:var(--text-2);margin-bottom:14px">Values resolve at invocation time from the cluster store, not at build time.</div>
+        <pre style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--text-2);white-space:pre-wrap">{{ envSnippet }}</pre>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ PLAYGROUND: GROUPS ============ -->
+    <sc-if value="{{ isPlayground }}">
+    <div style="padding:28px 32px;max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:6px">
+        <h1 style="margin:0;font-size:24px;letter-spacing:-.02em">Function playground</h1>
+        <button onClick="{{ openNewGroup }}" style="height:36px;padding:0 15px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>New group</button>
+      </div>
+      <p style="margin:0 0 22px;color:var(--text-2);font-size:14px">Groups are namespaces. Every function you create inside a group inherits its namespace in the API endpoint.</p>
+
+      <sc-if value="{{ plNewGroup }}">
+      <div style="background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:22px;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:16px">New group</div>
+        <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:8px">Group name</label>
+        <input value="{{ plGroupName }}" onChange="{{ setGroupName }}" placeholder="Payments" style="width:100%;box-sizing:border-box;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;color:var(--text);font-family:inherit;font-size:14px;outline:none" />
+        <div style="margin-top:14px;display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:11px 13px">
+          <span style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;flex:none">Namespace</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text);white-space:nowrap;overflow-x:auto">{{ plNsPreview }}</span>
+        </div>
+        <div style="display:flex;gap:9px;margin-top:18px">
+          <button onClick="{{ createGroup }}" style="height:38px;padding:0 18px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit">Create group</button>
+          <button onClick="{{ cancelNewGroup }}" style="height:38px;padding:0 16px;background:transparent;color:var(--text-2);border:1px solid var(--border-strong);border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit" style-hover="background:var(--panel-2)">Cancel</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ plHasGroups }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
+        <sc-for list="{{ plGroups }}" as="g" hint-placeholder-count="2">
+          <div onClick="{{ g.open }}" style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;cursor:pointer" style-hover="border-color:var(--accent)">
+            <div style="display:flex;align-items:center;gap:11px;margin-bottom:12px">
+              <span style="width:32px;height:32px;border-radius:9px;background:var(--accent-soft);display:grid;place-items:center;flex:none;color:var(--text)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7.5A1.5 1.5 0 014.5 6h4l2 2.5h9A1.5 1.5 0 0121 10v8a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18z"></path></svg></span>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:15px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.name }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3);margin-top:2px">{{ g.count }}</div>
+              </div>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><path d="M9 6l6 6-6 6"></path></svg>
+            </div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.base }}</div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ plNoGroups }}">
+      <div style="background:var(--panel);border:1px dashed var(--border-strong);border-radius:12px;padding:44px;text-align:center">
+        <div style="font-size:15px;font-weight:600;margin-bottom:5px">No groups yet</div>
+        <div style="font-size:13.5px;color:var(--text-2)">Create a group to get a namespace, then add functions under it.</div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- ============ PLAYGROUND: GROUP DETAIL ============ -->
+    <sc-if value="{{ isPlGroup }}">
+    <div style="padding:28px 32px;max-width:1100px;margin:0 auto">
+      <div onClick="{{ goPlayground }}" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);cursor:pointer;margin-bottom:14px" style-hover="color:var(--text)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"></path></svg>All groups</div>
+
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:8px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-size:24px;letter-spacing:-.02em">{{ grpName }}</h1>
+          <div style="display:flex;align-items:center;gap:9px;margin-top:7px">
+            <span style="font-size:12px;color:var(--text-2)">namespace</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:2px 8px">{{ grpNs }}</span>
+          </div>
+        </div>
+        <button onClick="{{ openNewFn }}" style="flex:none;height:36px;padding:0 15px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>New function</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin:18px 0 20px">
+        <span style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;flex:none">Base URL</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;flex:1;white-space:nowrap;overflow-x:auto">{{ grpBase }}</span>
+        <span style="font-size:12px;color:var(--text-3);cursor:pointer;flex:none" style-hover="color:var(--text)">Copy</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:20px">
+        <span style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;flex:none">Session</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:2px 8px">{{ sessId }}</span>
+        <span style="font-size:12.5px;color:var(--text-2)">{{ ctxKeyCount }} · {{ ctxSize }} · ttl 30m</span>
+        <span onClick="{{ newSession }}" style="margin-left:auto;font-size:12.5px;color:var(--text-3);cursor:pointer" style-hover="color:var(--text)">New session</span>
+      </div>
+
+      <sc-if value="{{ plNewFn }}">
+      <div style="background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:22px;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:16px">New function in {{ grpNs }}</div>
+        <div style="display:grid;gap:18px">
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:8px">Function name</label>
+            <input value="{{ plFnName }}" onChange="{{ setFnName }}" placeholder="create-charge" style="width:100%;box-sizing:border-box;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13.5px;outline:none" />
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Method</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ plMethodOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Runtime</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ plRuntimeOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:4px">Runtime context access</label>
+            <div style="font-size:12.5px;color:var(--text-3);margin-bottom:9px">What this function may do with the shared session context.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ plCtxModeOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:11px 13px">
+          <span style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;flex:none">Endpoint</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;white-space:nowrap;overflow-x:auto">{{ plFnUrlPreview }}</span>
+        </div>
+        <div style="display:flex;gap:9px;margin-top:18px">
+          <button onClick="{{ createFn }}" style="height:38px;padding:0 18px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit">Create function</button>
+          <button onClick="{{ cancelNewFn }}" style="height:38px;padding:0 16px;background:transparent;color:var(--text-2);border:1px solid var(--border-strong);border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit" style-hover="background:var(--panel-2)">Cancel</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ grpHasFns }}">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:82px 1fr 1.5fr 96px 94px 60px;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Method</span><span>Function</span><span>Endpoint</span><span>Runtime</span><span>Context</span><span></span>
+        </div>
+        <sc-for list="{{ grpFns }}" as="f" hint-placeholder-count="2">
+          <div onClick="{{ f.pick }}" style="{{ f.rowStyle }}" style-hover="background:var(--panel-2)">
+            <span style="{{ f.methodStyle }}">{{ f.method }}</span>
+            <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.path }}</div>
+            <div style="font-size:13px;color:var(--text-2)">{{ f.runtimeLabel }}</div>
+            <div style="{{ f.ctxStyle }}">{{ f.ctxLabel }}</div>
+            <div onClick="{{ f.del }}" style="font-size:12px;color:var(--text-3);cursor:pointer;text-align:right" style-hover="color:var(--err)">Delete</div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ grpNoFns }}">
+      <div style="background:var(--panel);border:1px dashed var(--border-strong);border-radius:12px;padding:40px;text-align:center">
+        <div style="font-size:15px;font-weight:600;margin-bottom:5px">No functions in this group</div>
+        <div style="font-size:13.5px;color:var(--text-2)">Anything you add here is served under <span style="font-family:'IBM Plex Mono',monospace">/{{ grpNs }}/</span></div>
+      </div>
+      </sc-if>
+
+      <!-- test console -->
+      <sc-if value="{{ plHasSel }}">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-top:20px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 20px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:9px;padding-bottom:12px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600">{{ selName }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">{{ selRuntime }}</span>
+          </div>
+          <div style="display:flex;gap:2px;margin-left:auto">
+            <sc-for list="{{ plTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button></sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ plTabCode }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--panel-2);flex-wrap:wrap">
+          <sc-for list="{{ plFiles }}" as="f" hint-placeholder-count="2"><div onClick="{{ f.pick }}" style="{{ f.style }}">{{ f.name }}</div></sc-for>
+          <span style="margin-left:auto;font-size:12px;color:{{ dirtyColor }}">{{ dirtyLabel }}</span>
+        </div>
+        <textarea value="{{ editVal }}" onChange="{{ setCode }}" spellcheck="false" style="display:block;width:100%;box-sizing:border-box;min-height:360px;resize:vertical;padding:18px 20px;background:var(--bg);border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;outline:none;tab-size:2"></textarea>
+        <div style="padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <button onClick="{{ saveFn }}" style="{{ saveBtnStyle }}">Save &amp; deploy</button>
+          <button onClick="{{ revertFn }}" style="height:36px;padding:0 15px;background:transparent;color:var(--text-2);border:1px solid var(--border-strong);border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit" style-hover="background:var(--panel-2)">Revert</button>
+          <span style="margin-left:auto;font-size:12.5px;color:var(--text-3)">{{ savedMeta }}</span>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ plTabSettings }}">
+        <div style="padding:20px;display:grid;gap:20px">
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:8px">Name</label>
+            <input value="{{ plRename }}" onChange="{{ setRename }}" style="width:100%;box-sizing:border-box;height:40px;padding:0 13px;background:var(--bg);border:1px solid var(--border-strong);border-radius:9px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13.5px;outline:none" />
+            <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3)">{{ renameUrl }}</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Method</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ setMethodOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Runtime</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ setRuntimeOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Runtime context access</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ setCtxOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div>
+              <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Memory</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ setMemOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+            </div>
+            <div>
+              <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Timeout</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ setTimeoutOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;border-top:1px solid var(--border);padding-top:18px">
+            <button onClick="{{ applyRename }}" style="height:38px;padding:0 18px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit">Save changes</button>
+            <span onClick="{{ deleteSelFn }}" style="margin-left:auto;font-size:12.5px;color:var(--err);cursor:pointer" style-hover="text-decoration:underline">Delete function</span>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ plTabTest }}">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="{{ selMethodStyle }}">{{ selMethod }}</span>
+
+          <span style="flex:1;min-width:220px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 13px;white-space:nowrap;overflow-x:auto">{{ selUrl }}</span>
+          <button onClick="{{ runFn }}" style="{{ runBtnStyle }}">{{ runLabel }}</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+          <div style="padding:16px 20px;border-right:1px solid var(--border)">
+            <div style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Request</div>
+            <pre style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;color:var(--text-2);white-space:pre-wrap">{{ selRequest }}</pre>
+          </div>
+          <div style="padding:16px 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">Response</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:{{ selRespColor }}">{{ selRespMeta }}</div>
+            </div>
+            <pre style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;color:var(--text-2);white-space:pre-wrap">{{ selResponse }}</pre>
+          </div>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:var(--panel-2)">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">ctx read</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--info)">{{ ctxRead }}</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">ctx wrote</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ok)">{{ ctxWrote }}</span></div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- runtime context store -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-top:20px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600">Runtime context</div>
+            <div style="font-size:12.5px;color:var(--text-2);margin-top:2px">Carried on <span style="font-family:'IBM Plex Mono',monospace">X-Cubicle-Session</span> · readable by every function in this namespace</div>
+          </div>
+          <span onClick="{{ clearCtx }}" style="font-size:12.5px;color:var(--text-3);cursor:pointer;flex:none" style-hover="color:var(--err)">Clear</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr 1fr">
+          <div style="padding:16px 20px;border-right:1px solid var(--border);min-width:0">
+            <div style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">context.json</div>
+            <pre style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.65;color:var(--text-2);white-space:pre-wrap">{{ ctxJson }}</pre>
+          </div>
+          <div style="padding:16px 20px;min-width:0">
+            <div style="font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Write log</div>
+            <sc-if value="{{ ctxHasLog }}">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ ctxLog }}" as="l" hint-placeholder-count="2">
+                <div style="display:flex;align-items:baseline;gap:9px;font-size:12.5px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3);flex:none">{{ l.time }}</span>
+                  <div style="min-width:0"><span style="font-weight:600">{{ l.fn }}</span> <span style="color:var(--text-2)">{{ l.detail }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ ctxNoLog }}">
+            <div style="font-size:12.5px;color:var(--text-3)">Nothing written yet this session.</div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:18px">
+        <span onClick="{{ deleteGroup }}" style="font-size:12.5px;color:var(--err);cursor:pointer" style-hover="text-decoration:underline">Delete group and its functions</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ POSTGRESQL ============ -->
+    <sc-if value="{{ isPostgres }}">
+    <div style="padding:28px 32px;max-width:820px;margin:0 auto">
+      <h1 style="margin:0 0 6px;font-size:24px;letter-spacing:-.02em">PostgreSQL</h1>
+      <p style="margin:0 0 22px;color:var(--text-2);font-size:14px">Managed alongside your functions on the same cluster · no external dependency</p>
+
+      <sc-if value="{{ pgCreated }}">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:14px;padding:20px 22px;border-bottom:1px solid var(--border)">
+          <span style="width:38px;height:38px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><ellipse cx="12" cy="6" rx="8" ry="3"></ellipse><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"></path><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg></span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:16px;font-weight:600">PostgreSQL</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3)">{{ pgVersion }}</span></div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:3px;font-size:13px;color:var(--text-2)"><span style="width:7px;height:7px;border-radius:50%;background:{{ pgStatusColor }}"></span>{{ pgStatusLabel }}</div>
+          </div>
+          <button onClick="{{ togglePg }}" style="{{ pgBtnStyle }}">{{ pgBtnLabel }}</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:18px 22px;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Storage</div><div style="font-family:'IBM Plex Mono',monospace;font-size:14px">{{ pgStorage }}</div></div>
+          <div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Connections</div><div style="font-family:'IBM Plex Mono',monospace;font-size:14px">{{ pgConns }}</div></div>
+          <div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Node</div><div style="font-family:'IBM Plex Mono',monospace;font-size:14px">{{ pgNode }}</div></div>
+        </div>
+        <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:7px">Connection string</div>
+          <div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 13px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text);flex:1;overflow-x:auto;white-space:nowrap">{{ pgUrl }}</span>
+            <span style="font-size:12px;color:var(--text-3);cursor:pointer;flex:none" style-hover="color:var(--text)">Copy</span>
+          </div>
+        </div>
+        <div style="padding:14px 22px;display:flex;justify-content:flex-end">
+          <span onClick="{{ destroyPg }}" style="font-size:12.5px;color:var(--err);cursor:pointer" style-hover="text-decoration:underline">Destroy instance</span>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ pgCreatedNot }}">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:3px">Create a PostgreSQL instance</div>
+        <div style="font-size:13.5px;color:var(--text-2);margin-bottom:20px">Provisioned on your cluster. Nothing runs until you create it.</div>
+        <div style="display:grid;gap:18px">
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Version</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ pgVerOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Storage</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ pgStorageOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Memory</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ pgMemOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Node pool</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ pgPoolOpts }}" as="o" hint-placeholder-count="2"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+        </div>
+        <button onClick="{{ createPg }}" style="margin-top:22px;height:42px;padding:0 20px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg>Create database</button>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- ============ REDIS ============ -->
+    <sc-if value="{{ isRedis }}">
+    <div style="padding:28px 32px;max-width:820px;margin:0 auto">
+      <h1 style="margin:0 0 6px;font-size:24px;letter-spacing:-.02em">Redis</h1>
+      <p style="margin:0 0 22px;color:var(--text-2);font-size:14px">Managed alongside your functions on the same cluster · no external dependency</p>
+
+      <sc-if value="{{ redisCreated }}">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:14px;padding:20px 22px;border-bottom:1px solid var(--border)">
+          <span style="width:38px;height:38px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7l8-4 8 4-8 4-8-4z"></path><path d="M4 12l8 4 8-4M4 17l8 4 8-4"></path></svg></span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:16px;font-weight:600">Redis</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3)">{{ redisVersion }}</span></div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:3px;font-size:13px;color:var(--text-2)"><span style="width:7px;height:7px;border-radius:50%;background:{{ redisStatusColor }}"></span>{{ redisStatusLabel }}</div>
+          </div>
+          <button onClick="{{ toggleRedis }}" style="{{ redisBtnStyle }}">{{ redisBtnLabel }}</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:18px 22px;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Memory</div><div style="font-family:'IBM Plex Mono',monospace;font-size:14px">{{ redisMem }}</div></div>
+          <div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Keys</div><div style="font-family:'IBM Plex Mono',monospace;font-size:14px">{{ redisKeys }}</div></div>
+          <div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Node</div><div style="font-family:'IBM Plex Mono',monospace;font-size:14px">{{ redisNode }}</div></div>
+        </div>
+        <div style="padding:14px 22px;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:7px">Connection string</div>
+          <div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 13px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text);flex:1;overflow-x:auto;white-space:nowrap">{{ redisUrl }}</span>
+            <span style="font-size:12px;color:var(--text-3);cursor:pointer;flex:none" style-hover="color:var(--text)">Copy</span>
+          </div>
+        </div>
+        <div style="padding:14px 22px;display:flex;justify-content:flex-end">
+          <span onClick="{{ destroyRedis }}" style="font-size:12.5px;color:var(--err);cursor:pointer" style-hover="text-decoration:underline">Destroy instance</span>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ redisCreatedNot }}">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:3px">Create a Redis instance</div>
+        <div style="font-size:13.5px;color:var(--text-2);margin-bottom:20px">Provisioned on your cluster. Nothing runs until you create it.</div>
+        <div style="display:grid;gap:18px">
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Version</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ redisVerOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Max memory</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ redisMemOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Eviction policy</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ redisEvictOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:9px">Node pool</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ redisPoolOpts }}" as="o" hint-placeholder-count="2"><div onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</div></sc-for></div>
+          </div>
+        </div>
+        <button onClick="{{ createRedis }}" style="margin-top:22px;height:42px;padding:0 20px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px" style-hover="filter:brightness(1.06)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg>Create database</button>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- ============ SETTINGS ============ -->
+    <sc-if value="{{ isSettings }}">
+    <div style="padding:28px 32px;max-width:960px;margin:0 auto">
+      <h1 style="margin:0 0 22px;font-size:24px;letter-spacing:-.02em">Settings</h1>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:600">Instance</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--text-2)"><span style="font-family:'IBM Plex Mono',monospace">v1.4.2</span><span style="background:var(--accent-soft);border:1px solid var(--accent);color:var(--text);padding:2px 9px;border-radius:100px;font-weight:600;cursor:pointer">v1.5.0 available</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div><label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Instance name</label><input value="{{ clusterName }}" onChange="{{ setName }}" style="width:100%;height:38px;padding:0 12px;background:var(--bg);border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none"></div>
+          <div><label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Ingress domain</label><input value="{{ ingressWildcard }}" onChange="{{ setDomainWild }}" style="width:100%;height:38px;padding:0 12px;background:var(--bg);border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none"></div>
+          <div><label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Default node pool</label><input value="general" style="width:100%;height:38px;padding:0 12px;background:var(--bg);border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none"></div>
+          <div><label style="display:block;font-size:12.5px;color:var(--text-2);margin-bottom:6px">Data directory</label><input value="{{ dataDir }}" onChange="{{ setDataDir }}" style="width:100%;height:38px;padding:0 12px;background:var(--bg);border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text);outline:none"></div>
+        </div>
+      </div>
+
+      <!-- API keys -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:15px;font-weight:600">API keys</div>
+          <button style="height:32px;padding:0 12px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px" style-hover="filter:brightness(1.06)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Create key</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr 1.5fr 1fr .8fr auto;gap:14px;padding:11px 20px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em">
+          <span>Name</span><span>Token</span><span>Created</span><span>Last used</span><span></span>
+        </div>
+        <sc-for list="{{ apiKeys }}" as="k" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:1.2fr 1.5fr 1fr .8fr auto;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px">
+            <span style="font-weight:600">{{ k.name }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-2)">{{ k.token }}</span>
+            <span style="color:var(--text-2)">{{ k.created }}</span>
+            <span style="color:var(--text-2)">{{ k.used }}</span>
+            <span style="color:var(--err);cursor:pointer;text-align:right;font-weight:500" style-hover="text-decoration:underline">Revoke</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- team -->
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:15px;font-weight:600">Users <span style="color:var(--text-3);font-weight:400;font-size:13px">· local accounts, OIDC available</span></div>
+        <sc-for list="{{ team }}" as="t" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)">
+            <span style="width:32px;height:32px;border-radius:50%;background:var(--panel-3);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--text-2)">{{ t.initials }}</span>
+            <div style="flex:1"><div style="font-size:13.5px;font-weight:600">{{ t.name }}</div><div style="font-size:12px;color:var(--text-3)">{{ t.email }}</div></div>
+            <span style="font-size:12px;color:var(--text-2);background:var(--panel-2);border:1px solid var(--border);padding:3px 10px;border-radius:100px">{{ t.role }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDocs }}">
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <!-- docs top nav -->
+  <div style="position:sticky;top:0;z-index:30;backdrop-filter:blur(12px);background:color-mix(in srgb,var(--bg) 88%,transparent);border-bottom:1px solid var(--border)">
+    <div style="max-width:1440px;margin:0 auto;padding:0 28px;height:60px;display:flex;align-items:center;gap:26px">
+      <div onClick="{{ goLanding }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;flex:none">
+        <span style="display:grid;place-items:center;width:26px;height:26px;background:var(--accent);border-radius:7px;color:var(--accent-ink)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg></span>
+        <span style="font-weight:700;font-size:16px;letter-spacing:-.02em">Cubicle</span>
+        <span style="font-size:13px;color:var(--text-3);border-left:1px solid var(--border);padding-left:10px;margin-left:3px">Docs</span>
+      </div>
+      <div style="flex:1;max-width:380px">
+        <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 12px;background:var(--panel);border:1px solid var(--border);border-radius:9px;color:var(--text-3)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3-3"></path></svg>
+          <span style="font-size:13px;white-space:nowrap">Search the docs…</span>
+          <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;border:1px solid var(--border);border-radius:5px;padding:1px 6px">/</span>
+        </div>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-2);border:1px solid var(--border);border-radius:100px;padding:4px 11px">v1.4.2</span>
+        <button onClick="{{ toggleTheme }}" style="height:32px;width:32px;display:grid;place-items:center;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-2);cursor:pointer" style-hover="background:var(--panel-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"></path></svg></button>
+        <button onClick="{{ enterApp }}" style="height:34px;padding:0 14px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer" style-hover="filter:brightness(1.06)">Open console</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;max-width:1440px;width:100%;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:236px minmax(0,1fr) 200px;gap:44px;align-items:start">
+    <!-- docs sidebar -->
+    <aside style="position:sticky;top:60px;padding:30px 0 40px;max-height:calc(100vh - 60px);overflow:auto">
+      <sc-for list="{{ docNav }}" as="g" hint-placeholder-count="3">
+        <div style="margin-bottom:24px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;padding:0 10px 9px">{{ g.group }}</div>
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+              <button onClick="{{ it.pick }}" style="{{ it.style }}" style-hover="background:var(--panel-2)">{{ it.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </aside>
+
+    <!-- article -->
+    <main style="padding:34px 0 72px;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-3);margin-bottom:14px">
+        <span>Docs</span><span>/</span><span>{{ docGroup }}</span><span>/</span><span style="color:var(--text-2)">{{ docTitle }}</span>
+      </div>
+      <h1 style="margin:0 0 12px;font-size:38px;line-height:1.12;letter-spacing:-.03em;font-weight:600">{{ docTitle }}</h1>
+      <p style="margin:0 0 34px;font-size:17px;line-height:1.6;color:var(--text-2);text-wrap:pretty">{{ docLede }}</p>
+
+      <!-- INSTALLATION -->
+      <sc-if value="{{ docIsInstall }}">
+        <h2 id="requirements" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Requirements</h2>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:var(--text-2)">Cubicle ships as one static binary with no runtime dependencies. The control plane and the isolate scheduler live in the same process — you can run a full cluster on a single machine and add nodes later.</p>
+        <div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:32px">
+          <sc-for list="{{ reqRows }}" as="r" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;padding:12px 16px;border-bottom:1px solid var(--border);font-size:13.5px">
+              <span style="color:var(--text-2)">{{ r.k }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace">{{ r.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <h2 id="install" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Install</h2>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:var(--text-2)">Pick the path that matches your infrastructure. All three produce an identical cluster — only the supervisor differs.</p>
+        <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px">
+          <sc-for list="{{ installTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button></sc-for>
+        </div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">
+            <span>{{ installFile }}</span><span style="cursor:pointer" style-hover="color:var(--text)">Copy</span>
+          </div>
+          <pre style="margin:0;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto">{{ installCode }}</pre>
+        </div>
+        <div style="display:flex;gap:12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:11px;padding:14px 16px;margin-bottom:32px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M11 12h1v4h1"></path></svg>
+          <div style="font-size:13.5px;line-height:1.65;color:var(--text)"><strong>Air-gapped installs.</strong> Mirror the release tarball and runtime images once, then point <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px">registry.mirror</span> at your internal registry. Cubicle never contacts an external endpoint at runtime — there is no license check and no telemetry.</div>
+        </div>
+
+        <h2 id="verify" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Verify the install</h2>
+        <pre style="margin:0 0 32px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">$</span> cubicle status
+
+CONTROL PLANE   <span style="color:var(--ok)">ready</span>    v1.4.2
+NODES           <span style="color:var(--ok)">1/1</span>      node-01 · 32 vCPU · 128 GB
+SCHEDULER       <span style="color:var(--ok)">ready</span>    0 isolates warm
+INGRESS         <span style="color:var(--ok)">ready</span>    *.fn.internal → :7000</pre>
+      </sc-if>
+
+      <!-- QUICKSTART -->
+      <sc-if value="{{ docIsQuick }}">
+        <h2 id="scaffold" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">1 · Scaffold a function</h2>
+        <pre style="margin:0 0 26px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">$</span> cubicle init checkout-webhook --runtime python3.12
+<span style="color:var(--text-3)">  created</span> checkout-webhook/handler.py
+<span style="color:var(--text-3)">  created</span> checkout-webhook/cubicle.toml</pre>
+
+        <h2 id="write" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">2 · Write the handler</h2>
+        <pre style="margin:0 0 26px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--info)">def</span> <span style="background:var(--accent-soft);padding:0 4px;border-radius:4px">handler</span>(event, context):
+    order = event[<span style="color:var(--ok)">"body"</span>][<span style="color:var(--ok)">"orderId"</span>]
+    <span style="color:var(--info)">return</span> {<span style="color:var(--ok)">"statusCode"</span>: <span style="color:var(--warn)">200</span>, <span style="color:var(--ok)">"body"</span>: {<span style="color:var(--ok)">"ok"</span>: <span style="color:var(--warn)">True</span>, <span style="color:var(--ok)">"order"</span>: order}}</pre>
+
+        <h2 id="deploy" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">3 · Deploy</h2>
+        <pre style="margin:0 0 26px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">$</span> cubicle deploy
+
+  bundling       12 files · 84 KB
+  uploading      done in 120ms
+  scheduling     node-01 node-02 node-03
+  <span style="color:var(--ok)">deployed</span>       https://checkout-webhook.fn.internal <span style="color:var(--text-3)">(0.9s)</span></pre>
+
+        <h2 id="invoke" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">4 · Invoke and tail</h2>
+        <pre style="margin:0 0 26px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">$</span> curl -X POST https://checkout-webhook.fn.internal \
+    -d <span style="color:var(--ok)">'{"orderId":"ord_8fk2"}'</span>
+
+{<span style="color:var(--ok)">"ok"</span>: true, <span style="color:var(--ok)">"order"</span>: <span style="color:var(--ok)">"ord_8fk2"</span>}
+
+<span style="color:var(--text-3)">$</span> cubicle logs checkout-webhook --follow</pre>
+        <div style="display:flex;gap:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:11px;padding:14px 16px;margin-bottom:32px">
+          <div style="font-size:13.5px;line-height:1.65;color:var(--text-2)">The first request after an idle period is a cold start — typically 30–40&nbsp;ms once the snapshot is warm on the node. Set <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text)">min_instances</span> in <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text)">cubicle.toml</span> to keep isolates resident for latency-critical paths.</div>
+        </div>
+      </sc-if>
+
+      <!-- WRITING FUNCTIONS -->
+      <sc-if value="{{ docIsFunctions }}">
+        <h2 id="signature" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Handler signature</h2>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:var(--text-2)">Every function exports one entrypoint that receives an <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--text)">event</span> and a <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--text)">context</span>. The same shape is used for HTTP, cron, and queue triggers, so a function can be re-pointed at a different trigger without a code change.</p>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:32px">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:11px;overflow:hidden">
+            <div style="padding:9px 14px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">handler.py</div>
+            <pre style="margin:0;padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--info)">def</span> handler(event, context):
+    <span style="color:var(--info)">return</span> {
+        <span style="color:var(--ok)">"statusCode"</span>: <span style="color:var(--warn)">200</span>,
+        <span style="color:var(--ok)">"body"</span>: {<span style="color:var(--ok)">"ok"</span>: <span style="color:var(--warn)">True</span>},
+    }</pre>
+          </div>
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:11px;overflow:hidden">
+            <div style="padding:9px 14px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">index.mjs</div>
+            <pre style="margin:0;padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--info)">export async function</span> handler(event, ctx) {
+  <span style="color:var(--info)">return</span> {
+    statusCode: <span style="color:var(--warn)">200</span>,
+    body: { ok: <span style="color:var(--warn)">true</span> },
+  };
+}</pre>
+          </div>
+        </div>
+
+        <h2 id="event" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">The event object</h2>
+        <div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:32px">
+          <div style="display:grid;grid-template-columns:150px 120px minmax(0,1fr);gap:16px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;background:var(--panel-2)">
+            <span>Field</span><span>Type</span><span>Description</span>
+          </div>
+          <sc-for list="{{ eventRows }}" as="r" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:150px 120px minmax(0,1fr);gap:16px;padding:12px 16px;border-bottom:1px solid var(--border);font-size:13.5px;align-items:baseline">
+              <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ r.field }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;color:var(--info);font-size:12.5px">{{ r.type }}</span>
+              <span style="color:var(--text-2);line-height:1.6">{{ r.desc }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <h2 id="limits" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Execution limits</h2>
+        <p style="margin:0 0 32px;font-size:15px;line-height:1.7;color:var(--text-2)">Defaults are 512&nbsp;MB memory and a 30&nbsp;second timeout, both raisable per function up to whatever the node pool allows. Filesystem writes go to an ephemeral <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--text)">/tmp</span> that is discarded when the isolate is reclaimed — use an object store or database for anything durable.</p>
+      </sc-if>
+
+      <!-- SECRETS -->
+      <sc-if value="{{ docIsSecrets }}">
+        <h2 id="set" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Setting a secret</h2>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:var(--text-2)">Secrets are envelope-encrypted with a per-function data key, sealed by your KMS root key. They are decrypted into the isolate's memory at cold start and never written to disk or to the log pipeline.</p>
+        <pre style="margin:0 0 32px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">$</span> cubicle secrets set STRIPE_KEY --function checkout-webhook
+<span style="color:var(--text-3)">?</span> value: <span style="color:var(--text-3)">••••••••••••</span>
+  <span style="color:var(--ok)">sealed</span> STRIPE_KEY · version 3 · kms://vault/cubicle-root</pre>
+
+        <h2 id="read" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Reading at runtime</h2>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:32px">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:11px;overflow:hidden">
+            <div style="padding:9px 14px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">python</div>
+            <pre style="margin:0;padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--info)">from</span> cubicle <span style="color:var(--info)">import</span> secrets
+
+KEY = secrets.get(<span style="color:var(--ok)">"STRIPE_KEY"</span>)</pre>
+          </div>
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:11px;overflow:hidden">
+            <div style="padding:9px 14px;border-bottom:1px solid var(--border);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-3)">node</div>
+            <pre style="margin:0;padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--info)">import</span> { secrets } <span style="color:var(--info)">from</span> <span style="color:var(--ok)">"cubicle"</span>;
+
+<span style="color:var(--info)">const</span> KEY = secrets.get(<span style="color:var(--ok)">"STRIPE_KEY"</span>);</pre>
+          </div>
+        </div>
+
+        <h2 id="backends" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Key backends</h2>
+        <div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:32px">
+          <sc-for list="{{ kmsRows }}" as="r" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;padding:12px 16px;border-bottom:1px solid var(--border);font-size:13.5px">
+              <span style="font-family:'IBM Plex Mono',monospace">{{ r.k }}</span>
+              <span style="color:var(--text-2);line-height:1.6">{{ r.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- CONFIG -->
+      <sc-if value="{{ docIsConfig }}">
+        <h2 id="example" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Example</h2>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:var(--text-2)">Each function carries a <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--text)">cubicle.toml</span> next to its source. Anything set in the console writes back to this file, so the console and GitOps stay in sync.</p>
+        <pre style="margin:0 0 32px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.8;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">[function]</span>
+name        = <span style="color:var(--ok)">"checkout-webhook"</span>
+runtime     = <span style="color:var(--ok)">"python3.12"</span>
+entrypoint  = <span style="color:var(--ok)">"handler.handler"</span>
+
+<span style="color:var(--text-3)">[resources]</span>
+memory_mb     = <span style="color:var(--warn)">512</span>
+timeout_s     = <span style="color:var(--warn)">30</span>
+min_instances = <span style="color:var(--warn)">1</span>
+node_pool     = <span style="color:var(--ok)">"general"</span>
+
+<span style="color:var(--text-3)">[trigger.http]</span>
+path    = <span style="color:var(--ok)">"/hooks/stripe"</span>
+methods = [<span style="color:var(--ok)">"POST"</span>]
+
+<span style="color:var(--text-3)">[metering]</span>
+namespace = <span style="color:var(--ok)">"payments"</span></pre>
+
+        <h2 id="options" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Options</h2>
+        <div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:32px">
+          <div style="display:grid;grid-template-columns:190px 110px minmax(0,1fr);gap:16px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;background:var(--panel-2)">
+            <span>Key</span><span>Default</span><span>Notes</span>
+          </div>
+          <sc-for list="{{ configRows }}" as="r" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:190px 110px minmax(0,1fr);gap:16px;padding:12px 16px;border-bottom:1px solid var(--border);font-size:13.5px;align-items:baseline">
+              <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12.5px">{{ r.key }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;color:var(--text-3);font-size:12.5px">{{ r.def }}</span>
+              <span style="color:var(--text-2);line-height:1.6">{{ r.notes }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- CLI -->
+      <sc-if value="{{ docIsCli }}">
+        <h2 id="commands" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Commands</h2>
+        <div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:32px">
+          <sc-for list="{{ cliRows }}" as="r" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:270px minmax(0,1fr);gap:16px;padding:12px 16px;border-bottom:1px solid var(--border);font-size:13.5px;align-items:baseline">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px">{{ r.cmd }}</span>
+              <span style="color:var(--text-2);line-height:1.6">{{ r.desc }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <h2 id="auth" style="scroll-margin-top:80px;margin:0 0 12px;font-size:21px;letter-spacing:-.02em;font-weight:600">Authenticating</h2>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:var(--text-2)">Point the CLI at your instance and paste a token from <strong style="color:var(--text);font-weight:600">Settings → API keys</strong>. Credentials are stored in <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--text)">~/.cubicle/config.toml</span>.</p>
+        <pre style="margin:0 0 32px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.75;color:var(--text);overflow-x:auto"><span style="color:var(--text-3)">$</span> cubicle login https://cubicle.internal
+<span style="color:var(--text-3)">?</span> token: <span style="color:var(--text-3)">cbcl_••••4f2a</span>
+  <span style="color:var(--ok)">authenticated</span> as jordan@internal.corp · prod-cluster</pre>
+      </sc-if>
+
+      <!-- prev / next -->
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;border-top:1px solid var(--border);padding-top:26px">
+        <sc-if value="{{ hasPrev }}">
+          <button onClick="{{ goPrev }}" style="text-align:left;padding:15px 17px;background:var(--panel);border:1px solid var(--border);border-radius:11px;cursor:pointer;color:var(--text);font-family:inherit" style-hover="border-color:var(--border-strong)">
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:4px">← Previous</div>
+            <div style="font-size:14.5px;font-weight:600">{{ prevLabel }}</div>
+          </button>
+        </sc-if>
+        <sc-if value="{{ hasNext }}">
+          <button onClick="{{ goNext }}" style="text-align:right;padding:15px 17px;background:var(--panel);border:1px solid var(--border);border-radius:11px;cursor:pointer;color:var(--text);font-family:inherit;grid-column:2" style-hover="border-color:var(--border-strong)">
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:4px">Next →</div>
+            <div style="font-size:14.5px;font-weight:600">{{ nextLabel }}</div>
+          </button>
+        </sc-if>
+      </div>
+    </main>
+
+    <!-- on this page -->
+    
+  </div>
+</div>
+</sc-if>
+
+<!-- deploy toast -->
+<sc-if value="{{ deployToast }}">
+  <div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:11px;padding:13px 18px;background:var(--panel);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);animation:cubicleup .3s ease">
+    <span style="display:grid;place-items:center;width:22px;height:22px;background:var(--accent);border-radius:6px;color:var(--accent-ink)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg></span>
+    <span style="font-size:13.5px;font-weight:600">Function deployed to 3 nodes in 0.9s</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ok)">● live</span>
+  </div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:860}}">
+class Component extends DCLogic {
+  state = { page:'landing', doc:'install', installTab:'compose',
+    clusterReady:false, setupStep:1, provisioning:false, provIdx:0,
+    clusterName:'prod-cluster', ingressDomain:'fn.internal', dataDir:'/var/lib/cubicle', kms:'vault',
+    selNodes:['node-01','node-02','node-03'],
+    pgCreated:false, pgRunning:false, pgVersion:'16.3', pgStorageCfg:'20 GB', pgMemoryCfg:'1 GB', pgPool:'general',
+    plGroups:[{ id:'g1', name:'Payments', ns:'payments', fns:[
+      { id:'f1', name:'create-charge', method:'POST', runtime:'python312', ctx:'rw' },
+      { id:'f2', name:'refund', method:'POST', runtime:'python311', ctx:'r' } ] }],
+    plGroup:'g1', plFn:null, plNewGroup:false, plGroupName:'', plNewFn:false,
+    plFnName:'', plFnMethod:'POST', plFnRuntime:'python312', plFnCtx:'rw', plRunning:false, plResp:null,
+    plSession:'sess_8f2c41ab90d3', plCtxNs:{}, plLogNs:{},
+    plTab:'code', plFile:'handler', plDrafts:{}, plRename:'', plSavedAt:'',
+    envNew:false, envKey:'', envVal:'', envSecret:false, envShown:[],
+    envVars:[
+      { key:'PAYMENTS_API_BASE', value:'https://payments.internal/v2', secret:false, updated:'2d ago' },
+      { key:'STRIPE_SECRET_KEY', value:'sk_live_4f81c9ba22d7', secret:true, updated:'6h ago' },
+      { key:'DB_POOL_SIZE', value:'20', secret:false, updated:'12d ago' },
+      { key:'LOG_LEVEL', value:'info', secret:false, updated:'12d ago' },
+    ],
+    redisCreated:false, redisRunning:false, redisVersion:'7.2', redisMemoryCfg:'512 MB', redisEviction:'allkeys-lru', redisPool:'general', theme:'light', fnId:'checkout-webhook', tab:'overview', logLevel:'all', deployToast:false, runtime:'python', trigger:'http', mem:512, region:'general' };
+
+  go(p){ this.setState({ page:p }); if(this.contentEl) this.contentEl.scrollTop=0; }
+  enterConsole(){ this.go(this.state.clusterReady?'dashboard':'setup'); }
+  setupNext(){ this.setState(s=>({ setupStep:Math.min(3,s.setupStep+1) })); }
+  setupBack(){ this.setState(s=>({ setupStep:Math.max(1,s.setupStep-1) })); }
+  toggleNode(id){ this.setState(s=>{
+    const has=s.selNodes.includes(id);
+    if(has && s.selNodes.length===1) return null;
+    return { selNodes: has ? s.selNodes.filter(n=>n!==id) : [...s.selNodes,id] };
+  }); }
+  createCluster(){
+    this.setState({ provisioning:true, provIdx:0 });
+    clearInterval(this._prov);
+    this._prov=setInterval(()=>{
+      this.setState(s=>{
+        const next=s.provIdx+1;
+        if(next>=this.PROV.length){ clearInterval(this._prov); return { provIdx:next, clusterReady:true }; }
+        return { provIdx:next };
+      });
+    },780);
+  }
+  finishSetup(){ this.setState({ provisioning:false, page:'dashboard' }); }
+  togglePg(){ this.setState(s=>({ pgRunning:!s.pgRunning })); }
+  toggleRedis(){ this.setState(s=>({ redisRunning:!s.redisRunning })); }
+  createPg(){ this.setState({ pgCreated:true, pgRunning:true }); }
+  createRedis(){ this.setState({ redisCreated:true, redisRunning:true }); }
+  destroyPg(){ this.setState({ pgCreated:false, pgRunning:false }); }
+  destroyRedis(){ this.setState({ redisCreated:false, redisRunning:false }); }
+  componentWillUnmount(){ clearInterval(this._prov); clearTimeout(this._t); clearTimeout(this._run); }
+
+  slug(v){ return (v||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+  createGroup(){
+    const ns=this.slug(this.state.plGroupName); if(!ns) return;
+    const id='g'+Date.now();
+    this.setState(s=>({ plGroups:[...s.plGroups,{ id, name:s.plGroupName.trim(), ns, fns:[] }],
+      plNewGroup:false, plGroupName:'', page:'plgroup', plGroup:id, plFn:null, plResp:null }));
+  }
+  openGroup(id){ this.setState({ page:'plgroup', plGroup:id, plFn:null, plResp:null, plNewFn:false }); }
+  deleteGroup(){ this.setState(s=>({ plGroups:s.plGroups.filter(g=>g.id!==s.plGroup), page:'playground', plGroup:null, plFn:null })); }
+  createFn(){
+    const name=this.slug(this.state.plFnName); if(!name) return;
+    const id='f'+Date.now();
+    this.setState(s=>({
+      plGroups:s.plGroups.map(g=>g.id===s.plGroup?{ ...g, fns:[...g.fns,{ id, name, method:s.plFnMethod, runtime:s.plFnRuntime, ctx:s.plFnCtx }] }:g),
+      plNewFn:false, plFnName:'', plFn:id, plResp:null, plRename:name, plTab:'code', plFile:'handler', plSavedAt:'' }));
+  }
+  deleteFn(e,id){ if(e&&e.stopPropagation) e.stopPropagation();
+    this.setState(s=>({ plGroups:s.plGroups.map(g=>g.id===s.plGroup?{ ...g, fns:g.fns.filter(f=>f.id!==id) }:g), plFn:s.plFn===id?null:s.plFn }));
+  }
+  EXT(rt){ return 'handler.py'; }
+  addEnv(){ const k=(this.state.envKey||'').trim().toUpperCase().replace(/[^A-Z0-9_]/g,'_'); if(!k) return;
+    this.setState(s=>({ envVars:[{ key:k, value:s.envVal, secret:s.envSecret, updated:'just now' },...s.envVars.filter(v=>v.key!==k)],
+      envNew:false, envKey:'', envVal:'', envSecret:false }));
+  }
+  delEnv(k){ this.setState(s=>({ envVars:s.envVars.filter(v=>v.key!==k), envShown:s.envShown.filter(x=>x!==k) })); }
+  toggleShown(k){ this.setState(s=>({ envShown:s.envShown.includes(k)?s.envShown.filter(x=>x!==k):[...s.envShown,k] })); }
+  RTLABEL(rt){ return rt==='python311'?'Python 3.11':'Python 3.12'; }
+  CTXLABEL(m){ return { rw:'read+write', r:'read only', w:'write only', none:'no access' }[m||'rw']; }
+  defaultCode(f,ns){
+    const key=f.name.replace(/-/g,'_');
+    return 'from cubicle_context import Request, Context, env\nfrom cubicle_db import postgres, redis\n\n\ndef handler(req: Request, ctx: Context):\n    """'+ns+'/'+f.name+'"""\n    body = req.json()\n\n    # global env — one store per cluster, readable from any function\n    api_base = env.get("PAYMENTS_API_BASE")\n\n    # ctx — session-scoped, keyed by X-Cubicle-Session,\n    # shared with every function in this namespace\n    actor = ctx.get("actor") or {"tier": "anonymous"}\n\n    with postgres.session() as db:\n        db.execute(\n            "insert into '+key+' (actor, amount) values (:actor, :amount)",\n            actor=actor["id"], amount=body.get("amount"),\n        )\n\n    redis.setex(f"'+key+':{req.session_id}", 300, "ok")\n\n    ctx.set("'+key+'", {\n        "amount": body.get("amount"),\n        "api_base": api_base,\n        "status": "ok",\n    })\n\n    return {"ok": True, "actor": actor}\n';
+  }
+
+  defaultReqs(f){ return '# proprietary — served from the cluster package mirror\ncubicle_context==1.4.2\ncubicle_db==1.4.2\n\nhttpx==0.27.0\n'; }
+
+  defaultToml(f,ns){
+    return '[function]\nname      = "'+f.name+'"\nnamespace = "'+ns+'"\nruntime   = "'+(f.runtime==='python311'?'python3.11':'python3.12')+'"\nentrypoint = "handler.handler"\nmethod    = "'+f.method+'"\n\n[resources]\nmemory  = "'+(f.mem||'512 MB').replace(' ','')+'"\ntimeout = "'+(f.timeout||'30s')+'"\n\n[context]\naccess = "'+this.CTXLABEL(f.ctx)+'"\nheader = "X-Cubicle-Session"\nttl    = "30m"\n';
+  }
+  updateFn(patch){ this.setState(s=>({ plGroups:s.plGroups.map(g=>g.id===s.plGroup?{ ...g, fns:g.fns.map(f=>f.id===s.plFn?{ ...f, ...patch }:f) }:g) })); }
+  saveFn(){ const s=this.state, k=s.plFn+':'+s.plFile; const v=s.plDrafts[k];
+    if(v===undefined){ this.setState({ plSavedAt:'no changes to deploy' }); return; }
+    this.updateFn(s.plFile==='handler'?{ code:v }:s.plFile==='reqs'?{ reqs:v }:{ toml:v });
+    this.setState(st=>{ const d={ ...st.plDrafts }; delete d[k]; return { plDrafts:d, plSavedAt:'deployed '+this.now()+' · build 4.1s' }; });
+  }
+  revertFn(){ this.setState(s=>{ const d={ ...s.plDrafts }; delete d[s.plFn+':'+s.plFile]; return { plDrafts:d }; }); }
+  applyRename(){ const n=this.slug(this.state.plRename); if(!n) return; this.updateFn({ name:n }); this.setState({ plRename:n, plSavedAt:'saved '+this.now() }); }
+  deleteSelFn(){ this.deleteFn(null,this.state.plFn); }
+  pickFn(id,name){ this.setState({ plFn:id, plResp:null, plRename:name, plSavedAt:'' }); }
+  newSession(){ this.setState({ plSession:'sess_'+Math.random().toString(16).slice(2,14), plCtxNs:{}, plLogNs:{}, plResp:null }); }
+  clearCtx(){ this.setState(s=>({ plCtxNs:{ ...s.plCtxNs, [s.plGroup]:{} }, plLogNs:{ ...s.plLogNs, [s.plGroup]:[] }, plResp:null })); }
+  now(){ const d=new Date(); return d.toTimeString().slice(0,8); }
+  runFn(){
+    const s=this.state;
+    const grp=s.plGroups.find(g=>g.id===s.plGroup);
+    const fn=grp&&grp.fns.find(f=>f.id===s.plFn);
+    if(!fn) return;
+    this.setState({ plRunning:true, plResp:null });
+    clearTimeout(this._run);
+    this._run=setTimeout(()=>{
+      this.setState(st=>{
+        const gid=st.plGroup;
+        const cur=st.plCtxNs[gid]||{}, curLog=st.plLogNs[gid]||[];
+        const mode=fn.ctx||'rw';
+        const read=mode.includes('r')?Object.keys(cur):[];
+        const key=fn.name.replace(/-/g,'_');
+        let ctx=cur, wrote=[], log=curLog;
+        if(mode.includes('w')){
+          ctx={ ...cur };
+          if(!ctx.actor){ ctx.actor={ id:'usr_9f2c', tier:'pro', ip:'10.4.1.88' }; wrote.push('actor'); }
+          ctx[key]={ at:this.now(), requestId:'req_'+Math.random().toString(16).slice(2,10), status:'ok' };
+          wrote.push(key);
+          log=[{ time:this.now(), fn:fn.name, detail:'wrote '+wrote.join(', ') },...curLog].slice(0,8);
+        } else {
+          log=[{ time:this.now(), fn:fn.name, detail:read.length?('read '+read.join(', ')):'read · context empty' },...curLog].slice(0,8);
+        }
+        return { plRunning:false, plCtxNs:{ ...st.plCtxNs, [gid]:ctx }, plLogNs:{ ...st.plLogNs, [gid]:log },
+          plResp:{ status:200, ms:Math.round(28+Math.random()*90), read, wrote } };
+      });
+    },820);
+  }
+
+  get PROV(){ return [
+    { label:'Generating cluster CA and join tokens', meta:'ed25519' },
+    { label:'Starting control plane', meta:'raft · 1 leader' },
+    { label:'Registering nodes', meta:'agent v1.4.2' },
+    { label:'Configuring ingress and DNS', meta:':7000' },
+    { label:'Warming runtime snapshots', meta:'python3.12 · python3.11' },
+  ]; }
+
+  get JOINABLE(){ return [
+    { name:'node-01', spec:'32 vCPU · 128 GB · amd64' },
+    { name:'node-02', spec:'32 vCPU · 128 GB · amd64' },
+    { name:'node-03', spec:'16 vCPU · 64 GB · arm64' },
+  ]; }
+
+  goDoc(id){ this.setState({ page:'docs', doc:id }); window.scrollTo(0,0); }
+  openFn(id){ this.setState({ page:'detail', fnId:id, tab:'overview' }); }
+  toggleTheme(){ this.setState(s=>({ theme:s.theme==='light'?'dark':'light' })); }
+  deploy(){ this.setState({ page:'dashboard', deployToast:true }); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({deployToast:false}),2800); }
+
+  get FUNCS(){ return [
+    { id:'checkout-webhook', name:'checkout-webhook', runtime:'Python 3.12', region:'node-01', inv:'1.24M', p50:'42ms', p90:'96ms', p95:'180ms', p99:'340ms', err:'0.02%', cold:'2.1%', status:'active', deployed:'2h ago' },
+    { id:'auth-token-refresh', name:'auth-token-refresh', runtime:'Python 3.11', region:'node-02', inv:'2.81M', p50:'18ms', p90:'34ms', p95:'61ms', p99:'110ms', err:'0.00%', cold:'0.9%', status:'active', deployed:'6h ago' },
+    { id:'image-thumbnailer', name:'image-thumbnailer', runtime:'Python 3.12', region:'node-03', inv:'340K', p50:'210ms', p90:'520ms', p95:'890ms', p99:'1.4s', err:'0.11%', cold:'4.8%', status:'active', deployed:'1d ago' },
+    { id:'invoice-pdf-render', name:'invoice-pdf-render', runtime:'Python 3.12', region:'node-01', inv:'88K', p50:'640ms', p90:'1.3s', p95:'2.1s', p99:'3.9s', err:'1.40%', cold:'9.2%', status:'degraded', deployed:'3h ago' },
+    { id:'slack-notifier', name:'slack-notifier', runtime:'Python 3.12', region:'node-03', inv:'156K', p50:'90ms', p90:'160ms', p95:'210ms', p99:'380ms', err:'0.05%', cold:'3.1%', status:'active', deployed:'5d ago' },
+    { id:'data-export-cron', name:'data-export-cron', runtime:'Python 3.12', region:'node-02', inv:'0', p50:'—', p90:'—', p95:'—', p99:'—', err:'—', cold:'—', status:'paused', deployed:'12d ago' },
+  ]; }
+
+  statusColor(s){ return s==='active'?'var(--ok)':s==='degraded'?'var(--warn)':'var(--text-3)'; }
+
+  navStyle(active){
+    const base={ display:'flex', alignItems:'center', gap:'11px', height:'38px', padding:'0 11px', borderRadius:'9px', border:'none', background:'transparent', color:'var(--text-2)', font:"500 13.5px/1 Sora,system-ui,sans-serif", cursor:'pointer', width:'100%', textAlign:'left' };
+    return active ? { ...base, background:'var(--accent-soft)', color:'var(--text)', fontWeight:600 } : base;
+  }
+  tabStyle(active){
+    return { height:'38px', padding:'0 4px', margin:'0 12px 0 0', background:'transparent', border:'none', borderBottom:active?'2px solid var(--accent)':'2px solid transparent', color:active?'var(--text)':'var(--text-2)', font:"600 13.5px/1 Sora,system-ui,sans-serif", cursor:'pointer' };
+  }
+  seg(active){
+    return { padding:'13px 14px', borderRadius:'10px', border:active?'1.5px solid var(--accent)':'1px solid var(--border-strong)', background:active?'var(--accent-soft)':'var(--bg)', cursor:'pointer', textAlign:'left', fontSize:'13.5px', color:'var(--text)', outline:'none', boxSizing:'border-box' };
+  }
+  chip(active){
+    return { padding:'7px 13px', borderRadius:'8px', border:active?'1px solid var(--accent)':'1px solid var(--border)', background:active?'var(--accent-soft)':'var(--panel)', color:active?'var(--text)':'var(--text-2)', font:"500 12.5px/1 Sora,system-ui,sans-serif", cursor:'pointer' };
+  }
+  fileRow(active){
+    return { display:'flex', alignItems:'center', gap:'8px', padding:'7px 9px', borderRadius:'7px', fontFamily:"'IBM Plex Mono',monospace", fontSize:'12.5px', color:active?'var(--text)':'var(--text-2)', background:active?'var(--accent-soft)':'transparent', cursor:'pointer' };
+  }
+
+  get DOCS(){ return [
+    { id:'install',   group:'Getting started', label:'Installation', title:'Installation', lede:'Get a Cubicle cluster running on your own hardware — a laptop, one server, or a fleet. Same binary, same behaviour, no account required.', toc:[['requirements','Requirements'],['install','Install'],['verify','Verify the install']] },
+    { id:'quickstart',group:'Getting started', label:'Quickstart', title:'Quickstart', lede:'Write, deploy, and invoke your first function in about two minutes, assuming the control plane is already up.', toc:[['scaffold','1 · Scaffold a function'],['write','2 · Write the handler'],['deploy','3 · Deploy'],['invoke','4 · Invoke and tail']] },
+    { id:'functions', group:'Guides', label:'Writing functions', title:'Writing functions', lede:'The handler contract, the event and context objects, and the execution limits your code runs under.', toc:[['signature','Handler signature'],['event','The event object'],['limits','Execution limits']] },
+    { id:'secrets',   group:'Guides', label:'Secrets', title:'Secrets', lede:'Envelope-encrypted configuration injected at cold start. Keys stay inside your network — Cubicle never holds a decryptable copy off-node.', toc:[['set','Setting a secret'],['read','Reading at runtime'],['backends','Key backends']] },
+    { id:'config',    group:'Reference', label:'cubicle.toml', title:'cubicle.toml', lede:'Per-function configuration, checked into your repository and reconciled by the console.', toc:[['example','Example'],['options','Options']] },
+    { id:'cli',       group:'Reference', label:'CLI', title:'CLI reference', lede:'Every console action has a CLI equivalent — the console is a client of the same API.', toc:[['commands','Commands'],['auth','Authenticating']] },
+  ]; }
+
+  get INSTALLS(){ return {
+    compose:{ label:'Docker Compose', file:'shell', code:'$ curl -sSL get.cubicle.dev | sh\n$ cubicle up\n\n  pulling    ghcr.io/cubicle/core:1.4.2\n  starting   control-plane · scheduler · ingress\n  ready      http://localhost:7000' },
+    helm:{ label:'Kubernetes', file:'shell', code:'$ helm repo add cubicle oci://ghcr.io/cubicle\n$ helm install cubicle cubicle/core \\\n    --set ingress.domain=fn.internal \\\n    --set nodePool.replicas=3\n\n  NAME: cubicle\n  STATUS: deployed' },
+    binary:{ label:'Binary / systemd', file:'/etc/systemd/system/cubicle.service', code:'[Unit]\nDescription=Cubicle control plane\n\n[Service]\nExecStart=/usr/local/bin/cubicle server \\\n  --data /var/lib/cubicle \\\n  --listen 0.0.0.0:7000\nRestart=always\n\n[Install]\nWantedBy=multi-user.target' },
+  }; }
+
+  get LOGS(){ return [
+    { time:'12:04:41.204', level:'INFO', fn:'auth-token-refresh', msg:'token refreshed for tenant=platform sub=usr_9f2', dur:'18ms' },
+    { time:'12:04:41.198', level:'INFO', fn:'checkout-webhook', msg:'POST /hooks/stripe → charge.succeeded ord_8fk2', dur:'42ms' },
+    { time:'12:04:40.911', level:'WARN', fn:'image-thumbnailer', msg:'source image >8MB, downscaling before encode', dur:'640ms' },
+    { time:'12:04:40.774', level:'INFO', fn:'slack-notifier', msg:'delivered message to #ops-alerts (ts=1721…)', dur:'90ms' },
+    { time:'12:04:40.312', level:'ERROR', fn:'invoice-pdf-render', msg:'font asset timeout: Inter-Bold.ttf (retry 2/3)', dur:'2.1s' },
+    { time:'12:04:39.980', level:'INFO', fn:'checkout-webhook', msg:'idempotency hit, replayed cached response', dur:'4ms' },
+    { time:'12:04:39.622', level:'INFO', fn:'auth-token-refresh', msg:'cold start: isolate restored from snapshot', dur:'31ms' },
+    { time:'12:04:39.104', level:'WARN', fn:'invoice-pdf-render', msg:'p95 latency above SLO (2.1s > 1.5s) for 6m', dur:'2.0s' },
+    { time:'12:04:38.771', level:'INFO', fn:'slack-notifier', msg:'rate-limit bucket 88/100 remaining', dur:'88ms' },
+    { time:'12:04:38.402', level:'ERROR', fn:'invoice-pdf-render', msg:'render failed: OOM at 512MB, dropped invoice inv_1182', dur:'—' },
+    { time:'12:04:38.010', level:'INFO', fn:'image-thumbnailer', msg:'wrote 3 variants to s3://minio/thumbs/8fk2/', dur:'210ms' },
+    { time:'12:04:37.559', level:'INFO', fn:'checkout-webhook', msg:'POST /hooks/stripe → invoice.paid inv_1183', dur:'39ms' },
+  ]; }
+  logColor(l){ return l==='ERROR'?'var(--err)':l==='WARN'?'var(--warn)':'var(--info)'; }
+
+  renderVals(){
+    const s=this.state;
+    const fns=this.FUNCS.map(f=>({ ...f, url:`${f.name}.${s.ingressDomain}`, statusColor:this.statusColor(f.status), errColor:(f.err!=='—'&&f.err!=='0.00%'&&parseFloat(f.err)>0.5)?'var(--err)':'var(--text)', open:()=>this.openFn(f.id) }));
+    const fn=fns.find(f=>f.id===s.fnId)||fns[0];
+    const rnd=(seed)=>{ let x=Math.sin(seed)*10000; return x-Math.floor(x); };
+    const chartBars=Array.from({length:28},(_,i)=>{ const h=35+rnd(i+1)*55; const e=rnd(i+9)*8; return { ok:(h-e).toFixed(0)+'%', err:e.toFixed(1)+'%' }; });
+    const latBars=Array.from({length:24},(_,i)=>{ const f=25+rnd(i+3)*60; return { h:'100%', fill:f.toFixed(0)+'%' }; });
+
+    const crumb = s.page==='dashboard'?'Overview' : s.page==='detail'?fn.name : s.page==='editor'?fn.name+' / edit' : s.page==='create'?'New function' : s.page==='logs'?'Logs' : s.page==='billing'?'Cluster' : s.page==='settings'?'Settings' : 'Overview';
+
+    const logs=this.LOGS.map(l=>({ ...l, color:this.logColor(l.level) }));
+    const filteredLogs = s.logLevel==='all'?logs:logs.filter(l=>l.level===s.logLevel);
+    const logFilters=[['all','All'],['INFO','Info'],['WARN','Warn'],['ERROR','Error']].map(([v,label])=>({ label, style:this.chip(s.logLevel===v), pick:()=>this.setState({logLevel:v}) }));
+
+    const memOpts=[128,256,512,1024,2048].map(m=>({ label:m+'MB', style:this.chip(s.mem===m), pick:()=>this.setState({mem:m}) }));
+    const regionOpts=[['general','general'],['compute','compute'],['gpu','gpu'],['edge','edge']].map(([v,label])=>({ label, style:this.chip(s.region===v), pick:()=>this.setState({region:v}) }));
+
+    const docs=this.DOCS;
+    const doc=docs.find(d=>d.id===s.doc)||docs[0];
+    const dIdx=docs.indexOf(doc);
+    const prevDoc=docs[dIdx-1], nextDoc=docs[dIdx+1];
+    const docGroups=[...new Set(docs.map(d=>d.group))].map(group=>({
+      group,
+      items:docs.filter(d=>d.group===group).map(d=>({
+        label:d.label,
+        style:{ display:'block', width:'100%', textAlign:'left', padding:'7px 10px', borderRadius:'8px', border:'none', cursor:'pointer',
+          font:(s.doc===d.id?'600':'400')+" 13.5px/1.35 Sora,system-ui,sans-serif",
+          background:s.doc===d.id?'var(--accent-soft)':'transparent',
+          color:s.doc===d.id?'var(--text)':'var(--text-2)' },
+        pick:()=>this.goDoc(d.id),
+      })),
+    }));
+
+    const METHOD_COLORS={ GET:'var(--info)', POST:'var(--ok)', PUT:'var(--warn)', DELETE:'var(--err)' };
+    const mBadge=(m)=>({ display:'inline-grid', placeItems:'center', height:'22px', padding:'0 8px', borderRadius:'6px',
+      fontFamily:"'IBM Plex Mono',monospace", fontSize:'11px', fontWeight:600, letterSpacing:'.03em',
+      color:METHOD_COLORS[m]||'var(--text-2)', border:'1px solid '+(METHOD_COLORS[m]||'var(--border-strong)'),
+      background:'color-mix(in srgb,'+(METHOD_COLORS[m]||'var(--border-strong)')+' 12%,transparent)', justifySelf:'start' });
+    const host=s.ingressDomain;
+    const plGroups=s.plGroups.map(g=>({ id:g.id, name:g.name, ns:g.ns,
+      count:g.fns.length+(g.fns.length===1?' function':' functions'),
+      base:'https://'+host+'/'+g.ns+'/', open:()=>this.openGroup(g.id) }));
+    const grp=s.plGroups.find(g=>g.id===s.plGroup);
+    const CTX_LABEL={ rw:'read+write', r:'read only', w:'write only', none:'no access' };
+    const ctxPill=(m)=>({ fontFamily:"'IBM Plex Mono',monospace", fontSize:'11px', color:m==='none'?'var(--text-3)':'var(--text-2)',
+      border:'1px solid var(--border)', borderRadius:'6px', padding:'2px 7px', justifySelf:'start', whiteSpace:'nowrap' });
+    const grpFns=(grp?grp.fns:[]).map(f=>({ id:f.id, name:f.name, method:f.method, runtime:f.runtime,
+      path:'/'+grp.ns+'/'+f.name, methodStyle:mBadge(f.method), runtimeLabel:this.RTLABEL(f.runtime),
+      ctxLabel:CTX_LABEL[f.ctx||'rw'], ctxStyle:ctxPill(f.ctx||'rw'),
+      rowStyle:{ display:'grid', gridTemplateColumns:'82px 1fr 1.5fr 96px 94px 60px', gap:'12px', padding:'14px 20px',
+        borderBottom:'1px solid var(--border)', cursor:'pointer', alignItems:'center',
+        background:s.plFn===f.id?'var(--accent-soft)':'transparent' },
+      pick:()=>this.pickFn(f.id,f.name), del:(e)=>this.deleteFn(e,f.id) }));
+    const selF=grpFns.find(f=>f.id===s.plFn);
+    const selRaw=(grp?grp.fns:[]).find(f=>f.id===s.plFn);
+    const editorFiles=selRaw?[['handler',this.EXT(selRaw.runtime)],['reqs','requirements.txt'],['toml','cubicle.toml']]:[];
+    const savedVal=selRaw?(s.plFile==='handler'?(selRaw.code??this.defaultCode(selRaw,grp.ns)):s.plFile==='reqs'?(selRaw.reqs??this.defaultReqs(selRaw)):(selRaw.toml??this.defaultToml(selRaw,grp.ns))):'';
+    const draftKey=selRaw?(selRaw.id+':'+s.plFile):'';
+    const editVal=s.plDrafts[draftKey]!==undefined?s.plDrafts[draftKey]:savedVal;
+    const dirty=editVal!==savedVal;
+    const selUrl=selF?('https://'+host+selF.path):'';
+    const req=selF?(selF.method+' '+selF.path+' HTTP/1.1\nHost: '+host+'\nAuthorization: Bearer clk_••••\nX-Cubicle-Session: '+s.plSession+'\nContent-Type: application/json\n\n{\n  "amount": 4200,\n  "currency": "usd"\n}'):'';
+    const nsCtx=s.plCtxNs[s.plGroup]||{}; const nsLog=s.plLogNs[s.plGroup]||[];
+    const ctxKeys=Object.keys(nsCtx);
+    const resp=s.plRunning?'…':(s.plResp?('{\n  "ok": true,\n  "namespace": "'+(grp?grp.ns:'')+'",\n  "function": "'+(selF?selF.name:'')+'",\n  "session": "'+s.plSession+'",\n  "context": {\n    "read": '+JSON.stringify(s.plResp.read)+',\n    "wrote": '+JSON.stringify(s.plResp.wrote)+'\n  }\n}'):'Send a request to see the response.');
+    const ctxJson=ctxKeys.length?JSON.stringify(nsCtx,null,2):'{}';
+    const ctxBytes=ctxKeys.length?(JSON.stringify(nsCtx).length+' B'):'0 B';
+
+    const files=[['handler.py',true],['requirements.txt',false],['cubicle.toml',false],['README.md',false]].map(([name,active])=>({ name, style:this.fileRow(active) }));
+
+    return {
+      theme:s.theme,
+      isLanding:s.page==='landing', isApp:s.page!=='landing'&&s.page!=='docs'&&s.page!=='setup', isDocs:s.page==='docs', isSetup:s.page==='setup',
+      isDashboard:s.page==='dashboard', isDetail:s.page==='detail', isEditor:s.page==='editor',
+      isCreate:s.page==='create', isLogs:s.page==='logs', isBilling:s.page==='billing', isSettings:s.page==='settings',
+      crumb:(s.page==='postgres'?'PostgreSQL':s.page==='redis'?'Redis':s.page==='env'?'Global env':s.page==='playground'?'Playground':s.page==='plgroup'?('Playground / '+(grp?grp.ns:'')):crumb), deployToast:s.deployToast,
+
+      costRows:[
+        { name:'AWS Lambda', req:'$25.68', compute:'$53.51', egress:'$189.00', total:'$268.19', save:'+$215.39', bar:'69%', color:'var(--warn)' },
+        { name:'Azure Functions', req:'$25.68', compute:'$51.37', egress:'$182.70', total:'$259.75', save:'+$206.95', bar:'67%', color:'var(--info)' },
+        { name:'Google Cloud Run functions', req:'$51.37', compute:'$85.08', egress:'$252.00', total:'$388.45', save:'+$335.65', bar:'100%', color:'var(--err)' },
+        { name:'DigitalOcean Functions', req:'—', compute:'$57.72', egress:'$21.00', total:'$78.72', save:'+$25.92', bar:'20%', color:'var(--text-3)' },
+        { name:'Cubicle · this cluster', req:'—', compute:'$52.80', egress:'$0.00', total:'$52.80', save:'—', bar:'14%', color:'var(--accent)' },
+      ].map(r=>({ ...r, saveColor:r.save==='—'?'var(--text-3)':'var(--ok)' })),
+      isEnv:s.page==='env', goEnv:()=>this.go('env'), envNavStyle:this.navStyle(s.page==='env'),
+      envNew:s.envNew, envKey:s.envKey, envVal:s.envVal,
+      openNewEnv:()=>this.setState({envNew:true}), cancelEnv:()=>this.setState({envNew:false,envKey:'',envVal:'',envSecret:false}),
+      setEnvKey:e=>this.setState({envKey:e.target.value}), setEnvVal:e=>this.setState({envVal:e.target.value}),
+      toggleEnvSecret:()=>this.setState(st=>({envSecret:!st.envSecret})), addEnv:()=>this.addEnv(),
+      envSecretBox:{ width:'18px', height:'18px', borderRadius:'5px', flex:'none', display:'inline-block',
+        border:'1px solid '+(s.envSecret?'var(--accent)':'var(--border-strong)'), background:s.envSecret?'var(--accent)':'transparent' },
+      envVars:s.envVars.map(v=>({ key:v.key, type:v.secret?'secret':'plain',
+        shown:(v.secret&&!s.envShown.includes(v.key))?'••••••••••••••••':v.value, updated:v.updated,
+        typeStyle:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:'11px', padding:'2px 7px', borderRadius:'6px', justifySelf:'start',
+          border:'1px solid '+(v.secret?'var(--warn)':'var(--border)'), color:v.secret?'var(--warn)':'var(--text-2)' },
+        revealLabel:v.secret?(s.envShown.includes(v.key)?'Hide':'Reveal'):'Copy',
+        revealStyle:{ fontSize:'12px', color:'var(--text-3)', cursor:'pointer' },
+        reveal:()=>{ if(v.secret) this.toggleShown(v.key); }, del:()=>this.delEnv(v.key) })),
+      envSnippet:'from cubicle_context import env\n\nbase = env.get("PAYMENTS_API_BASE")\nkey  = env.get("STRIPE_SECRET_KEY")        # decrypted in-process\npool = env.get_int("DB_POOL_SIZE", default=10)',
+      isPlayground:s.page==='playground', isPlGroup:s.page==='plgroup'&&!!grp,
+      goPlayground:()=>this.go('playground'),
+      plNavStyle:this.navStyle(s.page==='playground'||s.page==='plgroup'),
+      plGroups, plHasGroups:plGroups.length>0, plNoGroups:plGroups.length===0,
+      plNewGroup:s.plNewGroup, plGroupName:s.plGroupName,
+      plNsPreview:'https://'+host+'/'+(this.slug(s.plGroupName)||'my-group')+'/',
+      openNewGroup:()=>this.setState({ plNewGroup:true }),
+      cancelNewGroup:()=>this.setState({ plNewGroup:false, plGroupName:'' }),
+      setGroupName:e=>this.setState({ plGroupName:e.target.value }),
+      createGroup:()=>this.createGroup(), deleteGroup:()=>this.deleteGroup(),
+      grpName:grp?grp.name:'', grpNs:grp?grp.ns:'', grpBase:grp?('https://'+host+'/'+grp.ns+'/'):'',
+      grpFns, grpHasFns:grpFns.length>0, grpNoFns:grpFns.length===0,
+      plNewFn:s.plNewFn, plFnName:s.plFnName,
+      openNewFn:()=>this.setState({ plNewFn:true }), cancelNewFn:()=>this.setState({ plNewFn:false, plFnName:'' }),
+      setFnName:e=>this.setState({ plFnName:e.target.value }),
+      createFn:()=>this.createFn(),
+      plFnUrlPreview:'https://'+host+'/'+(grp?grp.ns:'')+'/'+(this.slug(s.plFnName)||'my-function'),
+      plMethodOpts:['GET','POST','PUT','DELETE'].map(v=>({ label:v, style:this.chip(s.plFnMethod===v), pick:()=>this.setState({plFnMethod:v}) })),
+      plRuntimeOpts:['python312','python311'].map(v=>({ label:this.RTLABEL(v), style:this.chip(s.plFnRuntime===v), pick:()=>this.setState({plFnRuntime:v}) })),
+      selName:selF?selF.name:'',
+      plTabs:[['code','Code'],['test','Test'],['settings','Settings']].map(([v,label])=>({ label,
+        style:{ height:'34px', padding:'0 14px', background:'transparent', border:'none',
+          borderBottom:s.plTab===v?'2px solid var(--accent)':'2px solid transparent',
+          color:s.plTab===v?'var(--text)':'var(--text-2)', font:"600 13px/1 Sora,system-ui,sans-serif", cursor:'pointer' },
+        pick:()=>this.setState({plTab:v}) })),
+      plTabCode:s.plTab==='code', plTabTest:s.plTab==='test', plTabSettings:s.plTab==='settings',
+      plFiles:editorFiles.map(([v,name])=>({ name,
+        style:{ fontFamily:"'IBM Plex Mono',monospace", fontSize:'12px', padding:'5px 10px', borderRadius:'7px', cursor:'pointer',
+          background:s.plFile===v?'var(--accent-soft)':'transparent', border:'1px solid '+(s.plFile===v?'var(--accent)':'var(--border)'),
+          color:s.plFile===v?'var(--text)':'var(--text-2)' },
+        pick:()=>this.setState({plFile:v}) })),
+      editVal, setCode:e=>{ const v=e.target.value; this.setState(st=>({ plDrafts:{ ...st.plDrafts, [draftKey]:v } })); },
+      dirtyLabel:dirty?'unsaved changes':'in sync with cluster', dirtyColor:dirty?'var(--warn)':'var(--text-3)',
+      saveFn:()=>this.saveFn(), revertFn:()=>this.revertFn(), savedMeta:s.plSavedAt,
+      saveBtnStyle:{ height:'36px', padding:'0 17px', background:dirty?'var(--accent)':'var(--panel-2)',
+        color:dirty?'var(--accent-ink)':'var(--text-3)', border:'none', borderRadius:'9px',
+        fontSize:'13px', fontWeight:600, cursor:'pointer', fontFamily:'inherit' },
+      plRename:s.plRename, setRename:e=>this.setState({plRename:e.target.value}),
+      renameUrl:'https://'+host+'/'+(grp?grp.ns:'')+'/'+(this.slug(s.plRename)||'…'),
+      applyRename:()=>this.applyRename(), deleteSelFn:()=>this.deleteSelFn(),
+      setMethodOpts:['GET','POST','PUT','DELETE'].map(v=>({ label:v, style:this.chip(selRaw&&selRaw.method===v), pick:()=>this.updateFn({method:v}) })),
+      setRuntimeOpts:['python312','python311'].map(v=>({ label:this.RTLABEL(v), style:this.chip(selRaw&&selRaw.runtime===v), pick:()=>this.updateFn({runtime:v}) })),
+      setCtxOpts:[['rw','read+write'],['r','read only'],['w','write only'],['none','no access']].map(([v,label])=>({ label, style:this.chip(selRaw&&(selRaw.ctx||'rw')===v), pick:()=>this.updateFn({ctx:v}) })),
+      setMemOpts:['128 MB','256 MB','512 MB','1 GB'].map(v=>({ label:v, style:this.chip(selRaw&&(selRaw.mem||'512 MB')===v), pick:()=>this.updateFn({mem:v}) })),
+      setTimeoutOpts:['5s','30s','60s','300s'].map(v=>({ label:v, style:this.chip(selRaw&&(selRaw.timeout||'30s')===v), pick:()=>this.updateFn({timeout:v}) })),
+      plHasSel:!!selF, selMethod:selF?selF.method:'', selMethodStyle:selF?mBadge(selF.method):{},
+      selUrl, selRuntime:selF?this.RTLABEL(selF.runtime):'', selRequest:req, selResponse:resp,
+      selRespMeta:s.plRunning?'running…':(s.plResp?('200 OK · '+s.plResp.ms+'ms'):'—'),
+      selRespColor:s.plResp?'var(--ok)':'var(--text-3)',
+      plCtxModeOpts:[['rw','read+write'],['r','read only'],['w','write only'],['none','no access']].map(([v,label])=>({ label, style:this.chip(s.plFnCtx===v), pick:()=>this.setState({plFnCtx:v}) })),
+      sessId:s.plSession, newSession:()=>this.newSession(), clearCtx:()=>this.clearCtx(),
+      ctxKeyCount:ctxKeys.length+(ctxKeys.length===1?' key':' keys'), ctxSize:ctxBytes,
+      ctxJson, ctxLog:nsLog, ctxHasLog:nsLog.length>0, ctxNoLog:nsLog.length===0,
+      ctxRead:s.plResp?(s.plResp.read.length?s.plResp.read.join(', '):'—'):'—',
+      ctxWrote:s.plResp?(s.plResp.wrote.length?s.plResp.wrote.join(', '):'—'):'—',
+      runFn:()=>this.runFn(), runLabel:s.plRunning?'Sending…':'Send',
+      runBtnStyle:{ flex:'none', height:'38px', padding:'0 20px', background:s.plRunning?'var(--panel-2)':'var(--accent)',
+        color:s.plRunning?'var(--text-2)':'var(--accent-ink)', border:'none', borderRadius:'9px',
+        fontSize:'13.5px', fontWeight:600, cursor:'pointer', fontFamily:'inherit' },
+
+      enterApp:()=>this.enterConsole(),
+      goDashboard:()=>this.go('dashboard'), goLogs:()=>this.go('logs'), goBilling:()=>this.go('billing'),
+      goSettings:()=>this.go('settings'), goCreate:()=>this.go('create'), goEditor:()=>this.go('editor'),
+      goPostgres:()=>this.go('postgres'), goRedis:()=>this.go('redis'), isData:s.page==='postgres'||s.page==='redis', isPostgres:s.page==='postgres', isRedis:s.page==='redis',
+      postgresNavStyle:this.navStyle(s.page==='postgres'), redisNavStyle:this.navStyle(s.page==='redis'),
+      pgDotStyle:{ width:'7px',height:'7px',borderRadius:'50%',display:'inline-block',background:s.pgRunning?'var(--ok)':(s.pgCreated?'var(--text-3)':'var(--border-strong)') },
+      redisDotStyle:{ width:'7px',height:'7px',borderRadius:'50%',display:'inline-block',background:s.redisRunning?'var(--ok)':(s.redisCreated?'var(--text-3)':'var(--border-strong)') },
+      togglePg:()=>this.togglePg(), toggleRedis:()=>this.toggleRedis(),
+      createPg:()=>this.createPg(), createRedis:()=>this.createRedis(),
+      destroyPg:()=>this.destroyPg(), destroyRedis:()=>this.destroyRedis(),
+      pgCreated:s.pgCreated, pgCreatedNot:!s.pgCreated, redisCreated:s.redisCreated, redisCreatedNot:!s.redisCreated,
+      pgVerOpts:['16.3','15.6','14.11'].map(v=>({ label:v, style:this.chip(s.pgVersion===v), pick:()=>this.setState({pgVersion:v}) })),
+      pgStorageOpts:['10 GB','20 GB','50 GB','100 GB'].map(v=>({ label:v, style:this.chip(s.pgStorageCfg===v), pick:()=>this.setState({pgStorageCfg:v}) })),
+      pgMemOpts:['512 MB','1 GB','2 GB','4 GB'].map(v=>({ label:v, style:this.chip(s.pgMemoryCfg===v), pick:()=>this.setState({pgMemoryCfg:v}) })),
+      pgPoolOpts:['general','compute'].map(v=>({ label:v, style:this.chip(s.pgPool===v), pick:()=>this.setState({pgPool:v}) })),
+      redisVerOpts:['7.2','7.0','6.2'].map(v=>({ label:v, style:this.chip(s.redisVersion===v), pick:()=>this.setState({redisVersion:v}) })),
+      redisMemOpts:['256 MB','512 MB','1 GB','2 GB'].map(v=>({ label:v, style:this.chip(s.redisMemoryCfg===v), pick:()=>this.setState({redisMemoryCfg:v}) })),
+      redisEvictOpts:['noeviction','allkeys-lru','volatile-lru'].map(v=>({ label:v, style:this.chip(s.redisEviction===v), pick:()=>this.setState({redisEviction:v}) })),
+      redisPoolOpts:['general','compute'].map(v=>({ label:v, style:this.chip(s.redisPool===v), pick:()=>this.setState({redisPool:v}) })),
+      pgStatusColor:s.pgRunning?'var(--ok)':'var(--text-3)', pgStatusLabel:s.pgRunning?'Running':'Stopped',
+      pgBtnLabel:s.pgRunning?'Stop':'Start',
+      pgBtnStyle:{ height:'34px',padding:'0 16px',borderRadius:'8px',fontSize:'13px',fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+        background:s.pgRunning?'transparent':'var(--accent)', color:s.pgRunning?'var(--err)':'var(--accent-ink)',
+        border:s.pgRunning?'1px solid var(--border-strong)':'none' },
+      pgStorage:s.pgRunning?('1.2 GB / '+s.pgStorageCfg):('0 GB / '+s.pgStorageCfg), pgConns:s.pgRunning?'14 / 100':'0 / 100', pgNode:s.pgPool==='general'?'node-01':'node-02',
+      pgUrl:s.pgRunning?('postgres://cubicle:••••••@'+s.clusterName+'.'+s.ingressDomain+':5432/cubicle'):'— stopped —',
+      redisStatusColor:s.redisRunning?'var(--ok)':'var(--text-3)', redisStatusLabel:s.redisRunning?'Running':'Stopped',
+      redisBtnLabel:s.redisRunning?'Stop':'Start',
+      redisBtnStyle:{ height:'34px',padding:'0 16px',borderRadius:'8px',fontSize:'13px',fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+        background:s.redisRunning?'transparent':'var(--accent)', color:s.redisRunning?'var(--err)':'var(--accent-ink)',
+        border:s.redisRunning?'1px solid var(--border-strong)':'none' },
+      redisMem:s.redisRunning?('18 MB / '+s.redisMemoryCfg):('0 MB / '+s.redisMemoryCfg), redisKeys:s.redisRunning?'2,481':'0', redisNode:s.redisPool==='general'?'node-02':'node-03',
+      redisUrl:s.redisRunning?('redis://'+s.clusterName+'.'+s.ingressDomain+':6379/0'):'— stopped —',
+      goDocs:()=>this.goDoc(s.doc), goLanding:()=>this.go('landing'),
+      isSetupPage:s.page==='setup', setupIdle:!s.provisioning, provisioning:s.provisioning,
+      clusterName:s.clusterName, ingressDomain:s.ingressDomain, dataDir:s.dataDir,
+      samplePreview:'my-function.'+s.ingressDomain,
+      setName:e=>this.setState({clusterName:e.target.value}),
+      setDomain:e=>this.setState({ingressDomain:e.target.value}),
+      setDataDir:e=>this.setState({dataDir:e.target.value}),
+      kmsOpts:[['file','file'],['vault','vault'],['kms','cloud KMS'],['pkcs11','HSM']].map(([v,label])=>({ label, style:this.chip(s.kms===v), pick:()=>this.setState({kms:v}) })),
+      steps:[1,2,3].map(n=>({
+        n, label:['Cluster','Nodes','Review'][n-1],
+        dot:{ display:'grid', placeItems:'center', width:'24px', height:'24px', borderRadius:'50%', flex:'none',
+          fontFamily:"'IBM Plex Mono',monospace", fontSize:'12px', fontWeight:600,
+          background:n<=s.setupStep?'var(--accent)':'var(--panel-2)',
+          color:n<=s.setupStep?'var(--accent-ink)':'var(--text-3)',
+          border:n<=s.setupStep?'none':'1px solid var(--border)' },
+        text:{ fontSize:'13.5px', fontWeight:n===s.setupStep?600:400, color:n<=s.setupStep?'var(--text)':'var(--text-3)', whiteSpace:'nowrap' },
+      })),
+      step1:s.setupStep===1, step2:s.setupStep===2, step3:s.setupStep===3, notLastStep:s.setupStep<3,
+      setupNext:()=>this.setupNext(), setupBack:()=>this.setupBack(),
+      backStyle:{ height:'42px', padding:'0 18px', background:'transparent', border:'1px solid var(--border)', borderRadius:'10px',
+        font:"600 14px/1 Sora,system-ui,sans-serif", color:'var(--text-2)', cursor:s.setupStep>1?'pointer':'default',
+        visibility:s.setupStep>1?'visible':'hidden' },
+      joinNodes:this.JOINABLE.map(n=>{
+        const on=s.selNodes.includes(n.name);
+        return { ...n, toggle:()=>this.toggleNode(n.name), tick:on?'✓':'',
+          box:{ display:'grid', placeItems:'center', width:'18px', height:'18px', borderRadius:'5px', fontSize:'11px', fontWeight:700,
+            background:on?'var(--accent)':'transparent', color:'var(--accent-ink)',
+            border:on?'1px solid var(--accent)':'1px solid var(--border-strong)' } };
+      }),
+      selCount:s.selNodes.length,
+      ingressWildcard:'*.'+s.ingressDomain,
+      setDomainWild:e=>this.setState({ingressDomain:e.target.value.replace(/^\*\./,'')}),
+      review:[
+        { k:'Cluster name', v:s.clusterName },
+        { k:'Ingress domain', v:'*.'+s.ingressDomain },
+        { k:'Data directory', v:s.dataDir },
+        { k:'Secrets backend', v:s.kms },
+        { k:'Nodes', v:s.selNodes.join(' · ') },
+        { k:'Runtimes', v:'python3.12 · python3.11' },
+      ],
+      createCluster:()=>this.createCluster(), finishSetup:()=>this.finishSetup(),
+      provComplete:s.provIdx>=this.PROV.length,
+      provHeading:s.provIdx>=this.PROV.length?'Cluster created':'Creating cluster…',
+      provSub:s.provIdx>=this.PROV.length?'The scheduler is accepting work. Deploy a function whenever you are ready.':'Bootstrapping the control plane on your hardware. This usually takes under a minute.',
+      provSteps:this.PROV.map((p,i)=>{
+        const done=i<s.provIdx, active=i===s.provIdx;
+        return { label:p.label, meta:done?p.meta:(active?'running':''),
+          glyph:done?'✓':'', color:done||active?'var(--text)':'var(--text-3)',
+          icon:{ display:'grid', placeItems:'center', width:'20px', height:'20px', borderRadius:'50%', flex:'none', fontSize:'11px', fontWeight:700,
+            background:done?'var(--accent)':'transparent', color:'var(--accent-ink)',
+            border:done?'none':(active?'2px solid var(--accent)':'1px solid var(--border-strong)'),
+            animation:active?'cubiclepulse 1.2s infinite':'none' } };
+      }),
+      docsNavStyle:this.navStyle(false),
+      docNav:docGroups, docGroup:doc.group, docTitle:doc.title, docLede:doc.lede,
+      docIsInstall:s.doc==='install', docIsQuick:s.doc==='quickstart', docIsFunctions:s.doc==='functions',
+      docIsSecrets:s.doc==='secrets', docIsConfig:s.doc==='config', docIsCli:s.doc==='cli',
+      toc:doc.toc.map(([h,label])=>({ href:'#'+h, label })),
+      installTabs:Object.entries(this.INSTALLS).map(([k,v])=>({ label:v.label, style:this.tabStyle(s.installTab===k), pick:()=>this.setState({installTab:k}) })),
+      installFile:this.INSTALLS[s.installTab].file, installCode:this.INSTALLS[s.installTab].code,
+      hasPrev:!!prevDoc, hasNext:!!nextDoc,
+      prevLabel:prevDoc?prevDoc.title:'', nextLabel:nextDoc?nextDoc.title:'',
+      goPrev:()=>prevDoc&&this.goDoc(prevDoc.id), goNext:()=>nextDoc&&this.goDoc(nextDoc.id),
+      reqRows:[
+        { k:'CPU', v:'2 vCPU minimum · 8+ recommended per node' },
+        { k:'Memory', v:'4 GB minimum · 32 GB+ for production pools' },
+        { k:'Kernel', v:'Linux 5.10+ with cgroup v2 and seccomp' },
+        { k:'Storage', v:'20 GB for the control plane and snapshot cache' },
+        { k:'Architectures', v:'amd64 · arm64' },
+      ],
+      eventRows:[
+        { field:'body', type:'object | str', desc:'Parsed JSON body for HTTP and queue triggers; empty for cron.' },
+        { field:'headers', type:'dict', desc:'Request headers, lowercased. Hop-by-hop headers are stripped at the ingress.' },
+        { field:'method', type:'str', desc:'HTTP method. Always POST for queue-delivered events.' },
+        { field:'query', type:'dict', desc:'Parsed query string parameters.' },
+        { field:'trigger', type:'str', desc:'One of http, cron, or queue — lets one handler serve several triggers.' },
+      ],
+      kmsRows:[
+        { k:'file', v:'Root key on local disk. Fine for single-node and development installs.' },
+        { k:'vault', v:'HashiCorp Vault transit engine. Recommended for multi-node clusters.' },
+        { k:'kms', v:'AWS KMS, GCP KMS, or any KMIP-compatible appliance.' },
+        { k:'pkcs11', v:'Hardware security module via PKCS#11 for regulated environments.' },
+      ],
+      configRows:[
+        { key:'resources.memory_mb', def:'512', notes:'Hard ceiling. The isolate is killed and the invocation returns 500 on overrun.' },
+        { key:'resources.timeout_s', def:'30', notes:'Wall-clock limit per invocation, up to 900 seconds.' },
+        { key:'resources.min_instances', def:'0', notes:'Isolates kept resident. Above 0 removes cold starts at the cost of held memory.' },
+        { key:'resources.node_pool', def:'"general"', notes:'Schedules the function onto a labelled pool — useful for GPU or arm64 nodes.' },
+        { key:'trigger.http.path', def:'"/"', notes:'Path on the function subdomain. Supports :param segments.' },
+        { key:'trigger.cron.schedule', def:'—', notes:'Standard five-field cron expression, evaluated in UTC.' },
+        { key:'metering.namespace', def:'"default"', notes:'Attribution bucket shown on the Cluster & metering page.' },
+      ],
+      cliRows:[
+        { cmd:'cubicle init <name>', desc:'Scaffold a new function directory with a handler and cubicle.toml.' },
+        { cmd:'cubicle deploy', desc:'Bundle, upload, and schedule the function in the current directory.' },
+        { cmd:'cubicle logs <fn> --follow', desc:'Tail structured logs for a function across all nodes.' },
+        { cmd:'cubicle secrets set <KEY>', desc:'Create or rotate an encrypted secret bound to a function.' },
+        { cmd:'cubicle invoke <fn> --data', desc:'Send a test event and print the response with timing.' },
+        { cmd:'cubicle status', desc:'Show control plane, node, scheduler, and ingress health.' },
+        { cmd:'cubicle nodes drain <node>', desc:'Cordon a node and migrate its isolates before maintenance.' },
+        { cmd:'cubicle upgrade --to <ver>', desc:'Rolling upgrade of the control plane and node agents.' },
+      ],
+      toggleTheme:()=>this.toggleTheme(), deploy:()=>this.deploy(),
+      ovStyle:this.navStyle(['dashboard','detail','editor','create'].includes(s.page)),
+      logsNavStyle:this.navStyle(s.page==='logs'),
+      billingNavStyle:this.navStyle(s.page==='billing'),
+      settingsNavStyle:this.navStyle(s.page==='settings'),
+      functions:fns, fn,
+      kpis:[
+        { label:'Invocations (24h)', value:'4.72M', delta:'+8.4%', deltaColor:'var(--ok)' },
+        { label:'Avg p50 latency', value:'38ms', delta:'−3ms', deltaColor:'var(--ok)' },
+        { label:'Error rate', value:'0.06%', delta:'+0.01%', deltaColor:'var(--warn)' },
+        { label:'Cold starts', value:'2.3%', delta:'−0.4%', deltaColor:'var(--ok)' },
+      ],
+      chartBars, latBars,
+      fnKpis:[
+        { label:'Invocations (24h)', value:fn.inv },
+        { label:'p95 latency', value:fn.p95 },
+        { label:'Error rate', value:fn.err },
+        { label:'Cold starts', value:fn.cold },
+      ],
+      tabOverview:()=>this.setState({tab:'overview'}), tabMetrics:()=>this.setState({tab:'metrics'}),
+      tabLogs:()=>this.setState({tab:'logs'}), tabSecrets:()=>this.setState({tab:'secrets'}),
+      tabOvStyle:this.tabStyle(s.tab==='overview'), tabMetStyle:this.tabStyle(s.tab==='metrics'),
+      tabLogStyle:this.tabStyle(s.tab==='logs'), tabSecStyle:this.tabStyle(s.tab==='secrets'),
+      showOverview:s.tab==='overview', showMetrics:s.tab==='metrics', showLogsTab:s.tab==='logs', showSecrets:s.tab==='secrets',
+      fnLogs:logs.filter(l=>l.fn===fn.name).length?logs.filter(l=>l.fn===fn.name):logs.slice(0,6),
+      secrets:[
+        { key:'DATABASE_URL', val:'••••••••••••••3f2a', updated:'2d ago' },
+        { key:'STRIPE_KEY', val:'••••••••••••••b81c', updated:'2d ago' },
+        { key:'JWT_SECRET', val:'••••••••••••••9d04', updated:'11d ago' },
+        { key:'REDIS_TOKEN', val:'••••••••••••••7e55', updated:'11d ago' },
+      ],
+      pickPython:()=>this.setState({runtime:'python'}), pickNode:()=>this.setState({runtime:'node'}),
+      segPython:this.seg(s.runtime==='python'), segNode:this.seg(s.runtime==='node'),
+      pickHttp:()=>this.setState({trigger:'http'}), pickCron:()=>this.setState({trigger:'cron'}), pickEvent:()=>this.setState({trigger:'event'}),
+      segHttp:this.seg(s.trigger==='http'), segCron:this.seg(s.trigger==='cron'), segEvent:this.seg(s.trigger==='event'),
+      memOpts, regionOpts, files,
+      logFilters, filteredLogs,
+      usage:[
+        { label:'Compute consumed', value:'3.21M GB-s', rate:'peak 68% of capacity' },
+        { label:'Persistent storage', value:'412 GB', rate:'of 2 TB provisioned' },
+        { label:'Egress', value:'842 GB', rate:'via cluster ingress' },
+      ],
+      nodes:[
+        { name:'node-01', spec:'32 vCPU · 128 GB · amd64', status:'ready', statusColor:'var(--ok)', cpu:'64%', mem:'58%', memLabel:'74 / 128 GB', memColor:'var(--accent)', isolates:'412' },
+        { name:'node-02', spec:'32 vCPU · 128 GB · amd64', status:'ready', statusColor:'var(--ok)', cpu:'71%', mem:'62%', memLabel:'79 / 128 GB', memColor:'var(--accent)', isolates:'488' },
+        { name:'node-03', spec:'16 vCPU · 64 GB · arm64', status:'draining', statusColor:'var(--warn)', cpu:'22%', mem:'87%', memLabel:'56 / 64 GB', memColor:'var(--warn)', isolates:'96' },
+      ],
+      lineItems:[
+        { name:'payments', qty:'74,208,110', gbs:'1,842,300', amount:'$2,461.40' },
+        { name:'identity', qty:'38,104,662', gbs:'742,900', amount:'$1,004.20' },
+        { name:'media', qty:'12,880,404', gbs:'566,100', amount:'$698.30' },
+        { name:'internal-tools', qty:'3,219,728', gbs:'59,100', amount:'$117.70' },
+      ],
+      apiKeys:[
+        { name:'production-deploy', token:'cbcl_••••4f2a', created:'Mar 4, 2026', used:'2m ago' },
+        { name:'ci-github-actions', token:'cbcl_••••9b7c', created:'Jan 18, 2026', used:'1h ago' },
+        { name:'staging-readonly', token:'cbcl_••••1d33', created:'Feb 22, 2026', used:'3d ago' },
+      ],
+      team:[
+        { initials:'JD', name:'Jordan Diaz', email:'jordan@internal.corp', role:'Owner' },
+        { initials:'AK', name:'Amara Kone', email:'amara@internal.corp', role:'Admin' },
+        { initials:'RS', name:'Rafael Silva', email:'rafael@internal.corp', role:'Developer' },
+        { initials:'TN', name:'Thuy Nguyen', email:'thuy@internal.corp', role:'Read-only' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

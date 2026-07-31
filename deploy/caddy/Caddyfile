@@ -1,0 +1,59 @@
+{
+	admin off
+	# Written by install.sh: either an `email <address>` line for the ACME
+	# account, or nothing at all. Certificates are issued either way.
+	import /etc/caddy/conf.d/*.caddyfile
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+# CUBICLE_SITE_ADDRESS is `:80` for a local install and the bare hostname
+# (e.g. cubicle.example.com) when a domain is configured — in that case Caddy
+# obtains and renews the certificate itself, with no extra configuration.
+{$CUBICLE_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Control plane API, health and Prometheus metrics.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+	handle /metrics {
+		reverse_proxy api:8000
+	}
+
+	# Function invocations: https://<host>/<namespace>/<function>
+	# Console paths are excluded, so a namespace can never shadow the console.
+	@invoke {
+		not path /console*
+		not path /docs*
+		not path /setup*
+		not path /assets/*
+		not path /fonts/*
+		path_regexp fn ^/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*/?$
+	}
+	handle @invoke {
+		rewrite * /api/invoke{uri}
+		reverse_proxy api:8000 {
+			# Functions may legitimately run to their configured timeout.
+			transport http {
+				read_timeout 15m
+			}
+		}
+	}
+
+	# Console SPA.
+	handle {
+		reverse_proxy web:8080
+	}
+}

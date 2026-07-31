@@ -1,0 +1,153 @@
+
+# Cubicle — self-hosted serverless functions platform.
+#
+#   cp .env.example .env && ./install.sh
+#
+# Everything runs in Docker. Set CUBICLE_DOMAIN in .env and the edge gets a
+# real Let's Encrypt certificate on first boot with no further configuration.
+
+name: cubicle
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ── edge ─────────────────────────────────────────────────────────────────
+  # Terminates TLS (automatic ACME when CUBICLE_DOMAIN is a real hostname),
+  # serves the console, and routes function traffic to the control plane.
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on: [api, web]
+    environment:
+      CUBICLE_SITE_ADDRESS: ${CUBICLE_SITE_ADDRESS:-:80}
+    ports:
+      - "${CUBICLE_HTTP_PORT:-7000}:80"
+      - "${CUBICLE_HTTPS_PORT:-7443}:443"
+      - "${CUBICLE_HTTPS_PORT:-7443}:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/caddy/conf.d:/etc/caddy/conf.d:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    logging: *logging
+
+  # ── console (static SPA) ─────────────────────────────────────────────────
+  web:
+    build:
+      context: ./services/web
+      args:
+        VITE_APP_VERSION: ${CUBICLE_VERSION:-1.0.0}
+    image: cubicle/web:${CUBICLE_VERSION:-1.0.0}
+    restart: unless-stopped
+    networks: [edge]
+    logging: *logging
+
+  # ── control plane ────────────────────────────────────────────────────────
+  # API, scheduler, invocation router and the isolate pool manager. Owns the
+  # Docker socket so it can start runtime isolates and managed data services.
+  api:
+    build: ./services/api
+    image: cubicle/api:${CUBICLE_VERSION:-1.0.0}
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    environment:
+      CUBICLE_VERSION: ${CUBICLE_VERSION:-1.0.0}
+      CUBICLE_DATABASE_URL: postgresql+asyncpg://cubicle:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/cubicle
+      CUBICLE_REDIS_URL: redis://redis:6379/0
+      CUBICLE_SECRET_KEY: ${CUBICLE_SECRET_KEY:?set CUBICLE_SECRET_KEY in .env}
+      CUBICLE_MASTER_KEY: ${CUBICLE_MASTER_KEY:?set CUBICLE_MASTER_KEY in .env}
+      CUBICLE_DOMAIN: ${CUBICLE_DOMAIN:-localhost}
+      CUBICLE_PUBLIC_URL: ${CUBICLE_PUBLIC_URL:-http://localhost:7000}
+      CUBICLE_DATA_DIR: /var/lib/cubicle
+      CUBICLE_FUNCTION_NETWORK: cubicle_fn
+      CUBICLE_RUNTIME_IMAGE_PY312: cubicle/runtime-py312:${CUBICLE_VERSION:-1.0.0}
+      CUBICLE_RUNTIME_IMAGE_PY311: cubicle/runtime-py311:${CUBICLE_VERSION:-1.0.0}
+      CUBICLE_ISOLATE_IDLE_TTL: ${CUBICLE_ISOLATE_IDLE_TTL:-900}
+      CUBICLE_LOG_LEVEL: ${CUBICLE_LOG_LEVEL:-info}
+      CUBICLE_TRUST_PROXY: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cubicle_data:/var/lib/cubicle
+    networks: [edge, core, fn]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *logging
+
+  # ── runtime image builder ────────────────────────────────────────────────
+  # Not a long-lived service: `docker compose build runtime-py312 runtime-py311`
+  # bakes the isolate images the control plane launches.
+  runtime-py312:
+    profiles: [build]
+    build:
+      context: ./services/runtime
+      dockerfile: Dockerfile
+      args: {PYTHON_VERSION: "3.12"}
+    image: cubicle/runtime-py312:${CUBICLE_VERSION:-1.0.0}
+
+  runtime-py311:
+    profiles: [build]
+    build:
+      context: ./services/runtime
+      dockerfile: Dockerfile
+      args: {PYTHON_VERSION: "3.11"}
+    image: cubicle/runtime-py311:${CUBICLE_VERSION:-1.0.0}
+
+  # ── control-plane state ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cubicle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: cubicle
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cubicle -d cubicle"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    networks: [core]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+networks:
+  edge:
+    name: cubicle_edge
+  core:
+    name: cubicle_core
+  # Isolates and managed data services live here. The control plane joins it
+  # so it can reach isolates directly; nothing on it is published to the host.
+  fn:
+    name: cubicle_fn
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pg_data:
+  redis_data:
+  cubicle_data:
