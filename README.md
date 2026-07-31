@@ -73,16 +73,18 @@ Create one from the sidebar switcher or **Settings → Clusters**. It is a row
 plus the local engine registered against it, so it costs nothing until you
 deploy into it.
 
-A request finds its cluster by three rules, in order:
+Every endpoint names its cluster, in one of two ways:
 
 | Rule | Example |
 | --- | --- |
-| `Host` matches the cluster's ingress domain | `https://staging.example.com/payments/charge` |
-| Path begins with the cluster slug | `https://example.com/staging/payments/charge` |
-| Otherwise the default cluster answers | `https://example.com/payments/charge` |
+| A hostname pointed at the cluster | `https://staging.example.com/payments/charge` |
+| The cluster slug in the path | `https://example.com/staging/payments/charge` |
 
-The default cluster keeps the short two-segment URL, so adding a second cluster
-never changes an endpoint that is already deployed.
+There is no unqualified form: a bare `/<namespace>/<function>` returns a 404
+naming the clusters that do hold it. Every cluster could own that namespace, and
+if the default answered it, changing the default would quietly change what an
+existing URL addressed. A cluster with its own hostname is the exception — the
+host already identifies it, so the slug leaves the path.
 
 ```bash
 cubicle clusters
@@ -99,7 +101,7 @@ CUBICLE_CLUSTER=staging cubicle logs --follow
    :80 / :443  ───▶ │ caddy      automatic TLS, routing        │
                     └────┬──────────────────────┬──────────────┘
                          │                      │
-              /api, /<ns>/<fn>                  /  (console SPA)
+       /api, /<cluster>/<ns>/<fn>               /  (console SPA)
                          │                      │
                     ┌────▼──────────┐      ┌────▼─────┐
                     │ api           │      │ web      │
@@ -170,7 +172,7 @@ against the same runtime.
 Invoke it:
 
 ```bash
-curl -X POST https://fn.example.com/payments/create-charge \
+curl -X POST https://fn.example.com/prod-cluster/payments/create-charge \
   -H 'Authorization: Bearer cbcl_…' \
   -H 'X-Cubicle-Session: sess_demo' \
   -d '{"amount": 4200}'

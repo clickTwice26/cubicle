@@ -221,9 +221,10 @@ export function NewClusterModal({ open, onClose }: { open: boolean; onClose: () 
         />
 
         <Card className="bg-panel-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
-          Give it a domain and the edge routes that hostname straight to this cluster — you will
-          need DNS pointing here, and a certificate is issued on the first request. Without one,
-          the cluster is reached by its slug in the path.
+          Functions in this cluster are always addressed under its slug. Give it a domain
+          instead and the edge routes that hostname straight here, dropping the slug from the
+          path — you will need DNS pointing at this machine, and a certificate is issued on the
+          first request.
         </Card>
       </div>
     </Modal>

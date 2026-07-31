@@ -173,7 +173,7 @@ export const DOCS: DocPage[] = [
           <>
             In <strong>Function playground</strong>, create a group. Its slug becomes the
             namespace, and every function under it is served at{' '}
-            {mono('https://<host>/<namespace>/<function>')}.
+            {mono('https://<host>/<cluster>/<namespace>/<function>')}.
           </>,
         )}
 
@@ -215,7 +215,7 @@ export const DOCS: DocPage[] = [
         {code(
           <>
             <span className="text-ink-3">$</span> curl -X POST
-            http://localhost:7000/payments/create-charge \{'\n'}
+            http://localhost:7000/prod-cluster/payments/create-charge \{'\n'}
             {'    '}-H <span className="text-ok">&apos;Authorization: Bearer cbcl_…&apos;</span>{' '}
             \{'\n'}
             {'    '}-H <span className="text-ok">&apos;X-Cubicle-Session: sess_demo&apos;</span>{' '}
@@ -479,27 +479,25 @@ export const DOCS: DocPage[] = [
         )}
 
         {h2('addressing', 'How a request finds its cluster')}
-        {p('Three rules, checked in order:')}
+        {p('Every endpoint names its cluster. There are two ways to do that:')}
         {table(
           ['Rule', 'Example'],
           [
             [
-              'Host matches the cluster ingress domain',
+              'A hostname pointed at the cluster',
               'https://staging.example.com/payments/charge',
             ],
-            [
-              'Path begins with the cluster slug',
-              'https://example.com/staging/payments/charge',
-            ],
-            ['Otherwise the default cluster answers', 'https://example.com/payments/charge'],
+            ['The cluster slug in the path', 'https://example.com/staging/payments/charge'],
           ],
         )}
         {note(
           <>
-            The default cluster keeps the short two-segment URL, so adding a second cluster
-            never changes an endpoint that is already deployed. Give a cluster its own domain
-            and the edge routes that hostname straight to it — DNS has to point here, and the
-            certificate is issued on the first request.
+            <strong>There is no unqualified form.</strong> A bare{' '}
+            {mono('/<namespace>/<function>')} is refused with a 404 naming the clusters that do
+            hold it — every cluster could own that namespace, and if the default one answered,
+            changing the default would quietly change what an existing URL addressed. A cluster
+            with its own hostname is the exception: the host already identifies it, so the slug
+            leaves the path.
           </>,
         )}
 

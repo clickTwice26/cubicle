@@ -65,17 +65,46 @@ async def invoke_in_cluster(
     summary="Invoke a function",
 )
 async def invoke_function(namespace: str, name: str, request: Request, db: DbSession) -> Response:
-    """Two-segment form: the cluster comes from the Host header, or the default."""
+    """Two-segment form, valid only when the Host names the cluster.
+
+    A cluster with its own ingress domain is fully identified by the hostname,
+    so its functions live at ``/<ns>/<fn>``. Without such a host the path is
+    ambiguous — every cluster could hold that namespace — so rather than
+    guessing, this points the caller at the qualified URL.
+    """
     cluster = await cluster_svc.by_domain(db, request.headers.get("host", ""))
-    if cluster is None:
-        try:
-            cluster = await cluster_svc.default_cluster(db)
-        except cluster_svc.NoClusterError:
-            return JSONResponse(
-                {"error": "not_configured", "message": "This instance has no cluster yet."},
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    if cluster is not None:
+        return await _invoke(cluster, namespace, name, request, db)
+
+    return JSONResponse(
+        {
+            "error": "cluster_required",
+            "message": (
+                f"/{namespace}/{name} does not name a cluster. Use "
+                f"/<cluster>/{namespace}/{name}, or point a hostname at the cluster."
+            ),
+            "clusters": await _candidates(db, namespace, name),
+        },
+        status_code=status.HTTP_404_NOT_FOUND,
+    )
+
+
+async def _candidates(db: DbSession, namespace: str, name: str) -> list[str]:
+    """Qualified paths that would actually resolve — a 404 worth reading."""
+    rows = (
+        (
+            await db.execute(
+                select(Cluster.slug)
+                .join(Group, Group.cluster_id == Cluster.id)
+                .join(Function, Function.group_id == Group.id)
+                .where(Group.ns == namespace.lower(), Function.name == name.lower())
+                .order_by(Cluster.is_default.desc())
             )
-    return await _invoke(cluster, namespace, name, request, db)
+        )
+        .scalars()
+        .all()
+    )
+    return [f"/{slug}/{namespace}/{name}" for slug in rows]
 
 
 async def _invoke(

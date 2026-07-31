@@ -196,7 +196,7 @@ function InstanceCard() {
           label="Ingress domain"
           value={form.ingress_domain}
           onChange={(event) => setForm({ ...form, ingress_domain: event.target.value })}
-          hint={`${instance.public_url}/<namespace>/<function>`}
+          hint={`${instance.base_url.replace(/\/$/, '')}/<namespace>/<function>`}
         />
         <Field
           label="Default node pool"

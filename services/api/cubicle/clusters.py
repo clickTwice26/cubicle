@@ -75,15 +75,18 @@ def _scheme() -> str:
 def cluster_root(cluster: Cluster) -> str:
     """The URL prefix every function in this cluster hangs off.
 
-    A cluster with its own ingress domain owns that hostname outright. The
-    default cluster keeps the bare instance URL, so single-cluster installs and
-    anything already deployed are unaffected. Every other cluster is addressed
-    by its slug.
+    A cluster with its own ingress domain owns that hostname outright, and the
+    host already says which cluster it is — repeating the slug in the path
+    would be noise.
+
+    Otherwise the slug is always in the path, including for the default
+    cluster. Letting the default one answer on a bare ``/<ns>/<fn>`` would mean
+    the shape of a URL depended on which cluster happened to be default, so
+    changing the default would quietly change what an existing URL addressed.
     """
     if cluster.ingress_domain:
         return f"{_scheme()}://{cluster.ingress_domain}"
-    root = settings.public_url.rstrip("/")
-    return root if cluster.is_default else f"{root}/{cluster.slug}"
+    return f"{settings.public_url.rstrip('/')}/{cluster.slug}"
 
 
 def function_url(cluster: Cluster, ns: str = "", name: str = "") -> str:
