@@ -11,6 +11,7 @@ import {
   ConfirmButton,
   CopyButton,
   MethodBadge,
+  PAGE,
   Skeleton,
   StatusDot,
   Tabs,
@@ -99,7 +100,7 @@ export default function FunctionWorkbench() {
 
   if (isLoading || !fn || !group) {
     return (
-      <div className="mx-auto max-w-[1400px] space-y-4 px-5 py-7 sm:px-8">
+      <div className={cx(PAGE, 'space-y-4')}>
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-96 w-full" />
       </div>
@@ -155,7 +156,7 @@ export default function FunctionWorkbench() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <Link
         to={`/console/playground/${groupId}`}
         className="mb-3.5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 transition hover:text-ink"

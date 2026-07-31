@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   Field,
+  PAGE,
   PageHeader,
   Skeleton,
   useToast,
@@ -37,7 +38,7 @@ export default function Playground() {
   }
 
   return (
-    <div className="mx-auto max-w-[1100px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader
         title="Function playground"
         subtitle="Groups are namespaces. Every function inside a group inherits its namespace in the endpoint."

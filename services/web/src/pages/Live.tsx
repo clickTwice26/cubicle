@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bolt, Play, Power } from '../components/Icons'
-import { Badge, Button, Card, Skeleton, cx } from '../components/ui'
+import { Badge, Button, Card, PAGE, Skeleton, cx } from '../components/ui'
 import { FlowCanvas } from '../components/live/FlowCanvas'
 import {
   Counter,
@@ -66,7 +66,7 @@ export default function Live() {
   const focusedFunction = live.functions.find((fn) => fn.id === focused)
 
   return (
-    <div className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="m-0 flex items-center gap-2.5 text-2xl tracking-[-0.02em]">

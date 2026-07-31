@@ -641,6 +641,15 @@ export function ConfirmButton({
 
 // ── pagination ───────────────────────────────────────────────────────────────
 
+/**
+ * The frame every console page sits in.
+ *
+ * Defined once so the gutters line up when you move between sections — pages
+ * that each picked their own max width drifted from 820px to 1500px, and
+ * switching between them shifted the whole layout sideways.
+ */
+export const PAGE = 'mx-auto max-w-[1500px] px-5 py-7 sm:px-8'
+
 export const PAGE_SIZES = [25, 50, 100, 200]
 
 /**

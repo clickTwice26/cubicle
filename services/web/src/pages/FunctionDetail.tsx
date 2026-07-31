@@ -12,9 +12,11 @@ import {
   KeyValue,
   Meter,
   Modal,
+  PAGE,
   Skeleton,
   StatusDot,
   Tabs,
+  cx,
   useToast,
 } from '../components/ui'
 import {
@@ -37,7 +39,7 @@ export default function FunctionDetail() {
 
   if (isLoading || !fn) {
     return (
-      <div className="mx-auto max-w-[1240px] space-y-4 px-5 py-6 sm:px-8">
+      <div className={cx(PAGE, 'space-y-4')}>
         <Skeleton className="h-8 w-56" />
         <Skeleton className="h-24 w-full" />
       </div>
@@ -45,7 +47,7 @@ export default function FunctionDetail() {
   }
 
   return (
-    <div className="mx-auto max-w-[1240px] px-5 py-6 sm:px-8">
+    <div className={PAGE}>
       <Link
         to="/console"
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 transition hover:text-ink"

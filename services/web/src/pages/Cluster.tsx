@@ -8,6 +8,7 @@ import {
   Field,
   Meter,
   Modal,
+  PAGE,
   PageHeader,
   Skeleton,
   StatusDot,
@@ -51,7 +52,7 @@ export default function Cluster() {
     : ''
 
   return (
-    <div className="mx-auto max-w-[1240px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader
         title="Cluster & metering"
         subtitle={

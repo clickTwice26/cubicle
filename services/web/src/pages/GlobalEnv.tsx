@@ -10,6 +10,7 @@ import {
   CopyButton,
   EmptyState,
   Field,
+  PAGE,
   PageHeader,
   Skeleton,
   useToast,
@@ -52,7 +53,7 @@ export default function GlobalEnv() {
   }
 
   return (
-    <div className="mx-auto max-w-[960px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader
         title="Global env"
         subtitle={

@@ -7,6 +7,7 @@ import {
   Card,
   Chip,
   EmptyState,
+  PAGE,
   PAGE_SIZES,
   PageHeader,
   Pagination,
@@ -139,7 +140,7 @@ export default function Logs() {
   const pages = data ? Math.max(1, Math.ceil(data.total / size)) : 1
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader
         title="Logs & monitoring"
         subtitle={

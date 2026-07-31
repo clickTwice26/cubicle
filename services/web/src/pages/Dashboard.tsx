@@ -1,7 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download } from '../components/Icons'
-import { Button, Card, EmptyState, PageHeader, Skeleton, StatusDot, cx } from '../components/ui'
+import {
+  Button,
+  Card,
+  EmptyState,
+  PAGE,
+  PageHeader,
+  Skeleton,
+  StatusDot,
+  cx,
+} from '../components/ui'
 import { useDashboard } from '../lib/hooks'
 import { statusTone } from '../lib/format'
 import type { ChartBar } from '../lib/types'
@@ -17,7 +26,7 @@ export default function Dashboard() {
   const { data, isLoading } = useDashboard(hours)
 
   return (
-    <div className="mx-auto max-w-[1240px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader
         title="Overview"
         subtitle={

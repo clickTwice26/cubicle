@@ -11,6 +11,7 @@ import {
   EmptyState,
   Field,
   MethodBadge,
+  PAGE,
   Skeleton,
   useToast,
 } from '../components/ui'
@@ -56,7 +57,7 @@ export default function PlaygroundGroup() {
 
   if (!group) {
     return (
-      <div className="mx-auto max-w-[1100px] px-5 py-7 sm:px-8">
+      <div className={PAGE}>
         <Skeleton className="h-8 w-56" />
       </div>
     )
@@ -87,7 +88,7 @@ export default function PlaygroundGroup() {
   }
 
   return (
-    <div className="mx-auto max-w-[1100px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <Link
         to="/console/playground"
         className="mb-3.5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 transition hover:text-ink"

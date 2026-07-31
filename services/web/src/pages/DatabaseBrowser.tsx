@@ -18,6 +18,7 @@ import {
   EmptyState,
   Field,
   Modal,
+  PAGE,
   PAGE_SIZES,
   PageHeader,
   Pagination,
@@ -79,7 +80,7 @@ export default function DatabaseBrowser() {
 
   if (error) {
     return (
-      <div className="px-5 py-7 sm:px-8">
+      <div className={PAGE}>
         <PageHeader title="Database" />
         <EmptyState
           title="The database is not reachable"
@@ -95,9 +96,9 @@ export default function DatabaseBrowser() {
   }
 
   return (
-    // No max width: this page is a data grid, and every pixel it does not use
-    // is a column the operator has to scroll for.
-    <div className="px-5 py-7 sm:px-8">
+    // Same frame as every other section. The grid still gets the full width
+    // inside it, and scrolls horizontally rather than pushing the page out.
+    <div className={PAGE}>
       <Link
         to="/console/services/postgres"
         className="mb-3.5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 transition hover:text-ink"

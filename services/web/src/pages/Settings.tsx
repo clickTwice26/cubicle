@@ -9,6 +9,7 @@ import {
   ConfirmButton,
   Field,
   Modal,
+  PAGE,
   PageHeader,
   Skeleton,
   useToast,
@@ -39,7 +40,7 @@ const ROLES: Role[] = ['owner', 'admin', 'developer', 'readonly']
 
 export default function Settings() {
   return (
-    <div className="mx-auto max-w-[960px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader title="Settings" />
       <ClustersCard />
       <InstanceCard />

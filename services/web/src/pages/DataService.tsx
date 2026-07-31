@@ -4,11 +4,12 @@ import { Bolt, Database, Layers, Power, Refresh, Table, Trash } from '../compone
 import {
   Button,
   Card,
-  Chip,
   Checkbox,
+  Chip,
   CopyButton,
   Field,
   Modal,
+  PAGE,
   PageHeader,
   Skeleton,
   StatusDot,
@@ -57,7 +58,7 @@ export default function DataService() {
 
   if (isLoading || !services) {
     return (
-      <div className="mx-auto max-w-[820px] px-5 py-7 sm:px-8">
+      <div className={PAGE}>
         <Skeleton className="h-40 w-full" />
       </div>
     )
@@ -66,7 +67,7 @@ export default function DataService() {
   const created = service?.created
 
   return (
-    <div className="mx-auto max-w-[820px] px-5 py-7 sm:px-8">
+    <div className={PAGE}>
       <PageHeader
         title={config.title}
         subtitle="Managed alongside your functions on the same cluster · no external dependency"
