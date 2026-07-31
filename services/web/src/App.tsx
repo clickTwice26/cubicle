@@ -12,6 +12,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const FunctionDetail = lazy(() => import('./pages/FunctionDetail'))
 const Playground = lazy(() => import('./pages/Playground'))
 const PlaygroundGroup = lazy(() => import('./pages/PlaygroundGroup'))
+const FunctionWorkbench = lazy(() => import('./pages/FunctionWorkbench'))
 const GlobalEnv = lazy(() => import('./pages/GlobalEnv'))
 const Logs = lazy(() => import('./pages/Logs'))
 const Cluster = lazy(() => import('./pages/Cluster'))
@@ -81,6 +82,14 @@ export default function App() {
           element={
             <Guarded>
               <PlaygroundGroup />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/playground/:groupId/:functionId"
+          element={
+            <Guarded>
+              <FunctionWorkbench />
             </Guarded>
           }
         />

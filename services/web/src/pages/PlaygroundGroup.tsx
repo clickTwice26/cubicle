@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { CodeEditor } from '../components/CodeEditor'
-import { ChevronLeft, Play, Plus } from '../components/Icons'
+import { ArrowRight, ChevronLeft, Plus } from '../components/Icons'
 import {
   Badge,
   Button,
   Card,
-  Checkbox,
   Chip,
   ConfirmButton,
   CopyButton,
@@ -14,8 +12,6 @@ import {
   Field,
   MethodBadge,
   Skeleton,
-  Tabs,
-  cx,
   useToast,
 } from '../components/ui'
 import {
@@ -24,22 +20,16 @@ import {
   useCreateFunction,
   useDeleteFunction,
   useDeleteGroup,
-  useDeployFunction,
-  useFunction,
   useFunctions,
   useGroups,
-  useTestInvoke,
-  useUpdateFunction,
 } from '../lib/hooks'
-import { CTX_LABEL, RUNTIME_LABEL, newSessionId, slugify } from '../lib/format'
-import type { CtxAccess, Method, Runtime, TestResult } from '../lib/types'
+import { useGroupSession } from '../lib/session'
+import { CTX_LABEL, RUNTIME_LABEL, slugify } from '../lib/format'
+import type { CtxAccess, Method, Runtime } from '../lib/types'
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
 const RUNTIMES: Runtime[] = ['python312', 'python311']
 const CTX_MODES: CtxAccess[] = ['rw', 'r', 'w', 'none']
-const MEMORY = [128, 256, 512, 1024]
-const TIMEOUTS = [5, 30, 60, 300]
-const FILES = ['handler.py', 'requirements.txt', 'cubicle.toml', 'README.md'] as const
 
 export default function PlaygroundGroup() {
   const { groupId = '' } = useParams()
@@ -52,8 +42,7 @@ export default function PlaygroundGroup() {
   const deleteGroup = useDeleteGroup()
   const deleteFunction = useDeleteFunction()
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [session, setSession] = useState(newSessionId)
+  const [session, newSession] = useGroupSession(groupId)
   const [creating, setCreating] = useState(false)
 
   const [fnName, setFnName] = useState('')
@@ -65,11 +54,6 @@ export default function PlaygroundGroup() {
   const { data: context } = useContextState(groupId, session)
   const clearContext = useClearContext(groupId)
 
-  useEffect(() => {
-    if (functions && functions.length > 0 && !selectedId) setSelectedId(functions[0].id)
-    if (functions && functions.length === 0) setSelectedId(null)
-  }, [functions, selectedId])
-
   if (!group) {
     return (
       <div className="mx-auto max-w-[1100px] px-5 py-7 sm:px-8">
@@ -77,6 +61,8 @@ export default function PlaygroundGroup() {
       </div>
     )
   }
+
+  const open = (functionId: string) => navigate(`/console/playground/${groupId}/${functionId}`)
 
   const submitNew = () => {
     createFunction.mutate(
@@ -91,7 +77,9 @@ export default function PlaygroundGroup() {
           toast.push(`${fn.name} created`, 'ok', 'building')
           setCreating(false)
           setFnName('')
-          setSelectedId(fn.id)
+          // Straight into the editor — a new function is an empty handler
+          // waiting to be written.
+          open(fn.id)
         },
         onError: (error) => toast.push(error.message, 'err'),
       },
@@ -143,7 +131,7 @@ export default function PlaygroundGroup() {
         </span>
         <button
           type="button"
-          onClick={() => setSession(newSessionId())}
+          onClick={newSession}
           className="ml-auto text-[12.5px] text-ink-3 transition hover:text-ink"
         >
           New session
@@ -212,7 +200,7 @@ export default function PlaygroundGroup() {
         <Skeleton className="h-32 w-full" />
       ) : functions && functions.length > 0 ? (
         <Card className="overflow-hidden">
-          <div className="hidden grid-cols-[82px_1fr_1.5fr_96px_94px_60px] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase md:grid">
+          <div className="hidden grid-cols-[82px_minmax(140px,1fr)_minmax(0,1.5fr)_96px_94px_146px] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase md:grid">
             <span>Method</span>
             <span>Function</span>
             <span>Endpoint</span>
@@ -225,12 +213,9 @@ export default function PlaygroundGroup() {
               key={fn.id}
               role="button"
               tabIndex={0}
-              onClick={() => setSelectedId(fn.id)}
-              onKeyDown={(event) => event.key === 'Enter' && setSelectedId(fn.id)}
-              className={cx(
-                'grid cursor-pointer grid-cols-1 items-center gap-3 border-b border-line px-5 py-3.5 transition last:border-b-0 md:grid-cols-[82px_1fr_1.5fr_96px_94px_60px]',
-                selectedId === fn.id ? 'bg-accent-soft' : 'hover:bg-panel-2',
-              )}
+              onClick={() => open(fn.id)}
+              onKeyDown={(event) => event.key === 'Enter' && open(fn.id)}
+              className="grid cursor-pointer grid-cols-1 items-center gap-3 border-b border-line px-5 py-3.5 transition last:border-b-0 hover:bg-panel-2 md:grid-cols-[82px_minmax(140px,1fr)_minmax(0,1.5fr)_96px_94px_146px]"
             >
               <MethodBadge method={fn.method} />
               <div className="truncate text-sm font-semibold">
@@ -251,16 +236,21 @@ export default function PlaygroundGroup() {
               <div>
                 <Badge>{CTX_LABEL[fn.ctx_access]}</Badge>
               </div>
-              <div className="text-right">
+              {/* The row is clickable, but a visible control is what tells you
+                  so — and it is what keyboard users tab to. */}
+              <div
+                className="flex items-center justify-end gap-2"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Button size="sm" icon={<ArrowRight size={13} />} onClick={() => open(fn.id)}>
+                  View
+                </Button>
                 <ConfirmButton
                   label="Delete"
                   confirmLabel="Confirm"
                   onConfirm={() =>
                     deleteFunction.mutate(fn.id, {
-                      onSuccess: () => {
-                        toast.push(`${fn.name} deleted`)
-                        if (selectedId === fn.id) setSelectedId(null)
-                      },
+                      onSuccess: () => toast.push(`${fn.name} deleted`),
                     })
                   }
                 />
@@ -279,10 +269,6 @@ export default function PlaygroundGroup() {
           }
         />
       )}
-
-      {selectedId ? (
-        <FunctionPanel functionId={selectedId} session={session} baseUrl={group.base_url} />
-      ) : null}
 
       <Card className="mt-5 overflow-hidden">
         <div className="flex items-center gap-3 border-b border-line px-5 py-4">
@@ -354,371 +340,6 @@ export default function PlaygroundGroup() {
         />
       </div>
     </div>
-  )
-}
-
-// ── selected function ────────────────────────────────────────────────────────
-
-function FunctionPanel({
-  functionId,
-  session,
-  baseUrl,
-}: {
-  functionId: string
-  session: string
-  baseUrl: string
-}) {
-  const toast = useToast()
-  const { data: fn } = useFunction(functionId, {
-    refetchInterval: (query) =>
-      query.state.data && ['pending', 'building'].includes(query.state.data.version_status)
-        ? 2000
-        : false,
-  })
-  const update = useUpdateFunction(functionId)
-  const deploy = useDeployFunction(functionId)
-  const remove = useDeleteFunction()
-  const test = useTestInvoke(functionId)
-
-  const [tab, setTab] = useState<'code' | 'test' | 'settings'>('code')
-  const [file, setFile] = useState<(typeof FILES)[number]>('handler.py')
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [requestBody, setRequestBody] = useState('{\n  "amount": 4200,\n  "currency": "usd"\n}')
-  const [result, setResult] = useState<TestResult | null>(null)
-
-  const saved = fn?.files?.[file] ?? ''
-  const draftKey = `${functionId}:${file}`
-  const value = drafts[draftKey] ?? saved
-  const dirty = value !== saved
-
-  useEffect(() => {
-    setDrafts({})
-    setResult(null)
-  }, [functionId])
-
-  if (!fn) return <Skeleton className="mt-5 h-64 w-full" />
-
-  const save = () => {
-    const changed: Record<string, string> = {}
-    for (const name of FILES) {
-      const key = `${functionId}:${name}`
-      if (drafts[key] !== undefined && drafts[key] !== fn.files[name])
-        changed[name] = drafts[key]
-    }
-    if (Object.keys(changed).length === 0) {
-      toast.push('No changes to deploy', 'info')
-      return
-    }
-    if (!changed['handler.py']) changed['handler.py'] = fn.files['handler.py']
-
-    deploy.mutate(changed, {
-      onSuccess: (next) => {
-        setDrafts({})
-        if (next.version_status === 'failed') {
-          toast.push('Build failed — see the build log', 'err')
-        } else {
-          toast.push(`Deployed version ${next.version}`, 'ok', `${next.build_ms}ms`)
-        }
-      },
-      onError: (error) => toast.push(error.message, 'err'),
-    })
-  }
-
-  const send = () => {
-    let parsed: unknown = null
-    if (requestBody.trim()) {
-      try {
-        parsed = JSON.parse(requestBody)
-      } catch {
-        toast.push('Request body is not valid JSON', 'err')
-        return
-      }
-    }
-    test.mutate(
-      { body: parsed, session_id: session },
-      {
-        onSuccess: setResult,
-        onError: (error) => toast.push(error.message, 'err'),
-      },
-    )
-  }
-
-  return (
-    <Card className="mt-5 overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3.5 border-b border-line px-5 pt-3">
-        <div className="flex items-center gap-2.5 pb-3">
-          <span className="font-mono text-[13.5px] font-semibold">{fn.name}</span>
-          <span className="font-mono text-[11.5px] text-ink-3">{fn.runtime_label}</span>
-          <span
-            className="font-mono text-[11.5px]"
-            style={{
-              color:
-                fn.version_status === 'ready'
-                  ? 'var(--ok)'
-                  : fn.version_status === 'failed'
-                    ? 'var(--err)'
-                    : 'var(--warn)',
-            }}
-          >
-            v{fn.version} · {fn.version_status}
-          </span>
-        </div>
-        <div className="ml-auto">
-          <Tabs
-            value={tab}
-            onChange={setTab}
-            className="border-b-0"
-            tabs={[
-              { value: 'code', label: 'Code' },
-              { value: 'test', label: 'Test' },
-              { value: 'settings', label: 'Settings' },
-            ]}
-          />
-        </div>
-      </div>
-
-      {tab === 'code' ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-5 py-2.5">
-            {FILES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setFile(name)}
-                className={cx(
-                  'rounded-md border px-2.5 py-1 font-mono text-xs transition',
-                  file === name
-                    ? 'border-accent bg-accent-soft text-ink'
-                    : 'border-line text-ink-2 hover:text-ink',
-                )}
-              >
-                {name}
-                {drafts[`${functionId}:${name}`] !== undefined &&
-                drafts[`${functionId}:${name}`] !== fn.files[name] ? (
-                  <span className="ml-1 text-warn">•</span>
-                ) : null}
-              </button>
-            ))}
-            <span
-              className="ml-auto text-xs"
-              style={{ color: dirty ? 'var(--warn)' : 'var(--text-3)' }}
-            >
-              {dirty ? 'unsaved changes' : 'in sync with cluster'}
-            </span>
-          </div>
-
-          <div className="border-b border-line">
-            <CodeEditor
-              value={value}
-              language={file.endsWith('.py') ? 'python' : 'text'}
-              onChange={(next) => setDrafts((current) => ({ ...current, [draftKey]: next }))}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5 px-5 py-3.5">
-            <Button
-              variant={dirty ? 'primary' : 'ghost'}
-              loading={deploy.isPending}
-              onClick={save}
-            >
-              Save &amp; deploy
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() =>
-                setDrafts((current) => {
-                  const next = { ...current }
-                  delete next[draftKey]
-                  return next
-                })
-              }
-            >
-              Revert
-            </Button>
-            <span className="ml-auto text-[12.5px] text-ink-3">
-              {fn.stats.last_deploy ? `deployed ${fn.stats.last_deploy}` : 'not deployed yet'}
-              {fn.build_ms ? ` · build ${(fn.build_ms / 1000).toFixed(1)}s` : ''}
-            </span>
-          </div>
-
-          {fn.version_status === 'failed' && fn.build_log ? (
-            <pre className="m-0 max-h-64 overflow-auto border-t border-line bg-err-bg px-5 py-4 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink">
-              {fn.build_log}
-            </pre>
-          ) : null}
-        </>
-      ) : null}
-
-      {tab === 'test' ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-5 py-4">
-            <MethodBadge method={fn.method} />
-            <span className="min-w-[220px] flex-1 overflow-x-auto rounded-[9px] border border-line bg-bg px-3.5 py-2.5 font-mono text-[12.5px] whitespace-nowrap">
-              {baseUrl}
-              {fn.name}
-            </span>
-            <Button
-              variant="primary"
-              onClick={send}
-              loading={test.isPending}
-              icon={<Play size={13} />}
-              disabled={fn.version_status !== 'ready'}
-            >
-              {test.isPending ? 'Sending…' : 'Send'}
-            </Button>
-          </div>
-
-          <div className="grid md:grid-cols-2">
-            <div className="border-b border-line px-5 py-4 md:border-r md:border-b-0">
-              <div className="mb-2.5 text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-                Request body
-              </div>
-              <textarea
-                value={requestBody}
-                spellCheck={false}
-                onChange={(event) => setRequestBody(event.target.value)}
-                className="min-h-[180px] w-full resize-y rounded-[9px] border border-line bg-bg px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-ink outline-none focus:border-accent"
-              />
-              <div className="mt-2 font-mono text-[11.5px] text-ink-3">
-                X-Cubicle-Session: {session}
-              </div>
-            </div>
-            <div className="px-5 py-4">
-              <div className="mb-2.5 flex items-center justify-between">
-                <div className="text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-                  Response
-                </div>
-                <div
-                  className="font-mono text-[11.5px]"
-                  style={{
-                    color: !result
-                      ? 'var(--text-3)'
-                      : result.status_code < 400
-                        ? 'var(--ok)'
-                        : 'var(--err)',
-                  }}
-                >
-                  {test.isPending
-                    ? 'running…'
-                    : result
-                      ? `${result.status_code} · ${result.duration_ms.toFixed(0)}ms${result.cold ? ' · cold start' : ''}`
-                      : '—'}
-                </div>
-              </div>
-              <pre className="m-0 max-h-[260px] overflow-auto font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">
-                {result
-                  ? JSON.stringify(result.body, null, 2)
-                  : 'Send a request to see the response.'}
-              </pre>
-              {result?.logs.length ? (
-                <div className="mt-3 border-t border-line pt-3">
-                  <div className="mb-1.5 text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-                    Handler output
-                  </div>
-                  <pre className="m-0 max-h-40 overflow-auto font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-ink-2">
-                    {result.logs.join('\n')}
-                  </pre>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-5 border-t border-line bg-panel-2 px-5 py-3.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-                ctx read
-              </span>
-              <span className="font-mono text-[12.5px] text-info">
-                {result?.context_read.length ? result.context_read.join(', ') : '—'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-                ctx wrote
-              </span>
-              <span className="font-mono text-[12.5px] text-ok">
-                {result?.context_wrote.length ? result.context_wrote.join(', ') : '—'}
-              </span>
-            </div>
-          </div>
-        </>
-      ) : null}
-
-      {tab === 'settings' ? (
-        <div className="grid gap-5 p-5">
-          <ChipGroup
-            label="Method"
-            options={METHODS}
-            value={fn.method}
-            onChange={(method) => update.mutate({ method })}
-          />
-          <ChipGroup
-            label="Runtime"
-            options={RUNTIMES}
-            value={fn.runtime}
-            onChange={(runtime) => update.mutate({ runtime })}
-            render={(option) => RUNTIME_LABEL[option]}
-            hint="Changing the interpreter rebuilds the current version."
-          />
-          <ChipGroup
-            label="Runtime context access"
-            options={CTX_MODES}
-            value={fn.ctx_access}
-            onChange={(ctx_access) => update.mutate({ ctx_access })}
-            render={(option) => CTX_LABEL[option]}
-          />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <ChipGroup
-              label="Memory"
-              options={MEMORY}
-              value={fn.memory_mb}
-              onChange={(memory_mb) => update.mutate({ memory_mb })}
-              render={(option) => (option >= 1024 ? `${option / 1024} GB` : `${option} MB`)}
-            />
-            <ChipGroup
-              label="Timeout"
-              options={TIMEOUTS}
-              value={fn.timeout_s}
-              onChange={(timeout_s) => update.mutate({ timeout_s })}
-              render={(option) => `${option}s`}
-            />
-          </div>
-          <ChipGroup
-            label="Warm instances"
-            hint="Above zero keeps isolates resident, trading held memory for no cold starts."
-            options={[0, 1, 2]}
-            value={fn.min_instances}
-            onChange={(min_instances) => update.mutate({ min_instances })}
-            render={(option) => (option === 0 ? 'scale to zero' : `${option} warm`)}
-          />
-
-          <div className="border-t border-line pt-4">
-            <Checkbox
-              checked={fn.auth_required}
-              onChange={(auth_required) => update.mutate({ auth_required })}
-              label="Require an API key to invoke this endpoint. Turn off for public webhooks."
-            />
-          </div>
-
-          <div className="flex items-center gap-3 border-t border-line pt-4">
-            <span className="text-[12.5px] text-ink-3">
-              {update.isPending ? 'Saving…' : 'Changes apply immediately.'}
-            </span>
-            <span className="ml-auto">
-              <ConfirmButton
-                label="Delete function"
-                confirmLabel="Click again to delete"
-                onConfirm={() =>
-                  remove.mutate(functionId, {
-                    onSuccess: () => toast.push(`${fn.name} deleted`),
-                  })
-                }
-              />
-            </span>
-          </div>
-        </div>
-      ) : null}
-    </Card>
   )
 }
 

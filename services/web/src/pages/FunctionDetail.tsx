@@ -70,7 +70,7 @@ export default function FunctionDetail() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to={`/console/playground/${fn.group_id}`}>
+          <Link to={`/console/playground/${fn.group_id}/${functionId}`}>
             <Button icon={<Pencil size={14} />}>Edit code</Button>
           </Link>
           <Badge tone={fn.auth_required ? 'neutral' : 'warn'}>
