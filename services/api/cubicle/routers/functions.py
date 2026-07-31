@@ -68,6 +68,7 @@ def serialize_function(
         "memory_mb": fn.memory_mb,
         "timeout_s": fn.timeout_s,
         "min_instances": fn.min_instances,
+        "max_instances": fn.max_instances,
         "node_pool": fn.node_pool,
         "auth_required": fn.auth_required,
         "status": fn.status,
@@ -271,7 +272,10 @@ async def create_function(
             status.HTTP_409_CONFLICT,
             f"'{payload.name}' already exists in {namespace}.",
         ) from exc
-    await db.refresh(fn, ["group"])
+    # The whole row, not just the relationship: `updated_at` carries an
+    # onupdate, so the flush expires it, and reading an expired column while
+    # building the response would attempt IO outside the async context.
+    await db.refresh(fn)
 
     files = scaffold(
         name=fn.name,
@@ -319,12 +323,26 @@ async def update_function(
     for key, value in data.items():
         setattr(fn, key, value)
 
+    # Read before the rollback: it expires the instance, and re-reading an
+    # attribute to build the message would then attempt IO of its own.
+    ceiling, floor = fn.max_instances, fn.min_instances
+    if ceiling < floor:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Max instances ({ceiling}) cannot be below the {floor} warm "
+            "instance(s) this function keeps resident.",
+        )
+
     try:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "That name is already taken.") from exc
-    await db.refresh(fn, ["group"])
+    # The whole row, not just the relationship: `updated_at` carries an
+    # onupdate, so the flush expires it, and reading an expired column while
+    # building the response would attempt IO outside the async context.
+    await db.refresh(fn)
 
     if runtime_changed:
         # A different interpreter needs a rebuild, not just a restart.

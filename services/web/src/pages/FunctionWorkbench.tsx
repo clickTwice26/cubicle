@@ -36,6 +36,7 @@ const RUNTIMES: Runtime[] = ['python312', 'python311']
 const CTX_MODES: CtxAccess[] = ['rw', 'r', 'w', 'none']
 const MEMORY = [128, 256, 512, 1024]
 const TIMEOUTS = [5, 30, 60, 300]
+const MAX_INSTANCES = [1, 2, 4, 8]
 const FILES = ['handler.py', 'requirements.txt', 'cubicle.toml', 'README.md'] as const
 
 const TABS = ['code', 'test', 'settings'] as const
@@ -457,14 +458,36 @@ export default function FunctionWorkbench() {
               render={(option) => `${option}s`}
             />
           </div>
-          <ChipGroup
-            label="Warm instances"
-            hint="Above zero keeps isolates resident, trading held memory for no cold starts."
-            options={[0, 1, 2]}
-            value={fn.min_instances}
-            onChange={(min_instances) => update.mutate({ min_instances })}
-            render={(option) => (option === 0 ? 'scale to zero' : `${option} warm`)}
-          />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <ChipGroup
+              label="Warm instances"
+              hint="Above zero keeps isolates resident, trading held memory for no cold starts."
+              options={[0, 1, 2]}
+              value={fn.min_instances}
+              onChange={(min_instances) => update.mutate({ min_instances })}
+              render={(option) => (option === 0 ? 'scale to zero' : `${option} warm`)}
+            />
+            <ChipGroup
+              label="Max instances"
+              hint="The ceiling on concurrent isolates. Requests past it wait for a free one rather than starting another container."
+              options={MAX_INSTANCES}
+              value={fn.max_instances}
+              onChange={(max_instances) => update.mutate({ max_instances })}
+              render={(option) => `${option} max`}
+            />
+          </div>
+          <div className="rounded-[9px] border border-line bg-panel-2 px-3.5 py-2.5 text-[12.5px] text-ink-2">
+            At most <span className="font-mono font-semibold text-ink">{fn.max_instances}</span>{' '}
+            request
+            {fn.max_instances === 1 ? '' : 's'} run concurrently, each in its own container with{' '}
+            <span className="font-mono">{fn.memory_mb} MB</span> — up to{' '}
+            <span className="font-mono font-semibold text-ink">
+              {(fn.max_instances * fn.memory_mb) / 1024 >= 1
+                ? `${((fn.max_instances * fn.memory_mb) / 1024).toFixed(1)} GB`
+                : `${fn.max_instances * fn.memory_mb} MB`}
+            </span>{' '}
+            held by this function at peak.
+          </div>
 
           <div className="border-t border-line pt-4">
             <Checkbox

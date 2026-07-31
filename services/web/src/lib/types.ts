@@ -90,6 +90,7 @@ export interface FunctionSummary {
   memory_mb: number
   timeout_s: number
   min_instances: number
+  max_instances: number
   node_pool: string
   auth_required: boolean
   status: 'active' | 'paused' | 'degraded'

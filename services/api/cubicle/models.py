@@ -191,6 +191,10 @@ class Function(Base, TimestampMixin):
     memory_mb: Mapped[int] = mapped_column(Integer, default=512)
     timeout_s: Mapped[int] = mapped_column(Integer, default=30)
     min_instances: Mapped[int] = mapped_column(Integer, default=0)
+    #: Ceiling on concurrent isolates. Requests past it queue for a free one
+    #: rather than starting another container, which is what stops one busy
+    #: function from taking the whole node.
+    max_instances: Mapped[int] = mapped_column(Integer, default=4)
     node_pool: Mapped[str] = mapped_column(String(40), default="general")
     auth_required: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), default="active")

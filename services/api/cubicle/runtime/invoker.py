@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import live
 from ..config import settings
 from ..crypto import DecryptionError, decrypt
 from ..db import get_redis, session_scope
@@ -168,15 +169,17 @@ async def clear_context(scope: str, session_id: str) -> None:
 # ── invocation ───────────────────────────────────────────────────────────────
 
 
-def spec_for(function: Function, version: FunctionVersion, node) -> FunctionSpec:
+def spec_for(function: Function, version: FunctionVersion, node, cluster: str = "") -> FunctionSpec:
     return FunctionSpec(
         id=str(function.id),
         name=function.name,
         namespace=function.group.ns,
+        cluster=cluster,
         runtime=function.runtime,
         memory_mb=function.memory_mb,
         timeout_s=function.timeout_s,
         min_instances=function.min_instances,
+        max_instances=function.max_instances,
         version_id=str(version.id),
         version_number=version.number,
         node_name=node.name,
@@ -228,7 +231,17 @@ async def invoke(
         "services": await _service_urls(db, cluster.id),
     }
 
-    spec = spec_for(function, version, node)
+    spec = spec_for(function, version, node, cluster.slug)
+    live.publish(
+        "invocation.start",
+        cluster.slug,
+        request_id=request_id,
+        function=function.name,
+        function_id=str(function.id),
+        namespace=namespace,
+        method=method,
+        node=node.name,
+    )
     isolate: Isolate | None = None
     cold = False
     healthy = True
@@ -294,6 +307,20 @@ async def invoke(
         context_read=sorted(ctx_before) if ctx_access in ("rw", "r") else [],
         context_wrote=ctx_wrote,
         request_id=request_id,
+    )
+
+    live.publish(
+        "invocation.end",
+        cluster.slug,
+        request_id=request_id,
+        function=function.name,
+        function_id=str(function.id),
+        namespace=namespace,
+        status=status_code,
+        duration_ms=result.duration_ms,
+        cold=cold,
+        error=error,
+        isolate=isolate.container_id[:12] if isolate else None,
     )
 
     INVOCATIONS.labels(namespace=namespace, function=function.name, status=str(status_code)).inc()

@@ -16,7 +16,7 @@ from . import metrics
 from .config import settings
 from .db import engine, get_redis, session_scope
 from .logging_setup import configure_logging, log
-from .models import Cluster, Function, FunctionVersion, LogEntry, Node
+from .models import Cluster, Function, FunctionVersion, Group, LogEntry, Node
 from .routers import ROUTERS
 from .runtime.engine import EngineError
 from .runtime.nodes import ensure_local_node
@@ -128,15 +128,25 @@ async def _adopt_isolates() -> None:
     try:
         async with session_scope() as db:
             hosts = [n.docker_host for n in (await db.execute(select(Node))).scalars()]
+            # Version -> who it belongs to. The container labels say the same
+            # thing, but the database is the authority and covers isolates
+            # started before a label existed.
+            rows = (
+                await db.execute(
+                    select(Function, Group, Cluster)
+                    .join(Group, Group.id == Function.group_id)
+                    .join(Cluster, Cluster.id == Group.cluster_id)
+                    .where(Function.current_version_id.isnot(None))
+                )
+            ).all()
             live = {
-                str(v)
-                for v in (
-                    await db.execute(
-                        select(Function.current_version_id).where(
-                            Function.current_version_id.isnot(None)
-                        )
-                    )
-                ).scalars()
+                str(fn.current_version_id): {
+                    "cluster": cluster.slug,
+                    "name": fn.name,
+                    "namespace": group.ns,
+                    "memory_mb": fn.memory_mb,
+                }
+                for fn, group, cluster in rows
             }
         if hosts:
             await pool.adopt(hosts=hosts, live_versions=live)
@@ -149,13 +159,15 @@ async def _reconcile_loop() -> None:
         try:
             await asyncio.sleep(settings.reconcile_interval)
             async with session_scope() as db:
-                floors = {
-                    str(fid): mi
-                    for fid, mi in (
-                        await db.execute(select(Function.id, Function.min_instances))
+                limits = {
+                    str(fid): (lo, hi)
+                    for fid, lo, hi in (
+                        await db.execute(
+                            select(Function.id, Function.min_instances, Function.max_instances)
+                        )
                     ).all()
                 }
-            await pool.reap_idle(min_instances=floors)
+            await pool.reap_idle(limits=limits)
             metrics.WARM_ISOLATES.set(pool.count())
             await _prune_logs()
             await _prune_versions()

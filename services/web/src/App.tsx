@@ -9,6 +9,7 @@ const Docs = lazy(() => import('./pages/Docs'))
 const Setup = lazy(() => import('./pages/Setup'))
 const Login = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Live = lazy(() => import('./pages/Live'))
 const FunctionDetail = lazy(() => import('./pages/FunctionDetail'))
 const Playground = lazy(() => import('./pages/Playground'))
 const PlaygroundGroup = lazy(() => import('./pages/PlaygroundGroup'))
@@ -58,6 +59,14 @@ export default function App() {
           element={
             <Guarded>
               <Dashboard />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/live"
+          element={
+            <Guarded>
+              <Live />
             </Guarded>
           }
         />

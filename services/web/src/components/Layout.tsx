@@ -52,6 +52,7 @@ export function ThemeToggle({ className }: { className?: string }) {
 
 const NAV = [
   { to: '/console', end: true, label: 'Overview', icon: Grid },
+  { to: '/console/live', end: false, label: 'Live activity', icon: Bolt },
   { to: '/console/playground', end: false, label: 'Function playground', icon: Terminal },
   { to: '/console/env', end: false, label: 'Global env', icon: Globe },
   { to: '/console/logs', end: false, label: 'Logs & monitoring', icon: Lines },
@@ -88,6 +89,7 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
     if (!path) return 'Overview'
     const [head, tail] = path.split('/')
     const names: Record<string, string> = {
+      live: 'Live activity',
       env: 'Global env',
       logs: 'Logs',
       cluster: 'Cluster',
@@ -96,9 +98,10 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
       functions: 'Function',
       services: 'Data services',
     }
-    return tail && head === 'playground'
-      ? 'Playground / namespace'
-      : (names[head] ?? 'Overview')
+    if (head === 'playground' && tail) {
+      return path.split('/').length > 2 ? 'Playground / function' : 'Playground / namespace'
+    }
+    return names[head] ?? 'Overview'
   }, [location.pathname])
 
   useEffect(() => setMenuOpen(false), [location.pathname])

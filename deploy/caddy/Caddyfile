@@ -12,7 +12,26 @@
 # (e.g. cubicle.example.com) when a domain is configured — in that case Caddy
 # obtains and renews the certificate itself, with no extra configuration.
 {$CUBICLE_SITE_ADDRESS} {
-	encode zstd gzip
+	# Compression is opt-in by content type rather than the default `text/*`,
+	# because that default also matches text/event-stream — and a compressed
+	# event stream is a buffered one. The live log tail and the activity
+	# dashboard would sit there receiving nothing.
+	encode {
+		zstd
+		gzip
+		match {
+			header Content-Type text/html*
+			header Content-Type text/plain*
+			header Content-Type text/css*
+			header Content-Type text/javascript*
+			header Content-Type text/xml*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xhtml+xml*
+			header Content-Type application/wasm*
+			header Content-Type image/svg+xml*
+		}
+	}
 
 	header {
 		X-Content-Type-Options nosniff

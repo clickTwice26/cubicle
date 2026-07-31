@@ -592,6 +592,7 @@ stateDiagram-v2
     Busy --> Removed: released unhealthy — timeout,<br/>transport error, agent crash
 
     Ready --> Removed: idle past CUBICLE_ISOLATE_IDLE_TTL<br/>and above min_instances
+    Ready --> Removed: pool wider than recent peak concurrency
     Ready --> Removed: its version stopped being current
     Ready --> Removed: function deleted, paused,<br/>or its limits changed
 
@@ -602,7 +603,7 @@ stateDiagram-v2
     Removed --> [*]
 ```
 
-Three properties fall out of this:
+Four properties fall out of this:
 
 - **Scale to zero.** An untouched function keeps no container. The reconcile
   loop reclaims idle isolates every 30 s, down to `min_instances`.
@@ -611,8 +612,19 @@ Three properties fall out of this:
   removes the rest. Verified: a request straight after a control-plane restart
   returned `X-Cubicle-Cold-Start: 0`.
 - **Concurrency is isolates, not threads.** The control plane marks an isolate
-  busy and will not give it a second request; parallelism comes from starting up
-  to `CUBICLE_ISOLATE_MAX_PER_FUNCTION` (8) of them.
+  busy and will not give it a second request; parallelism comes from starting
+  more of them, up to the function's own **max instances** (default 4) and never
+  past the instance-wide `CUBICLE_ISOLATE_MAX_PER_FUNCTION` (8). At the ceiling a
+  request waits for a free isolate rather than starting another container, which
+  is what stops one busy function from taking a whole node. Verified: with the
+  cap at 2, twenty-four concurrent requests ran on exactly two isolates.
+- **Work is spread, not stacked.** `acquire` takes the *least-used* idle
+  isolate, so traffic converges on an even split rather than piling onto
+  whichever one happens to be first in the list — 60 sequential requests across
+  five isolates landed 21/21/22/22/21. Spreading load keeps every isolate's
+  last-used timestamp fresh, so idle-TTL alone would never shrink a pool that
+  grew during a burst; the reconcile loop also trims one isolate per pass while
+  the pool is wider than the concurrency it has recently seen.
 
 ---
 

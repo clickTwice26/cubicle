@@ -22,6 +22,7 @@ import docker
 import httpx
 from docker.errors import DockerException, NotFound
 
+from .. import live
 from ..config import settings
 from ..logging_setup import log
 from .builder import volume_name
@@ -41,10 +42,12 @@ class FunctionSpec:
     memory_mb: int
     timeout_s: int
     min_instances: int
+    max_instances: int
     version_id: str
     version_number: int
     node_name: str = "node-01"
     docker_host: str = LOCAL_HOST
+    cluster: str = ""
     node_is_local: bool = True
 
     @property
@@ -62,10 +65,34 @@ class Isolate:
     node_name: str
     docker_host: str
     memory_mb: int
+    cluster: str = ""
+    name: str = ""
+    namespace: str = ""
     started_at: float = field(default_factory=time.monotonic)
     last_used: float = field(default_factory=time.monotonic)
     invocations: int = 0
     busy: bool = False
+
+
+def _announce(kind: str, isolate: Isolate, **fields: object) -> None:
+    """Publish an isolate lifecycle event, if we know which cluster owns it.
+
+    Adopted isolates carry no cluster until the reconcile loop matches them to
+    a version, so an unattributed event is skipped rather than broadcast to
+    every dashboard.
+    """
+    if not isolate.cluster:
+        return
+    live.publish(
+        kind,
+        isolate.cluster,
+        isolate=isolate.container_id[:12],
+        function_id=isolate.function_id,
+        function=isolate.name,
+        namespace=isolate.namespace,
+        node=isolate.node_name,
+        **fields,
+    )
 
 
 def cpu_quota_for(memory_mb: int) -> int:
@@ -87,6 +114,8 @@ class IsolatePool:
         self._isolates: dict[str, list[Isolate]] = {}
         self._cond = asyncio.Condition()
         self._starting: dict[str, int] = {}
+        #: spec key -> (highest concurrent busy count, when it was seen)
+        self._peaks: dict[str, tuple[int, float]] = {}
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(5.0, read=920.0))
         self._closed = False
 
@@ -98,19 +127,33 @@ class IsolatePool:
         while True:
             async with self._cond:
                 pool = self._isolates.setdefault(spec.key, [])
-                for isolate in pool:
-                    if not isolate.busy:
-                        isolate.busy = True
-                        isolate.last_used = time.monotonic()
-                        return isolate, False
+                # Least-used wins, so work spreads evenly across the pool
+                # instead of piling onto whichever isolate happens to be first
+                # in the list. Ties go to the one idle longest, which keeps the
+                # rotation stable rather than flapping between two equals.
+                idle = [i for i in pool if not i.busy]
+                if idle:
+                    isolate = min(idle, key=lambda i: (i.invocations, i.last_used))
+                    isolate.busy = True
+                    isolate.last_used = time.monotonic()
+                    self._peak(spec.key, pool)
+                    _announce("isolate.busy", isolate)
+                    return isolate, False
 
+                # The function's own ceiling, never above the instance-wide
+                # one: a per-function setting may restrain the platform, not
+                # overrule it.
+                ceiling = max(1, min(spec.max_instances, settings.isolate_max_per_function))
                 in_flight = self._starting.get(spec.key, 0)
-                if len(pool) + in_flight < settings.isolate_max_per_function:
+                if len(pool) + in_flight < ceiling:
                     self._starting[spec.key] = in_flight + 1
                     break
 
                 if time.monotonic() > deadline:
-                    raise IsolateError("all isolates for this function are busy")
+                    raise IsolateError(
+                        f"all {ceiling} isolates for this function are busy — "
+                        "raise its max instances or lower its timeout"
+                    )
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._cond.wait(), timeout=1.0)
 
@@ -123,7 +166,10 @@ class IsolatePool:
 
         async with self._cond:
             isolate.busy = True
-            self._isolates.setdefault(spec.key, []).append(isolate)
+            pool = self._isolates.setdefault(spec.key, [])
+            pool.append(isolate)
+            self._peak(spec.key, pool)
+        _announce("isolate.busy", isolate)
         return isolate, True
 
     async def release(self, isolate: Isolate, *, healthy: bool = True) -> None:
@@ -131,6 +177,7 @@ class IsolatePool:
             isolate.busy = False
             isolate.last_used = time.monotonic()
             isolate.invocations += 1
+            _announce("isolate.idle", isolate, invocations=isolate.invocations)
             if not healthy:
                 pool = self._isolates.get(isolate.spec_key, [])
                 if isolate in pool:
@@ -148,6 +195,24 @@ class IsolatePool:
         return response.json()
 
     # ── container management ─────────────────────────────────────────────
+
+    def _peak(self, key: str, pool: list[Isolate]) -> None:
+        """Record how many isolates of this spec are busy at once."""
+        busy = sum(1 for i in pool if i.busy)
+        seen, at = self._peaks.get(key, (0, 0.0))
+        now = time.monotonic()
+        # The mark decays, so yesterday's traffic spike does not pin the pool
+        # at its widest for the rest of the process's life.
+        if now - at > settings.isolate_idle_ttl:
+            seen = 0
+        if busy >= seen:
+            self._peaks[key] = (busy, now)
+        elif seen:
+            self._peaks[key] = (seen, at)
+
+    def _peak_concurrency(self, key: str, now: float) -> int:
+        seen, at = self._peaks.get(key, (0, 0.0))
+        return 0 if now - at > settings.isolate_idle_ttl else seen
 
     async def _start(self, spec: FunctionSpec) -> Isolate:
         image = settings.runtime_image(spec.runtime)
@@ -170,6 +235,9 @@ class IsolatePool:
                     "cubicle.version_number": str(spec.version_number),
                     "cubicle.namespace": spec.namespace,
                     "cubicle.name": spec.name,
+                    # Read back by adopt(), so an isolate that outlives the
+                    # control plane still knows which cluster it belongs to.
+                    "cubicle.cluster": spec.cluster,
                 },
                 environment={
                     "CUBICLE_FUNCTION": spec.name,
@@ -211,13 +279,22 @@ class IsolatePool:
             node_name=spec.node_name,
             docker_host=spec.docker_host,
             memory_mb=spec.memory_mb,
+            cluster=spec.cluster,
+            name=spec.name,
+            namespace=spec.namespace,
         )
+        # Announced before the readiness wait, not after: booting is the part
+        # worth watching, and it is most of the ~400ms.
+        started = time.monotonic()
+        _announce("isolate.spawn", isolate, memory_mb=spec.memory_mb)
 
         try:
             await self._wait_ready(isolate)
         except Exception:
+            _announce("isolate.gone", isolate, reason="failed")
             await self._destroy(isolate, log_output=True)
             raise
+        _announce("isolate.ready", isolate, boot_ms=round((time.monotonic() - started) * 1000))
         return isolate
 
     async def _wait_ready(self, isolate: Isolate) -> None:
@@ -245,6 +322,8 @@ class IsolatePool:
         raise IsolateError(f"isolate did not become ready: {last_error}")
 
     async def _destroy(self, isolate: Isolate, *, log_output: bool = False) -> None:
+        _announce("isolate.gone", isolate, reason="reclaimed")
+
         def _remove(client: docker.DockerClient) -> str:
             try:
                 container = client.containers.get(isolate.container_id)
@@ -301,20 +380,45 @@ class IsolatePool:
             await self._destroy(isolate)
         return len(victims)
 
-    async def reap_idle(self, *, min_instances: dict[str, int] | None = None) -> int:
-        """Reclaim isolates that have been idle longer than the TTL."""
-        keep_alive = min_instances or {}
+    async def reap_idle(self, *, limits: dict[str, tuple[int, int]] | None = None) -> int:
+        """Reclaim isolates the pool no longer needs.
+
+        Two reasons to let one go, and both are needed:
+
+        *Idle* — nothing has touched it for the TTL. This is what reclaims a
+        function that stopped receiving traffic entirely.
+
+        *Surplus* — the pool is larger than the concurrency it has actually
+        seen recently. Spreading requests evenly keeps every isolate's
+        last-used timestamp fresh, so a pool that grew during a burst would
+        otherwise stay at its high-water mark forever: eight isolates each
+        taking an eighth of the traffic all look busy enough to keep. Trimming
+        to observed peak concurrency is what makes scale-down work.
+        """
+        bounds = limits or {}
         now = time.monotonic()
         victims: list[Isolate] = []
 
         async with self._cond:
             for key, pool in list(self._isolates.items()):
-                floor = keep_alive.get(key.split(":", 1)[0], 0)
-                idle = [
+                floor, ceiling = bounds.get(
+                    key.split(":", 1)[0], (0, settings.isolate_max_per_function)
+                )
+                stale = [
                     i for i in pool if not i.busy and now - i.last_used > settings.isolate_idle_ttl
                 ]
+                # Only one surplus isolate per pass, so a pool that is merely
+                # between bursts drifts down instead of collapsing and paying
+                # for a fresh round of cold starts.
+                # Never above the function's ceiling: lowering max instances
+                # has to actually shrink a pool that already grew past it.
+                wanted = min(max(floor, self._peak_concurrency(key, now), 1), max(ceiling, 1))
+                spare = [i for i in pool if not i.busy and i not in stale]
+                spare.sort(key=lambda i: i.invocations)
+                surplus = spare[:1] if len(pool) > wanted else []
+
                 removable = max(0, len(pool) - floor)
-                for isolate in idle[:removable]:
+                for isolate in (stale + surplus)[:removable]:
                     pool.remove(isolate)
                     victims.append(isolate)
                 if not pool:
@@ -327,8 +431,13 @@ class IsolatePool:
             log.info("reclaimed idle isolates", count=len(victims))
         return len(victims)
 
-    async def adopt(self, *, hosts: list[str], live_versions: set[str]) -> None:
-        """Re-attach to isolates that outlived a control-plane restart."""
+    async def adopt(self, *, hosts: list[str], live_versions: dict[str, dict]) -> None:
+        """Re-attach to isolates that outlived a control-plane restart.
+
+        ``live_versions`` maps a deployed version to the function that owns it,
+        so an adopted isolate gets its full identity back — which cluster, which
+        function — rather than only what its labels happen to carry.
+        """
 
         def _list(client: docker.DockerClient):
             return client.containers.list(filters={"label": f"{ROLE_LABEL}={ISOLATE_ROLE}"})
@@ -348,7 +457,8 @@ class IsolatePool:
                 )
                 if known:
                     continue
-                if version_id not in live_versions or container.status != "running":
+                owner = live_versions.get(version_id, {})
+                if not owner or container.status != "running":
                     log.info("removing stale isolate", container=container.name)
                     with contextlib.suppress(Exception):
                         await engines.call(
@@ -368,7 +478,10 @@ class IsolatePool:
                     version_id=version_id,
                     node_name=labels.get("cubicle.node", "node-01"),
                     docker_host=host,
-                    memory_mb=512,
+                    memory_mb=owner.get("memory_mb", 512),
+                    cluster=owner.get("cluster", "") or labels.get("cubicle.cluster", ""),
+                    name=owner.get("name", "") or labels.get("cubicle.name", ""),
+                    namespace=owner.get("namespace", "") or labels.get("cubicle.namespace", ""),
                 )
                 try:
                     await self._wait_ready(isolate)
@@ -379,9 +492,13 @@ class IsolatePool:
                     self._isolates.setdefault(isolate.spec_key, []).append(isolate)
                 log.info("adopted warm isolate", container=container.name)
 
-    def snapshot(self) -> list[dict]:
+    def snapshot(self, *, cluster: str | None = None) -> list[dict]:
         return [
             {
+                "id": isolate.container_id[:12],
+                "cluster": isolate.cluster,
+                "function": isolate.name,
+                "namespace": isolate.namespace,
                 "function_id": isolate.function_id,
                 "version_id": isolate.version_id,
                 "node": isolate.node_name,
@@ -394,6 +511,7 @@ class IsolatePool:
             }
             for pool in self._isolates.values()
             for isolate in pool
+            if cluster is None or isolate.cluster == cluster
         ]
 
     def count(self) -> int:

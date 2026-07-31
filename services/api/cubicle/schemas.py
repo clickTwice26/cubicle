@@ -228,6 +228,7 @@ class FunctionUpdate(BaseModel):
     memory_mb: int | None = Field(default=None, ge=64, le=8192)
     timeout_s: int | None = Field(default=None, ge=1, le=900)
     min_instances: int | None = Field(default=None, ge=0, le=20)
+    max_instances: int | None = Field(default=None, ge=1, le=32)
     auth_required: bool | None = None
     node_pool: str | None = None
     status: Literal["active", "paused"] | None = None
@@ -250,6 +251,7 @@ class FunctionOut(ORMModel):
     memory_mb: int
     timeout_s: int
     min_instances: int
+    max_instances: int
     node_pool: str
     auth_required: bool
     status: str
