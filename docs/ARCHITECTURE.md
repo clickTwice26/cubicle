@@ -730,6 +730,7 @@ What this buys, and what it does not:
 | Docker engine unreachable | Node marked `down`; `/healthz` reports `docker: false` | Console loads and explains, rather than erroring blankly |
 | Node drained | Removed from scheduling; existing isolates keep serving | New isolates land elsewhere |
 | `CUBICLE_MASTER_KEY` changed or lost | Every secret becomes undecryptable | Explicit "root key changed" in place of the value — by design |
+| A data service container predates a change to how they are created | **Recreate** rebuilds it from the current spec, reusing the volume and the stored password | A restart; the data, credentials and connection string are unchanged |
 
 ---
 

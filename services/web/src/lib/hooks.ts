@@ -451,6 +451,10 @@ export function useServiceAction(kind: 'postgres' | 'redis') {
         api.post<ManagedService>(`/api/services/${kind}`, body),
       onSuccess: invalidate,
     }),
+    recreate: useMutation({
+      mutationFn: () => api.post<ManagedService>(`/api/services/${kind}/recreate`),
+      onSuccess: invalidate,
+    }),
     start: useMutation({
       mutationFn: () => api.post<ManagedService>(`/api/services/${kind}/start`),
       onSuccess: invalidate,

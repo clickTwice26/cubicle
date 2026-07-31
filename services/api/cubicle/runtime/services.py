@@ -80,6 +80,141 @@ def _memory_arg(label: str) -> int:
     return MEMORY_BYTES.get(label, 1024**3)
 
 
+def _postgres_spec(
+    *,
+    image: str,
+    container_name: str,
+    volume_name: str,
+    cluster_slug: str,
+    password: str,
+    memory: str,
+) -> dict:
+    return {
+        "image": image,
+        "name": container_name,
+        "detach": True,
+        "labels": _labels("postgres", cluster_slug),
+        "environment": {
+            "POSTGRES_USER": "cubicle",
+            "POSTGRES_PASSWORD": password,
+            "POSTGRES_DB": "cubicle",
+            "PGDATA": "/var/lib/postgresql/data/pgdata",
+        },
+        "volumes": {volume_name: {"bind": "/var/lib/postgresql/data", "mode": "rw"}},
+        "network": settings.function_network,
+        "mem_limit": _memory_arg(memory),
+        "restart_policy": {"Name": "unless-stopped"},
+    }
+
+
+def _redis_spec(
+    *,
+    image: str,
+    container_name: str,
+    volume_name: str,
+    cluster_slug: str,
+    password: str,
+    memory: str,
+    eviction: str,
+) -> dict:
+    max_memory = _memory_arg(memory)
+    return {
+        "image": image,
+        "name": container_name,
+        "detach": True,
+        "labels": _labels("redis", cluster_slug),
+        "command": [
+            "redis-server",
+            "--requirepass",
+            password,
+            "--maxmemory",
+            str(max_memory),
+            "--maxmemory-policy",
+            eviction,
+            "--appendonly",
+            "yes",
+        ],
+        "volumes": {volume_name: {"bind": "/data", "mode": "rw"}},
+        "network": settings.function_network,
+        "mem_limit": int(max_memory * 1.3),
+        "restart_policy": {"Name": "unless-stopped"},
+    }
+
+
+def _labels(kind: str, cluster_slug: str) -> dict[str, str]:
+    return {"cubicle.role": "service", "cubicle.service": kind, "cubicle.cluster": cluster_slug}
+
+
+def _spec_for(service: ManagedService, cluster: Cluster) -> dict:
+    """Rebuild the run arguments for a service that already exists."""
+    config = service.config or {}
+    password = password_for(service)
+    if service.kind == "postgres":
+        return _postgres_spec(
+            image=POSTGRES_IMAGES[service.version],
+            container_name=service.container_name,
+            volume_name=service.volume_name,
+            cluster_slug=cluster.slug,
+            password=password,
+            memory=config.get("memory", "1 GB"),
+        )
+    return _redis_spec(
+        image=REDIS_IMAGES[service.version],
+        container_name=service.container_name,
+        volume_name=service.volume_name,
+        cluster_slug=cluster.slug,
+        password=password,
+        memory=config.get("memory", "512 MB"),
+        eviction=config.get("eviction", "allkeys-lru"),
+    )
+
+
+async def recreate(db: AsyncSession, service: ManagedService, cluster: Cluster) -> ManagedService:
+    """Replace the container, keeping the volume and the stored credentials.
+
+    Used when the running container has drifted from what the control plane
+    would create today — different labels, different limits, an older image
+    tag. The data is in the volume, and the volume is never touched, so this
+    costs a restart and nothing else.
+    """
+    node = await _service_node(db, service)
+    host = node.docker_host if node else LOCAL_HOST
+    spec = _spec_for(service, cluster)
+    volume = service.volume_name
+    name = service.container_name
+    # A service the operator stopped stays stopped — recreating is a repair,
+    # not a start.
+    was_running = service.status == "running"
+
+    def _replace(client: docker.DockerClient) -> str:
+        # The volume has to survive, so it is created only if absent and the
+        # container is removed without it.
+        try:
+            client.volumes.get(volume)
+        except NotFound:
+            client.volumes.create(name=volume, labels={"cubicle.role": "service-volume"})
+        _remove_container(client, name)
+        container = client.containers.run(**spec)
+        if not was_running:
+            container.stop(timeout=20)
+        return container.id
+
+    try:
+        container_id = await engines.call(host, _replace)
+    except DockerException as exc:
+        service.last_error = str(exc)
+        await db.commit()
+        raise ServiceError(f"could not recreate the container: {exc}") from exc
+
+    service.container_id = container_id
+    service.status = "running" if was_running else "stopped"
+    service.last_error = None
+    await db.commit()
+    await db.refresh(service)
+    log.info("service container recreated", kind=service.kind, cluster=cluster.slug, volume=volume)
+    return service
+
+
 async def _node_for(db: AsyncSession, cluster: Cluster, pool_name: str) -> Node:
     in_cluster = Node.cluster_id == cluster.id
     node = (
@@ -140,30 +275,19 @@ async def create_postgres(
     password = secrets.token_urlsafe(24)
     await engines.ensure_network(node.docker_host, settings.function_network)
 
+    spec = _postgres_spec(
+        image=POSTGRES_IMAGES[version],
+        container_name=container_name,
+        volume_name=volume_name,
+        cluster_slug=cluster.slug,
+        password=password,
+        memory=memory,
+    )
+
     def _create(client: docker.DockerClient) -> str:
         _remove_container(client, container_name)
         client.volumes.create(name=volume_name, labels={"cubicle.role": "service-volume"})
-        container = client.containers.run(
-            POSTGRES_IMAGES[version],
-            name=container_name,
-            detach=True,
-            labels={
-                "cubicle.role": "service",
-                "cubicle.service": "postgres",
-                "cubicle.cluster": cluster.slug,
-            },
-            environment={
-                "POSTGRES_USER": "cubicle",
-                "POSTGRES_PASSWORD": password,
-                "POSTGRES_DB": "cubicle",
-                "PGDATA": "/var/lib/postgresql/data/pgdata",
-            },
-            volumes={volume_name: {"bind": "/var/lib/postgresql/data", "mode": "rw"}},
-            network=settings.function_network,
-            mem_limit=_memory_arg(memory),
-            restart_policy={"Name": "unless-stopped"},
-        )
-        return container.id
+        return client.containers.run(**spec).id
 
     container_id = await engines.call(node.docker_host, _create)
 
@@ -203,38 +327,22 @@ async def create_redis(
     container_name, volume_name = _names(cluster, "redis")
     node = await _node_for(db, cluster, pool_name)
     password = secrets.token_urlsafe(24)
-    max_memory = _memory_arg(memory)
     await engines.ensure_network(node.docker_host, settings.function_network)
+
+    spec = _redis_spec(
+        image=REDIS_IMAGES[version],
+        container_name=container_name,
+        volume_name=volume_name,
+        cluster_slug=cluster.slug,
+        password=password,
+        memory=memory,
+        eviction=eviction,
+    )
 
     def _create(client: docker.DockerClient) -> str:
         _remove_container(client, container_name)
         client.volumes.create(name=volume_name, labels={"cubicle.role": "service-volume"})
-        container = client.containers.run(
-            REDIS_IMAGES[version],
-            name=container_name,
-            detach=True,
-            labels={
-                "cubicle.role": "service",
-                "cubicle.service": "redis",
-                "cubicle.cluster": cluster.slug,
-            },
-            command=[
-                "redis-server",
-                "--requirepass",
-                password,
-                "--maxmemory",
-                str(max_memory),
-                "--maxmemory-policy",
-                eviction,
-                "--appendonly",
-                "yes",
-            ],
-            volumes={volume_name: {"bind": "/data", "mode": "rw"}},
-            network=settings.function_network,
-            mem_limit=int(max_memory * 1.3),
-            restart_policy={"Name": "unless-stopped"},
-        )
-        return container.id
+        return client.containers.run(**spec).id
 
     container_id = await engines.call(node.docker_host, _create)
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Bolt, Database, Layers, Power, Table, Trash } from '../components/Icons'
+import { Bolt, Database, Layers, Power, Refresh, Table, Trash } from '../components/Icons'
 import {
   Button,
   Card,
@@ -114,6 +114,20 @@ export default function DataService() {
                 }
               >
                 {service.status === 'running' ? 'Stop' : 'Start'}
+              </Button>
+              <Button
+                variant="ghost"
+                icon={<Refresh size={14} />}
+                loading={actions.recreate.isPending}
+                title="Rebuild the container — the volume and credentials are kept"
+                onClick={() =>
+                  actions.recreate.mutate(undefined, {
+                    onSuccess: () => toast.push(`${config.title} container rebuilt`),
+                    onError: (error) => toast.push(error.message, 'err'),
+                  })
+                }
+              >
+                Recreate
               </Button>
               <Button
                 variant="danger"

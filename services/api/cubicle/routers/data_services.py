@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from ..analytics import fmt_bytes
 from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin
+from ..logging_setup import log
 from ..runtime import services
 from ..schemas import ServiceCreate, ServiceOut
 
@@ -107,6 +108,28 @@ async def create_service(
             )
     except services.ServiceError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return await _describe(db, cluster, kind)
+
+
+@router.post("/{kind}/recreate", response_model=ServiceOut)
+async def recreate_service(
+    kind: str, db: DbSession, cluster: CurrentCluster, principal: RequireAdmin
+):
+    """Rebuild the container from what the control plane would create today.
+
+    The volume and the stored credentials are kept, so this is a restart, not a
+    reset — use it when a running container predates a change to how they are
+    created, or when its limits no longer match its configuration.
+    """
+    _check(kind)
+    service = await services.get_service(db, cluster.id, kind)
+    if service is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That service does not exist.")
+    try:
+        await services.recreate(db, service, cluster)
+    except services.ServiceError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    log.info("service recreated", kind=kind, cluster=cluster.slug, by=principal.user.email)
     return await _describe(db, cluster, kind)
 
 
