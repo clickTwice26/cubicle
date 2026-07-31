@@ -99,7 +99,38 @@ export const DOCS: DocPage[] = [
             {'  '}▸ Generating .env{'\n'}
             {'  '}▸ Building images{'\n'}
             {'  '}▸ Starting the cluster{'\n'}
-            {'  '}▸ Cubicle is up. Console http://localhost:7000
+            {'  '}▸ Cubicle is up. Console http://localhost:28080
+          </>,
+        )}
+
+        {h2('proxy', 'Behind an existing web server')}
+        {p(
+          <>
+            If nginx, Apache or Traefik already owns ports 80 and 443, Cubicle cannot obtain its
+            own certificate — Let&apos;s Encrypt validates by connecting to those ports, so no
+            other port stands in. Run it behind what you already have instead.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-ink-3">$</span> ./install.sh --domain fn.example.com
+            --behind-proxy
+          </>,
+        )}
+        {p(
+          <>
+            Cubicle then serves plain HTTP on a high port and asks for no certificate; your
+            existing server terminates TLS. The installer prints a ready-to-paste{' '}
+            {mono('server')} block.
+          </>,
+        )}
+        {note(
+          <>
+            <strong>Turn proxy buffering off.</strong> The live log tail and the activity
+            dashboard are server-sent events, and nginx buffers proxied responses by default —
+            which turns a live stream into a connection that appears to hang. The generated
+            block sets {mono('proxy_buffering off')} and a long {mono('proxy_read_timeout')} for
+            exactly this reason.
           </>,
         )}
 
@@ -129,7 +160,7 @@ export const DOCS: DocPage[] = [
         {h2('verify', 'Verify')}
         {code(
           <>
-            <span className="text-ink-3">$</span> curl -s localhost:7000/healthz | jq{'\n\n'}
+            <span className="text-ink-3">$</span> curl -s localhost:28080/healthz | jq{'\n\n'}
             {'{'}
             {'\n'}
             {'  '}
@@ -153,8 +184,9 @@ export const DOCS: DocPage[] = [
         {note(
           <>
             The installer checks the port before claiming it and picks another if it is taken,
-            printing whichever it used. On macOS this matters: AirPlay Receiver holds port 7000
-            by default.
+            printing whichever it used. The default is {mono('28080')} — high enough to miss
+            every common service, and below the range Linux hands out to outbound connections,
+            where a listener would fail to bind for reasons that look like nothing.
           </>,
         )}
       </>
@@ -215,7 +247,7 @@ export const DOCS: DocPage[] = [
         {code(
           <>
             <span className="text-ink-3">$</span> curl -X POST
-            http://localhost:7000/prod-cluster/payments/create-charge \{'\n'}
+            http://localhost:28080/prod-cluster/payments/create-charge \{'\n'}
             {'    '}-H <span className="text-ok">&apos;Authorization: Bearer cbcl_…&apos;</span>{' '}
             \{'\n'}
             {'    '}-H <span className="text-ok">&apos;X-Cubicle-Session: sess_demo&apos;</span>{' '}
@@ -914,7 +946,7 @@ export const DOCS: DocPage[] = [
         {code(
           <>
             <span className="text-ink-3">$</span> pipx install ./cli{'\n'}
-            <span className="text-ink-3">$</span> cubicle login http://localhost:7000{'\n'}
+            <span className="text-ink-3">$</span> cubicle login http://localhost:28080{'\n'}
             <span className="text-ink-3">?</span> token:{' '}
             <span className="text-ink-3">cbcl_••••</span>
             {'\n'}
@@ -1136,7 +1168,7 @@ export const DOCS: DocPage[] = [
             ],
             [
               'Port already in use',
-              'Something else holds the port. On macOS, AirPlay Receiver holds 7000 — the installer detects this and picks another.',
+              'Something else holds the port. The installer probes with ss, lsof or nc and steps up to the next free pair; pass --http-port to choose.',
             ],
           ],
         )}

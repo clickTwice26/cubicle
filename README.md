@@ -24,7 +24,8 @@ git clone https://github.com/clickTwice26/cubicle && cd cubicle
 ```
 
 That builds the images, generates every secret, starts the stack and prints the
-console URL — `http://localhost:7000` by default. Open it and the first screen
+console URL — `http://localhost:28080` by default, or the next free port if
+something already holds it. Open it and the first screen
 is setup, where you name the cluster and choose the administrator password.
 **There is no registration anywhere in the product**; that password is the only
 credential the instance has.

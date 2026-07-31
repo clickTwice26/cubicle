@@ -25,9 +25,9 @@ services:
     environment:
       CUBICLE_SITE_ADDRESS: ${CUBICLE_SITE_ADDRESS:-:80}
     ports:
-      - "${CUBICLE_HTTP_PORT:-7000}:80"
-      - "${CUBICLE_HTTPS_PORT:-7443}:443"
-      - "${CUBICLE_HTTPS_PORT:-7443}:443/udp"
+      - "${CUBICLE_HTTP_PORT:-28080}:80"
+      - "${CUBICLE_HTTPS_PORT:-28443}:443"
+      - "${CUBICLE_HTTPS_PORT:-28443}:443/udp"
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/caddy/conf.d:/etc/caddy/conf.d:ro
@@ -64,7 +64,7 @@ services:
       CUBICLE_SECRET_KEY: ${CUBICLE_SECRET_KEY:?set CUBICLE_SECRET_KEY in .env}
       CUBICLE_MASTER_KEY: ${CUBICLE_MASTER_KEY:?set CUBICLE_MASTER_KEY in .env}
       CUBICLE_DOMAIN: ${CUBICLE_DOMAIN:-localhost}
-      CUBICLE_PUBLIC_URL: ${CUBICLE_PUBLIC_URL:-http://localhost:7000}
+      CUBICLE_PUBLIC_URL: ${CUBICLE_PUBLIC_URL:-http://localhost:28080}
       CUBICLE_DATA_DIR: /var/lib/cubicle
       CUBICLE_FUNCTION_NETWORK: cubicle_fn
       CUBICLE_RUNTIME_IMAGE_PY312: cubicle/runtime-py312:${CUBICLE_VERSION:-1.0.0}
