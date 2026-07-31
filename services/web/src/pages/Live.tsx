@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Bolt, Play, Power } from '../components/Icons'
 import { Badge, Button, Card, PAGE, Skeleton, cx } from '../components/ui'
 import { FlowCanvas } from '../components/live/FlowCanvas'
+import { TrafficDialog } from '../components/live/TrafficDialog'
 import {
   Counter,
   IsolateGrid,
@@ -10,7 +11,6 @@ import {
   Throughput,
   Ticker,
 } from '../components/live/Panels'
-import { api } from '../lib/api'
 import { useLiveStream } from '../lib/live'
 
 /**
@@ -24,40 +24,7 @@ import { useLiveStream } from '../lib/live'
 export default function Live() {
   const live = useLiveStream()
   const [focused, setFocused] = useState<string | null>(null)
-  const [firing, setFiring] = useState(false)
-  const cancelled = useRef(false)
-
-  useEffect(() => () => void (cancelled.current = true), [])
-
-  // The generator drives real invocations through the real path — the packets
-  // it produces are the same ones any other client would produce.
-  const sendTraffic = useCallback(
-    async (count: number) => {
-      const target =
-        live.functions.find((fn) => fn.id === focused) ??
-        live.functions.find((fn) => fn.status !== 'paused')
-      if (!target) return
-      setFiring(true)
-      cancelled.current = false
-      try {
-        for (let i = 0; i < count; i += 1) {
-          if (cancelled.current) break
-          void api
-            .post(`/api/functions/${target.id}/test`, {
-              body: { amount: 100 + i, source: 'live-dashboard' },
-            })
-            .catch(() => {
-              /* a failed invocation is itself worth watching — the stream shows it */
-            })
-          // Spread them out so the animation reads as traffic, not one burst.
-          await new Promise((resolve) => setTimeout(resolve, 180))
-        }
-      } finally {
-        setFiring(false)
-      }
-    },
-    [focused, live.functions],
-  )
+  const [sending, setSending] = useState(false)
 
   const warm = live.isolates.filter((isolate) => isolate.phase !== 'gone')
   const busy = warm.filter((isolate) => isolate.phase === 'busy')
@@ -100,9 +67,8 @@ export default function Live() {
           ) : null}
           <Button
             icon={<Play size={13} />}
-            loading={firing}
             disabled={live.functions.length === 0}
-            onClick={() => sendTraffic(12)}
+            onClick={() => setSending(true)}
             title="Invoke a function repeatedly so there is something to watch"
           >
             Send traffic
@@ -219,6 +185,13 @@ export default function Live() {
         </div>
         <Ticker entries={live.ticker} />
       </Card>
+
+      <TrafficDialog
+        open={sending}
+        onClose={() => setSending(false)}
+        functions={live.functions}
+        focused={focused}
+      />
     </div>
   )
 }
