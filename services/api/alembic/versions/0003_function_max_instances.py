@@ -25,6 +25,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Same reasoning as 0002: a fresh database already has this column,
+    # because 0001 builds the schema from the live models.
+    columns = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("functions")}
+    if "max_instances" in columns:
+        return
+
     op.add_column(
         "functions",
         sa.Column("max_instances", sa.Integer(), nullable=False, server_default="4"),

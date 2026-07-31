@@ -41,6 +41,13 @@ NEW_UNIQUE = (
 def upgrade() -> None:
     bind = op.get_bind()
 
+    # Revision 0001 materialises the *current* declarative metadata, so a
+    # database created today already has clusters and every column this
+    # revision adds. There is nothing to migrate — only an existing install
+    # from before clusters existed reaches the rest of this function.
+    if sa.inspect(bind).has_table("clusters"):
+        return
+
     op.create_table(
         "clusters",
         sa.Column("id", sa.Uuid(), primary_key=True),
