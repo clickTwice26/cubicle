@@ -28,10 +28,26 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+#: Arbitrary but fixed: two processes migrating the same database have to
+#: choose the same number for the lock to mean anything.
+MIGRATION_LOCK = 0x0CB1C1E
+
+
 def _run(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
-    with context.begin_transaction():
-        context.run_migrations()
+    # Serialise migrations across processes. Two control planes starting at
+    # once — a compose recreate racing an installer, or two replicas booting
+    # together — would otherwise both see the same head and both try to apply
+    # it, and the loser can leave the schema half-built. The second one now
+    # waits, then finds nothing to do.
+    connection.exec_driver_sql(f"SELECT pg_advisory_lock({MIGRATION_LOCK})")
+    try:
+        context.configure(
+            connection=connection, target_metadata=target_metadata, compare_type=True
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        connection.exec_driver_sql(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
 
 
 async def run_migrations_online() -> None:
