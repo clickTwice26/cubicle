@@ -25,9 +25,12 @@ services:
     environment:
       CUBICLE_SITE_ADDRESS: ${CUBICLE_SITE_ADDRESS:-:80}
     ports:
-      - "${CUBICLE_HTTP_PORT:-28080}:80"
-      - "${CUBICLE_HTTPS_PORT:-28443}:443"
-      - "${CUBICLE_HTTPS_PORT:-28443}:443/udp"
+      # CUBICLE_BIND is empty for a normal install (all interfaces) and
+      # "127.0.0.1:" behind a reverse proxy, where publishing plain HTTP to
+      # the internet would hand out an unencrypted door into the console.
+      - "${CUBICLE_BIND-}${CUBICLE_HTTP_PORT:-28080}:80"
+      - "${CUBICLE_BIND-}${CUBICLE_HTTPS_PORT:-28443}:443"
+      - "${CUBICLE_BIND-}${CUBICLE_HTTPS_PORT:-28443}:443/udp"
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/caddy/conf.d:/etc/caddy/conf.d:ro

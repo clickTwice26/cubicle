@@ -19,6 +19,7 @@ HTTPS_PORT=""
 NO_START=0
 STAGING=0
 BEHIND_PROXY=0
+BIND=""
 
 usage() {
 	cat <<'EOF'
@@ -100,6 +101,10 @@ if [ "$BEHIND_PROXY" -eq 1 ]; then
 	PUBLIC_URL="https://$DOMAIN"
 	: "${HTTP_PORT:=$DEFAULT_HTTP_PORT}"
 	: "${HTTPS_PORT:=$DEFAULT_HTTPS_PORT}"
+	# Loopback only. The proxy reaches it over 127.0.0.1; publishing plain
+	# HTTP on every interface would expose the console unencrypted on a high
+	# port, which is a door nobody would think to look for.
+	BIND="127.0.0.1:"
 elif [ -n "$DOMAIN" ]; then
 	SITE_ADDRESS="$DOMAIN"
 	PUBLIC_URL="https://$DOMAIN"
@@ -234,6 +239,7 @@ write_env CUBICLE_DOMAIN "$DOMAIN"
 write_env CUBICLE_ACME_EMAIL "$ACME_EMAIL"
 write_env CUBICLE_SITE_ADDRESS "$SITE_ADDRESS"
 write_env CUBICLE_PUBLIC_URL "$PUBLIC_URL"
+write_env CUBICLE_BIND "$BIND"
 write_env CUBICLE_HTTP_PORT "$HTTP_PORT"
 write_env CUBICLE_HTTPS_PORT "$HTTPS_PORT"
 write_env POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
@@ -281,7 +287,7 @@ cat <<EOF
                  and no account to create anywhere else.
 $(
 	if [ "$BEHIND_PROXY" -eq 1 ]; then
-		printf '    Listening    http://127.0.0.1:%s — put your proxy in front of it\n' "$HTTP_PORT"
+		printf '    Listening    http://127.0.0.1:%s (loopback only — not reachable from outside)\n' "$HTTP_PORT"
 		printf '    TLS          handled by your existing server, not by Cubicle\n'
 		printf '    Functions    https://%s/<namespace>/<function>\n' "$DOMAIN"
 	elif [ -n "$DOMAIN" ]; then
