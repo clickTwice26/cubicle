@@ -14,12 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from .. import analytics
+from .. import clusters as cluster_svc
 from ..crypto import decrypt, encrypt, mask
 from ..db import session_scope
-from ..deps import CurrentPrincipal, DbSession, InstanceDep, RequireDeveloper
+from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireDeveloper
 from ..logging_setup import log
 from ..metrics import BUILDS
-from ..models import Function, FunctionSecret, FunctionVersion, Group, Invocation, LogEntry
+from ..models import Cluster, Function, FunctionSecret, FunctionVersion, Group, Invocation, LogEntry
 from ..runtime import builder, invoker
 from ..runtime.nodes import pick_node
 from ..runtime.pool import pool
@@ -48,18 +49,13 @@ router = APIRouter(prefix="/api", tags=["functions"])
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def base_url(instance, ns: str = "", name: str = "") -> str:
-    from ..config import settings
-
-    root = settings.public_url.rstrip("/")
-    if ns and name:
-        return f"{root}/{ns}/{name}"
-    if ns:
-        return f"{root}/{ns}/"
-    return root + "/"
+def base_url(cluster: Cluster, ns: str = "", name: str = "") -> str:
+    return cluster_svc.function_url(cluster, ns, name)
 
 
-def serialize_function(fn: Function, instance, *, version: FunctionVersion | None = None) -> dict:
+def serialize_function(
+    fn: Function, cluster: Cluster, *, version: FunctionVersion | None = None
+) -> dict:
     return {
         "id": fn.id,
         "group_id": fn.group_id,
@@ -76,7 +72,8 @@ def serialize_function(fn: Function, instance, *, version: FunctionVersion | Non
         "auth_required": fn.auth_required,
         "status": fn.status,
         "path": f"/{fn.group.ns}/{fn.name}",
-        "url": base_url(instance, fn.group.ns, fn.name),
+        "cluster": cluster.slug,
+        "url": base_url(cluster, fn.group.ns, fn.name),
         "version": version.number if version else 0,
         "version_status": version.status if version else "pending",
         "updated_at": fn.updated_at,
@@ -84,12 +81,18 @@ def serialize_function(fn: Function, instance, *, version: FunctionVersion | Non
     }
 
 
-async def load_function(db, function_id: uuid.UUID) -> Function:
-    fn = (
-        await db.execute(
-            select(Function).options(selectinload(Function.group)).where(Function.id == function_id)
-        )
+async def _load_group(db, group_id: uuid.UUID, cluster: Cluster) -> Group | None:
+    return (
+        await db.execute(select(Group).where(Group.id == group_id, Group.cluster_id == cluster.id))
     ).scalar_one_or_none()
+
+
+async def load_function(db, function_id: uuid.UUID, cluster: Cluster | None = None) -> Function:
+    """Fetch a function, refusing to look outside ``cluster`` when one is given."""
+    stmt = select(Function).options(selectinload(Function.group)).where(Function.id == function_id)
+    if cluster is not None:
+        stmt = stmt.join(Group, Group.id == Function.group_id).where(Group.cluster_id == cluster.id)
+    fn = (await db.execute(stmt)).scalar_one_or_none()
     if fn is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such function.")
     return fn
@@ -112,11 +115,12 @@ async def current_version(db, fn: Function) -> FunctionVersion | None:
 
 
 @router.get("/groups", response_model=list[GroupOut])
-async def list_groups(db: DbSession, instance: InstanceDep, _: CurrentPrincipal):
+async def list_groups(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     rows = (
         await db.execute(
             select(Group, func.count(Function.id))
             .outerjoin(Function, Function.group_id == Group.id)
+            .where(Group.cluster_id == cluster.id)
             .group_by(Group.id)
             .order_by(Group.created_at)
         )
@@ -126,7 +130,7 @@ async def list_groups(db: DbSession, instance: InstanceDep, _: CurrentPrincipal)
             id=group.id,
             name=group.name,
             ns=group.ns,
-            base_url=base_url(instance, group.ns),
+            base_url=base_url(cluster, group.ns),
             function_count=count,
             created_at=group.created_at,
         )
@@ -136,36 +140,43 @@ async def list_groups(db: DbSession, instance: InstanceDep, _: CurrentPrincipal)
 
 @router.post("/groups", response_model=GroupOut, status_code=status.HTTP_201_CREATED)
 async def create_group(
-    payload: GroupCreate, db: DbSession, instance: InstanceDep, _: RequireDeveloper
+    payload: GroupCreate, db: DbSession, cluster: CurrentCluster, _: RequireDeveloper
 ):
     ns = payload.ns or slugify(payload.name)
     ns = validate_slug(ns, what="Namespace")
     if ns in RESERVED_NAMESPACES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"'{ns}' is reserved.")
 
-    group = Group(name=payload.name.strip(), ns=ns)
+    # Read anything needed for the error message before committing: a rollback
+    # expires the ORM objects, and touching one afterwards would attempt IO
+    # from a context that cannot await it.
+    cluster_label = cluster.name
+    group = Group(cluster_id=cluster.id, name=payload.name.strip(), ns=ns)
     db.add(group)
     try:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status.HTTP_409_CONFLICT, f"The namespace '{ns}' is already in use."
+            status.HTTP_409_CONFLICT,
+            f"The namespace '{ns}' is already in use in {cluster_label}.",
         ) from exc
     await db.refresh(group)
     return GroupOut(
         id=group.id,
         name=group.name,
         ns=group.ns,
-        base_url=base_url(instance, group.ns),
+        base_url=base_url(cluster, group.ns),
         function_count=0,
         created_at=group.created_at,
     )
 
 
 @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_group(group_id: uuid.UUID, db: DbSession, _: RequireDeveloper) -> Response:
-    group = await db.get(Group, group_id)
+async def delete_group(
+    group_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: RequireDeveloper
+) -> Response:
+    group = await _load_group(db, group_id, cluster)
     if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such namespace.")
 
@@ -186,20 +197,26 @@ async def delete_group(group_id: uuid.UUID, db: DbSession, _: RequireDeveloper) 
 @router.get("/functions", response_model=list[dict])
 async def list_functions(
     db: DbSession,
-    instance: InstanceDep,
+    cluster: CurrentCluster,
     _: CurrentPrincipal,
     group_id: uuid.UUID | None = None,
 ):
-    stmt = select(Function).options(selectinload(Function.group)).order_by(Function.created_at)
+    stmt = (
+        select(Function)
+        .options(selectinload(Function.group))
+        .join(Group, Group.id == Function.group_id)
+        .where(Group.cluster_id == cluster.id)
+        .order_by(Function.created_at)
+    )
     if group_id:
         stmt = stmt.where(Function.group_id == group_id)
     functions = (await db.execute(stmt)).scalars().all()
-    stats = await analytics.bulk_function_stats(db)
+    stats = await analytics.bulk_function_stats(db, cluster_id=cluster.id)
 
     result = []
     for fn in functions:
         version = await current_version(db, fn)
-        payload = serialize_function(fn, instance, version=version)
+        payload = serialize_function(fn, cluster, version=version)
         payload["stats"] = stats.get(
             fn.id,
             {
@@ -226,10 +243,10 @@ async def create_function(
     group_id: uuid.UUID,
     payload: FunctionCreate,
     db: DbSession,
-    instance: InstanceDep,
+    cluster: CurrentCluster,
     _: RequireDeveloper,
 ):
-    group = await db.get(Group, group_id)
+    group = await _load_group(db, group_id, cluster)
     if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such namespace.")
 
@@ -244,6 +261,7 @@ async def create_function(
         auth_required=payload.auth_required,
         node_pool=payload.node_pool,
     )
+    namespace = group.ns
     db.add(fn)
     try:
         await db.commit()
@@ -251,7 +269,7 @@ async def create_function(
         await db.rollback()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            f"'{payload.name}' already exists in {group.ns}.",
+            f"'{payload.name}' already exists in {namespace}.",
         ) from exc
     await db.refresh(fn, ["group"])
 
@@ -263,24 +281,26 @@ async def create_function(
         memory_mb=fn.memory_mb,
         timeout_s=fn.timeout_s,
         ctx_access=fn.ctx_access,
-        base_url=base_url(instance, group.ns, fn.name),
+        base_url=base_url(cluster, group.ns, fn.name),
     )
     version = FunctionVersion(function_id=fn.id, number=1, files=files, status="pending")
     db.add(version)
     await db.commit()
     await db.refresh(version)
 
-    asyncio.create_task(_build_and_activate(str(fn.id), str(version.id)))  # noqa: RUF006
+    asyncio.create_task(  # noqa: RUF006
+        _build_and_activate(str(fn.id), str(version.id), str(cluster.id))
+    )
     log.info("function created", ns=group.ns, name=fn.name)
-    return await _detail(db, fn, instance)
+    return await _detail(db, fn, cluster)
 
 
 @router.get("/functions/{function_id}", response_model=FunctionDetail)
 async def get_function(
-    function_id: uuid.UUID, db: DbSession, instance: InstanceDep, _: CurrentPrincipal
+    function_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal
 ):
-    fn = await load_function(db, function_id)
-    return await _detail(db, fn, instance)
+    fn = await load_function(db, function_id, cluster)
+    return await _detail(db, fn, cluster)
 
 
 @router.patch("/functions/{function_id}", response_model=FunctionDetail)
@@ -288,10 +308,10 @@ async def update_function(
     function_id: uuid.UUID,
     payload: FunctionUpdate,
     db: DbSession,
-    instance: InstanceDep,
+    cluster: CurrentCluster,
     _: RequireDeveloper,
 ):
-    fn = await load_function(db, function_id)
+    fn = await load_function(db, function_id, cluster)
     data = payload.model_dump(exclude_unset=True)
     runtime_changed = "runtime" in data and data["runtime"] != fn.runtime
     limits_changed = any(k in data for k in ("memory_mb", "timeout_s", "node_pool"))
@@ -310,16 +330,20 @@ async def update_function(
         # A different interpreter needs a rebuild, not just a restart.
         version = await current_version(db, fn)
         if version:
-            asyncio.create_task(_build_and_activate(str(fn.id), str(version.id)))  # noqa: RUF006
+            asyncio.create_task(  # noqa: RUF006
+                _build_and_activate(str(fn.id), str(version.id), str(cluster.id))
+            )
     elif limits_changed or fn.status == "paused":
         await pool.drain(function_id=str(fn.id))
 
-    return await _detail(db, fn, instance)
+    return await _detail(db, fn, cluster)
 
 
 @router.delete("/functions/{function_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_function(function_id: uuid.UUID, db: DbSession, _: RequireDeveloper) -> Response:
-    fn = await load_function(db, function_id)
+async def delete_function(
+    function_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: RequireDeveloper
+) -> Response:
+    fn = await load_function(db, function_id, cluster)
     await pool.drain(function_id=str(fn.id))
 
     versions = (
@@ -327,7 +351,7 @@ async def delete_function(function_id: uuid.UUID, db: DbSession, _: RequireDevel
         .scalars()
         .all()
     )
-    node = await pick_node(db, fn.node_pool)
+    node = await pick_node(db, cluster, fn.node_pool)
     for version in versions:
         await builder.remove_volume(
             node.docker_host, builder.volume_name(str(fn.id), version.number)
@@ -366,10 +390,10 @@ async def deploy(
     function_id: uuid.UUID,
     payload: DeployRequest,
     db: DbSession,
-    instance: InstanceDep,
+    cluster: CurrentCluster,
     _: RequireDeveloper,
 ):
-    fn = await load_function(db, function_id)
+    fn = await load_function(db, function_id, cluster)
     latest = (
         await db.execute(
             select(func.max(FunctionVersion.number)).where(FunctionVersion.function_id == fn.id)
@@ -385,21 +409,22 @@ async def deploy(
     await db.commit()
     await db.refresh(version)
 
-    await _build_and_activate(str(fn.id), str(version.id))
+    await _build_and_activate(str(fn.id), str(version.id), str(cluster.id))
     await db.refresh(fn)
-    return await _detail(db, fn, instance)
+    return await _detail(db, fn, cluster)
 
 
-async def _build_and_activate(function_id: str, version_id: str) -> None:
+async def _build_and_activate(function_id: str, version_id: str, cluster_id: str) -> None:
     """Build a version and, if it succeeds, make it the one that serves traffic."""
     async with session_scope() as db:
+        cluster = await db.get(Cluster, uuid.UUID(cluster_id))
         fn = await load_function(db, uuid.UUID(function_id))
         version = await db.get(FunctionVersion, uuid.UUID(version_id))
         if version is None:
             return
         version.status = "building"
         await db.flush()
-        node = await pick_node(db, fn.node_pool)
+        node = await pick_node(db, cluster, fn.node_pool)
 
     result = await builder.build_version(
         host=node.docker_host,
@@ -435,9 +460,15 @@ async def _build_and_activate(function_id: str, version_id: str) -> None:
             "INFO",
             f"deployed version {version.number} in {result.duration_ms}ms",
             fn,
+            cluster_id=uuid.UUID(cluster_id),
         )
     else:
-        await invoker.system_log("ERROR", f"build failed for version {version.number}", fn)
+        await invoker.system_log(
+            "ERROR",
+            f"build failed for version {version.number}",
+            fn,
+            cluster_id=uuid.UUID(cluster_id),
+        )
 
 
 # ── playground test runs ─────────────────────────────────────────────────────
@@ -445,19 +476,24 @@ async def _build_and_activate(function_id: str, version_id: str) -> None:
 
 @router.post("/functions/{function_id}/test", response_model=TestInvokeResult)
 async def test_invoke(
-    function_id: uuid.UUID, payload: TestInvokeRequest, db: DbSession, _: RequireDeveloper
+    function_id: uuid.UUID,
+    payload: TestInvokeRequest,
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: RequireDeveloper,
 ):
-    fn = await load_function(db, function_id)
+    fn = await load_function(db, function_id, cluster)
     version = await current_version(db, fn)
     if version is None or version.status != "ready":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "This function has no successfully built version yet.",
         )
-    node = await pick_node(db, fn.node_pool)
+    node = await pick_node(db, cluster, fn.node_pool)
 
     result = await invoker.invoke(
         db,
+        cluster=cluster,
         function=fn,
         version=version,
         node=node,
@@ -485,13 +521,18 @@ async def test_invoke(
 
 @router.get("/groups/{group_id}/context", response_model=ContextState)
 async def get_context(
-    group_id: uuid.UUID, db: DbSession, _: CurrentPrincipal, session: str = Query(...)
+    group_id: uuid.UUID,
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: CurrentPrincipal,
+    session: str = Query(...),
 ):
-    group = await db.get(Group, group_id)
+    group = await _load_group(db, group_id, cluster)
     if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such namespace.")
-    data = await invoker.read_context(group.ns, session)
-    log_entries = await invoker.context_log(group.ns, session)
+    scope = invoker.scope_for(cluster.slug, group.ns)
+    data = await invoker.read_context(scope, session)
+    log_entries = await invoker.context_log(scope, session)
     import json as _json
 
     return ContextState(
@@ -504,12 +545,16 @@ async def get_context(
 
 @router.delete("/groups/{group_id}/context", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_context(
-    group_id: uuid.UUID, db: DbSession, _: RequireDeveloper, session: str = Query(...)
+    group_id: uuid.UUID,
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: RequireDeveloper,
+    session: str = Query(...),
 ) -> Response:
-    group = await db.get(Group, group_id)
+    group = await _load_group(db, group_id, cluster)
     if group is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such namespace.")
-    await invoker.clear_context(group.ns, session)
+    await invoker.clear_context(invoker.scope_for(cluster.slug, group.ns), session)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -517,7 +562,9 @@ async def clear_context(
 
 
 @router.get("/functions/{function_id}/secrets", response_model=list[SecretOut])
-async def list_secrets(function_id: uuid.UUID, db: DbSession, _: CurrentPrincipal):
+async def list_secrets(
+    function_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal
+):
     rows = (
         (await db.execute(select(FunctionSecret).where(FunctionSecret.function_id == function_id)))
         .scalars()
@@ -531,9 +578,13 @@ async def list_secrets(function_id: uuid.UUID, db: DbSession, _: CurrentPrincipa
 
 @router.post("/functions/{function_id}/secrets", response_model=SecretOut)
 async def upsert_secret(
-    function_id: uuid.UUID, payload: SecretIn, db: DbSession, _: RequireDeveloper
+    function_id: uuid.UUID,
+    payload: SecretIn,
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: RequireDeveloper,
 ):
-    await load_function(db, function_id)
+    await load_function(db, function_id, cluster)
     row = (
         await db.execute(
             select(FunctionSecret).where(
@@ -556,7 +607,11 @@ async def upsert_secret(
 
 @router.get("/functions/{function_id}/secrets/{key}/reveal", response_model=SecretOut)
 async def reveal_secret(
-    function_id: uuid.UUID, key: str, db: DbSession, principal: CurrentPrincipal
+    function_id: uuid.UUID,
+    key: str,
+    db: DbSession,
+    cluster: CurrentCluster,
+    principal: CurrentPrincipal,
 ):
     if not principal.can("admin"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can reveal secret values.")
@@ -648,10 +703,10 @@ def _log_out(row: LogEntry) -> LogOut:
     )
 
 
-async def _detail(db, fn: Function, instance) -> dict[str, Any]:
+async def _detail(db, fn: Function, cluster: Cluster) -> dict[str, Any]:
     version = await current_version(db, fn)
     stats = await analytics.function_stats(db, fn.id)
-    payload = serialize_function(fn, instance, version=version)
+    payload = serialize_function(fn, cluster, version=version)
     payload.update(
         {
             "files": version.files if version else {},

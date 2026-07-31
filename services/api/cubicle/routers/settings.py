@@ -8,11 +8,12 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from .. import clusters as cluster_svc
 from .. import security
 from ..config import settings
-from ..deps import CurrentPrincipal, DbSession, InstanceDep, RequireAdmin, RequireOwner
+from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin, RequireOwner
 from ..logging_setup import log
-from ..models import ApiKey, User
+from ..models import ApiKey, Cluster, User
 from ..schemas import (
     ApiKeyCreate,
     ApiKeyOut,
@@ -27,13 +28,22 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 @router.get("/instance", response_model=InstanceOut)
-async def get_instance(instance: InstanceDep, _: CurrentPrincipal):
+async def get_instance(cluster: CurrentCluster, db: DbSession, _: CurrentPrincipal):
+    return await _instance_out(db, cluster)
+
+
+async def _instance_out(db, cluster: Cluster) -> InstanceOut:
     return InstanceOut(
-        cluster_name=instance.cluster_name,
-        ingress_domain=instance.ingress_domain,
-        data_dir=instance.data_dir,
-        kms_backend=instance.kms_backend,
-        default_node_pool=instance.default_node_pool,
+        cluster_id=cluster.id,
+        cluster_name=cluster.name,
+        cluster_slug=cluster.slug,
+        ingress_domain=cluster.ingress_domain,
+        data_dir=cluster.data_dir,
+        kms_backend=cluster.kms_backend,
+        default_node_pool=cluster.default_node_pool,
+        is_default=cluster.is_default,
+        base_url=cluster_svc.function_url(cluster),
+        cluster_count=await cluster_svc.count(db),
         version=settings.version,
         public_url=settings.public_url,
         tls=settings.public_url.startswith("https://"),
@@ -42,18 +52,30 @@ async def get_instance(instance: InstanceDep, _: CurrentPrincipal):
 
 @router.patch("/instance", response_model=InstanceOut)
 async def update_instance(
-    payload: InstanceUpdate, instance: InstanceDep, db: DbSession, principal: RequireAdmin
+    payload: InstanceUpdate, cluster: CurrentCluster, db: DbSession, principal: RequireAdmin
 ):
+    """Edit the active cluster. Instance-wide settings live in the environment."""
     data = payload.model_dump(exclude_unset=True)
-    if "ingress_domain" in data and data["ingress_domain"]:
-        data["ingress_domain"] = data["ingress_domain"].strip().removeprefix("*.")
+    if data.get("ingress_domain"):
+        clash = await cluster_svc.by_domain(db, data["ingress_domain"])
+        if clash is not None and clash.id != cluster.id:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"{data['ingress_domain']} already routes to '{clash.slug}'.",
+            )
     for key, value in data.items():
-        if value is not None:
-            setattr(instance, key, value)
+        if value is None:
+            continue
+        setattr(cluster, "name" if key == "cluster_name" else key, value)
     await db.commit()
-    await db.refresh(instance)
-    log.info("instance settings updated", by=principal.user.email, changed=list(data))
-    return await get_instance(instance, principal)
+    await db.refresh(cluster)
+    log.info(
+        "cluster settings updated",
+        cluster=cluster.slug,
+        by=principal.user.email,
+        changed=list(data),
+    )
+    return await _instance_out(db, cluster)
 
 
 # ── API keys ─────────────────────────────────────────────────────────────────

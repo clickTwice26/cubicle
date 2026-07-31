@@ -9,10 +9,10 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import security
+from . import clusters, security
 from .config import settings
 from .db import get_db
-from .models import ApiKey, Instance, User
+from .models import ApiKey, Cluster, Instance, User
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
@@ -39,6 +39,33 @@ async def require_setup(instance: InstanceDep) -> Instance:
             detail={"code": "setup_required", "message": "This instance has not been set up yet."},
         )
     return instance
+
+
+async def get_cluster(request: Request, db: DbSession) -> Cluster:
+    """The cluster this request is about.
+
+    The console and the CLI name it explicitly with ``X-Cubicle-Cluster``
+    (an id or a slug). Anything that does not — an older client, a curl — gets
+    the default cluster, so single-cluster installs never have to think about
+    this at all.
+    """
+    # EventSource cannot set headers, so a query parameter is accepted too.
+    ref = request.headers.get(clusters.CLUSTER_HEADER) or request.query_params.get("cluster")
+    if ref:
+        cluster = await clusters.by_reference(db, ref)
+        if cluster is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"No cluster '{ref}'.")
+        return cluster
+    try:
+        return await clusters.default_cluster(db)
+    except clusters.NoClusterError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={"code": "setup_required", "message": "This instance has no cluster yet."},
+        ) from exc
+
+
+CurrentCluster = Annotated[Cluster, Depends(get_cluster)]
 
 
 class Principal:

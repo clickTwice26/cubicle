@@ -16,7 +16,7 @@ from . import metrics
 from .config import settings
 from .db import engine, get_redis, session_scope
 from .logging_setup import configure_logging, log
-from .models import Function, FunctionVersion, LogEntry, Node
+from .models import Cluster, Function, FunctionVersion, LogEntry, Node
 from .routers import ROUTERS
 from .runtime.engine import EngineError
 from .runtime.nodes import ensure_local_node
@@ -34,7 +34,8 @@ async def lifespan(app: FastAPI):
 
     try:
         async with session_scope() as db:
-            await ensure_local_node(db)
+            for cluster in (await db.execute(select(Cluster))).scalars().all():
+                await ensure_local_node(db, cluster)
     except EngineError as exc:
         # The console still loads and explains the problem rather than 500ing.
         log.error("docker engine unavailable at boot", error=str(exc))

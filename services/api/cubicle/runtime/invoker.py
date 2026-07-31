@@ -23,7 +23,15 @@ from ..crypto import DecryptionError, decrypt
 from ..db import get_redis, session_scope
 from ..logging_setup import log
 from ..metrics import COLD_STARTS, GB_SECONDS, INVOCATION_SECONDS, INVOCATIONS
-from ..models import EnvVar, Function, FunctionSecret, FunctionVersion, Invocation, LogEntry
+from ..models import (
+    Cluster,
+    EnvVar,
+    Function,
+    FunctionSecret,
+    FunctionVersion,
+    Invocation,
+    LogEntry,
+)
 from .pool import FunctionSpec, Isolate, IsolateError, pool
 
 CTX_PREFIX = "cubicle:ctx:"
@@ -31,7 +39,7 @@ CTX_LOG_PREFIX = "cubicle:ctxlog:"
 LOG_CHANNEL = "cubicle:logs"
 ENV_REVISION_KEY = "cubicle:env:rev"
 
-_env_cache: tuple[str, dict[str, str]] | None = None
+_env_cache: dict[str, tuple[str, dict[str, str]]] = {}
 _secret_cache: dict[str, tuple[str, dict[str, str]]] = {}
 
 
@@ -56,20 +64,22 @@ async def bump_env_revision() -> None:
     await get_redis().incr(ENV_REVISION_KEY)
 
 
-async def _env_bundle(db: AsyncSession) -> dict[str, str]:
-    global _env_cache
+async def _env_bundle(db: AsyncSession, cluster_id) -> dict[str, str]:
+    """This cluster's env store. Two clusters may hold the same key safely."""
+    key = str(cluster_id)
     revision = await get_redis().get(ENV_REVISION_KEY) or "0"
-    if _env_cache and _env_cache[0] == revision:
-        return _env_cache[1]
+    cached = _env_cache.get(key)
+    if cached and cached[0] == revision:
+        return cached[1]
 
-    rows = (await db.execute(select(EnvVar))).scalars().all()
+    rows = (await db.execute(select(EnvVar).where(EnvVar.cluster_id == cluster_id))).scalars().all()
     bundle: dict[str, str] = {}
     for row in rows:
         try:
             bundle[row.key] = decrypt(row.value_ciphertext, aad=f"env:{row.key}")
         except DecryptionError as exc:
             log.error("env var could not be decrypted", key=row.key, error=str(exc))
-    _env_cache = (revision, bundle)
+    _env_cache[key] = (revision, bundle)
     return bundle
 
 
@@ -104,12 +114,21 @@ def invalidate_secret_cache(function_id: str | None = None) -> None:
 # ── session context ──────────────────────────────────────────────────────────
 
 
-def _ctx_key(namespace: str, session_id: str) -> str:
-    return f"{CTX_PREFIX}{namespace}:{session_id}"
+def scope_for(cluster_slug: str, namespace: str) -> str:
+    """Context is keyed by cluster as well as namespace.
+
+    Without this, a `payments` namespace in staging would read production's
+    session state the moment both existed.
+    """
+    return f"{cluster_slug}:{namespace}"
 
 
-async def read_context(namespace: str, session_id: str) -> dict[str, Any]:
-    raw = await get_redis().get(_ctx_key(namespace, session_id))
+def _ctx_key(scope: str, session_id: str) -> str:
+    return f"{CTX_PREFIX}{scope}:{session_id}"
+
+
+async def read_context(scope: str, session_id: str) -> dict[str, Any]:
+    raw = await get_redis().get(_ctx_key(scope, session_id))
     if not raw:
         return {}
     try:
@@ -118,21 +137,21 @@ async def read_context(namespace: str, session_id: str) -> dict[str, Any]:
         return {}
 
 
-async def write_context(namespace: str, session_id: str, data: dict[str, Any]) -> None:
-    key = _ctx_key(namespace, session_id)
+async def write_context(scope: str, session_id: str, data: dict[str, Any]) -> None:
+    key = _ctx_key(scope, session_id)
     if data:
         await get_redis().setex(key, settings.context_ttl, json.dumps(data))
     else:
         await get_redis().delete(key)
 
 
-async def context_log(namespace: str, session_id: str) -> list[dict[str, Any]]:
-    entries = await get_redis().lrange(f"{CTX_LOG_PREFIX}{namespace}:{session_id}", 0, 15)
+async def context_log(scope: str, session_id: str) -> list[dict[str, Any]]:
+    entries = await get_redis().lrange(f"{CTX_LOG_PREFIX}{scope}:{session_id}", 0, 15)
     return [json.loads(e) for e in entries]
 
 
-async def append_context_log(namespace: str, session_id: str, function: str, detail: str) -> None:
-    key = f"{CTX_LOG_PREFIX}{namespace}:{session_id}"
+async def append_context_log(scope: str, session_id: str, function: str, detail: str) -> None:
+    key = f"{CTX_LOG_PREFIX}{scope}:{session_id}"
     entry = json.dumps(
         {"time": datetime.now(UTC).strftime("%H:%M:%S"), "fn": function, "detail": detail}
     )
@@ -141,9 +160,9 @@ async def append_context_log(namespace: str, session_id: str, function: str, det
     await get_redis().expire(key, settings.context_ttl)
 
 
-async def clear_context(namespace: str, session_id: str) -> None:
-    await get_redis().delete(_ctx_key(namespace, session_id))
-    await get_redis().delete(f"{CTX_LOG_PREFIX}{namespace}:{session_id}")
+async def clear_context(scope: str, session_id: str) -> None:
+    await get_redis().delete(_ctx_key(scope, session_id))
+    await get_redis().delete(f"{CTX_LOG_PREFIX}{scope}:{session_id}")
 
 
 # ── invocation ───────────────────────────────────────────────────────────────
@@ -169,6 +188,7 @@ def spec_for(function: Function, version: FunctionVersion, node) -> FunctionSpec
 async def invoke(
     db: AsyncSession,
     *,
+    cluster: Cluster,
     function: Function,
     version: FunctionVersion,
     node,
@@ -182,16 +202,18 @@ async def invoke(
 ) -> InvokeResult:
     request_id = "req_" + uuid.uuid4().hex[:12]
     namespace = function.group.ns
+    scope = scope_for(cluster.slug, namespace)
     session_id = session_id or "sess_" + uuid.uuid4().hex[:12]
     started = time.perf_counter()
 
     ctx_access = function.ctx_access
-    ctx_before = await read_context(namespace, session_id) if ctx_access in ("rw", "r") else {}
+    ctx_before = await read_context(scope, session_id) if ctx_access in ("rw", "r") else {}
 
     payload = {
         "request_id": request_id,
         "session_id": session_id,
         "namespace": namespace,
+        "cluster": cluster.slug,
         "function": function.name,
         "method": method,
         "path": path,
@@ -201,9 +223,9 @@ async def invoke(
         "timeout_s": function.timeout_s,
         "ctx_access": ctx_access,
         "context": ctx_before,
-        "env": await _env_bundle(db),
+        "env": await _env_bundle(db, cluster.id),
         "secrets": await _secret_bundle(db, str(function.id)),
-        "services": await _service_urls(db),
+        "services": await _service_urls(db, cluster.id),
     }
 
     spec = spec_for(function, version, node)
@@ -230,20 +252,20 @@ async def invoke(
         writes: dict[str, Any] = result.get("context_writes") or {}
         deletes: list[str] = result.get("context_deletes") or []
         if ctx_access in ("rw", "w") and (writes or deletes):
-            merged = await read_context(namespace, session_id)
+            merged = await read_context(scope, session_id)
             merged.update(writes)
             for key in deletes:
                 merged.pop(key, None)
-            await write_context(namespace, session_id, merged)
+            await write_context(scope, session_id, merged)
             ctx_wrote = sorted({*writes.keys(), *deletes})
             await append_context_log(
-                namespace, session_id, function.name, "wrote " + ", ".join(ctx_wrote)
+                scope, session_id, function.name, "wrote " + ", ".join(ctx_wrote)
             )
         elif ctx_access in ("rw", "r"):
             detail = (
                 "read " + ", ".join(sorted(ctx_before)) if ctx_before else "read · context empty"
             )
-            await append_context_log(namespace, session_id, function.name, detail)
+            await append_context_log(scope, session_id, function.name, detail)
 
     except IsolateError as exc:
         healthy = False
@@ -282,7 +304,7 @@ async def invoke(
         COLD_STARTS.labels(namespace=namespace, function=function.name).inc()
 
     if record:
-        await _record(function, node.name, result, handler_logs)
+        await _record(cluster, function, node.name, result, handler_logs)
     return result
 
 
@@ -295,14 +317,18 @@ def _response_size(body: Any) -> int:
         return 0
 
 
-async def _service_urls(db: AsyncSession) -> dict[str, str]:
+async def _service_urls(db: AsyncSession, cluster_id) -> dict[str, str]:
     from .services import connection_urls  # imported here to avoid a cycle
 
-    return await connection_urls(db)
+    return await connection_urls(db, cluster_id)
 
 
 async def _record(
-    function: Function, node_name: str, result: InvokeResult, handler_logs: list[dict[str, Any]]
+    cluster: Cluster,
+    function: Function,
+    node_name: str,
+    result: InvokeResult,
+    handler_logs: list[dict[str, Any]],
 ) -> None:
     """Persist the invocation and its logs on a session of their own.
 
@@ -322,6 +348,7 @@ async def _record(
         async with session_scope() as db:
             db.add(
                 Invocation(
+                    cluster_id=cluster.id,
                     function_id=function.id,
                     function_name=function.name,
                     namespace=function.group.ns,
@@ -341,6 +368,7 @@ async def _record(
             for entry in handler_logs:
                 entries.append(
                     LogEntry(
+                        cluster_id=cluster.id,
                         function_id=function.id,
                         function_name=function.name,
                         level=str(entry.get("level", "INFO")).upper()[:8],
@@ -363,6 +391,7 @@ async def _record(
                 summary += f" · {result.error}"
             entries.append(
                 LogEntry(
+                    cluster_id=cluster.id,
                     function_id=function.id,
                     function_name=function.name,
                     level=summary_level,
@@ -373,18 +402,22 @@ async def _record(
             )
             db.add_all(entries)
 
-        await _publish_logs(function, result, handler_logs)
+        await _publish_logs(cluster, function, result, handler_logs)
     except Exception:  # noqa: BLE001 - telemetry must not break the request
         log.exception("could not record invocation", function=function.name)
 
 
 async def _publish_logs(
-    function: Function, result: InvokeResult, handler_logs: list[dict[str, Any]]
+    cluster: Cluster,
+    function: Function,
+    result: InvokeResult,
+    handler_logs: list[dict[str, Any]],
 ) -> None:
     now = datetime.now(UTC)
     payload = [
         {
             "ts": now.isoformat(),
+            "cluster": cluster.slug,
             "time": now.strftime("%H:%M:%S.") + f"{now.microsecond // 1000:03d}",
             "level": str(entry.get("level", "INFO")).upper(),
             "function_name": function.name,
@@ -397,6 +430,7 @@ async def _publish_logs(
     payload.append(
         {
             "ts": now.isoformat(),
+            "cluster": cluster.slug,
             "time": now.strftime("%H:%M:%S.") + f"{now.microsecond // 1000:03d}",
             "level": "ERROR"
             if result.status_code >= 500
@@ -412,12 +446,15 @@ async def _publish_logs(
     await get_redis().publish(LOG_CHANNEL, json.dumps(payload))
 
 
-async def system_log(level: str, message: str, function: Function | None = None) -> None:
+async def system_log(
+    level: str, message: str, function: Function | None = None, cluster_id=None
+) -> None:
     """Record a control-plane event so it shows up in the logs page too."""
     now = datetime.now(UTC)
     async with session_scope() as db:
         db.add(
             LogEntry(
+                cluster_id=cluster_id,
                 function_id=function.id if function else None,
                 function_name=function.name if function else "control-plane",
                 level=level.upper(),

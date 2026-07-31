@@ -30,17 +30,21 @@ class CubicleError(RuntimeError):
 class Profile:
     url: str
     token: str
+    cluster: str | None = None
 
     @property
     def base(self) -> str:
         return self.url.rstrip("/")
 
 
-def load_profile(url: str | None = None, token: str | None = None) -> Profile:
+def load_profile(
+    url: str | None = None, token: str | None = None, cluster: str | None = None
+) -> Profile:
     url = url or os.environ.get("CUBICLE_URL")
     token = token or os.environ.get("CUBICLE_TOKEN")
+    cluster = cluster or os.environ.get("CUBICLE_CLUSTER")
     if url and token:
-        return Profile(url, token)
+        return Profile(url, token, cluster)
 
     if not CONFIG_PATH.exists():
         raise CubicleError(
@@ -50,19 +54,23 @@ def load_profile(url: str | None = None, token: str | None = None) -> Profile:
     profile = data.get("default", {})
     url = url or profile.get("url")
     token = token or profile.get("token")
+    cluster = cluster or profile.get("cluster") or None
     if not url or not token:
         raise CubicleError(f"{CONFIG_PATH} is missing a url or token.")
-    return Profile(url, token)
+    return Profile(url, token, cluster)
 
 
 def save_profile(profile: Profile) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(
-        "# Written by `cubicle login`. Treat this file as a credential.\n"
-        "[default]\n"
-        f'url = "{profile.base}"\n'
-        f'token = "{profile.token}"\n'
-    )
+    lines = [
+        "# Written by `cubicle login`. Treat this file as a credential.",
+        "[default]",
+        f'url = "{profile.base}"',
+        f'token = "{profile.token}"',
+    ]
+    if profile.cluster:
+        lines.append(f'cluster = "{profile.cluster}"')
+    CONFIG_PATH.write_text("\n".join(lines) + "\n")
     CONFIG_PATH.chmod(0o600)
 
 
@@ -86,6 +94,9 @@ def request(
         "Authorization": f"Bearer {profile.token}",
         "Accept": "application/json",
         "User-Agent": USER_AGENT,
+        # Omitted means "the instance default", which is what a single-cluster
+        # install always wants.
+        **({"X-Cubicle-Cluster": profile.cluster} if profile.cluster else {}),
         **(headers or {}),
     }
     if body is not None:
@@ -127,6 +138,7 @@ def stream(profile: Profile, path: str, *, params: dict[str, Any] | None = None)
             "Authorization": f"Bearer {profile.token}",
             "Accept": "text/event-stream",
             "User-Agent": USER_AGENT,
+            **({"X-Cubicle-Cluster": profile.cluster} if profile.cluster else {}),
         },
     )
     with urllib.request.urlopen(req, timeout=None) as response:  # noqa: S310

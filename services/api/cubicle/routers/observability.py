@@ -14,8 +14,8 @@ from sqlalchemy.orm import selectinload
 
 from .. import analytics
 from ..db import get_redis
-from ..deps import CurrentPrincipal, DbSession, InstanceDep
-from ..models import Function, LogEntry, Node
+from ..deps import CurrentCluster, CurrentPrincipal, DbSession
+from ..models import Function, Group, LogEntry, Node
 from ..runtime.invoker import LOG_CHANNEL
 from ..runtime.pool import pool
 from ..schemas import LogOut
@@ -28,24 +28,31 @@ LEVELS = ("INFO", "WARN", "ERROR", "DEBUG")
 
 @router.get("/dashboard")
 async def dashboard(
-    db: DbSession, instance: InstanceDep, _: CurrentPrincipal, hours: int = Query(24, ge=1, le=720)
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: CurrentPrincipal,
+    hours: int = Query(24, ge=1, le=720),
 ):
     functions = (
         (
             await db.execute(
-                select(Function).options(selectinload(Function.group)).order_by(Function.created_at)
+                select(Function)
+                .options(selectinload(Function.group))
+                .join(Group, Group.id == Function.group_id)
+                .where(Group.cluster_id == cluster.id)
+                .order_by(Function.created_at)
             )
         )
         .scalars()
         .all()
     )
-    stats = await analytics.bulk_function_stats(db, hours=hours)
+    stats = await analytics.bulk_function_stats(db, hours=hours, cluster_id=cluster.id)
     warm = pool.warm_functions()
 
     rows = []
     for fn in functions:
         version = await current_version(db, fn)
-        payload = serialize_function(fn, instance, version=version)
+        payload = serialize_function(fn, cluster, version=version)
         payload["stats"] = stats.get(
             fn.id,
             {
@@ -62,30 +69,43 @@ async def dashboard(
         rows.append(payload)
 
     node_count = (
-        await db.execute(select(func.count(Node.id)).where(Node.schedulable.is_(True)))
+        await db.execute(
+            select(func.count(Node.id)).where(
+                Node.cluster_id == cluster.id, Node.schedulable.is_(True)
+            )
+        )
     ).scalar_one()
 
     return {
-        "kpis": await analytics.cluster_kpis(db, hours=hours),
-        "chart": await analytics.invocation_series(db, hours=hours, buckets=28),
+        "kpis": await analytics.cluster_kpis(db, hours=hours, cluster_id=cluster.id),
+        "chart": await analytics.invocation_series(
+            db, hours=hours, buckets=28, cluster_id=cluster.id
+        ),
         "functions": rows,
         "function_count": len(rows),
         "node_count": node_count,
         "warm_isolates": pool.count(),
         "window_hours": hours,
+        "cluster": cluster.slug,
     }
 
 
 @router.get("/logs", response_model=list[LogOut])
 async def list_logs(
     db: DbSession,
+    cluster: CurrentCluster,
     _: CurrentPrincipal,
     level: str = Query("all"),
     function: str | None = None,
     search: str | None = None,
     limit: int = Query(120, ge=1, le=1000),
 ):
-    stmt = select(LogEntry).order_by(LogEntry.ts.desc()).limit(limit)
+    stmt = (
+        select(LogEntry)
+        .where(LogEntry.cluster_id == cluster.id)
+        .order_by(LogEntry.ts.desc())
+        .limit(limit)
+    )
     if level.upper() in LEVELS:
         stmt = stmt.where(LogEntry.level == level.upper())
     if function:
@@ -98,9 +118,16 @@ async def list_logs(
 
 
 @router.get("/logs/stream")
-async def stream_logs(_: CurrentPrincipal, level: str = Query("all")) -> StreamingResponse:
-    """Server-sent events carrying every log line as it is written."""
+async def stream_logs(
+    cluster: CurrentCluster, _: CurrentPrincipal, level: str = Query("all")
+) -> StreamingResponse:
+    """Server-sent events carrying every log line as it is written.
+
+    EventSource cannot set headers, so the console passes the cluster as a
+    query parameter; ``get_cluster`` accepts either.
+    """
     wanted = level.upper()
+    slug = cluster.slug
 
     async def events() -> AsyncIterator[str]:
         redis = get_redis()
@@ -117,6 +144,7 @@ async def stream_logs(_: CurrentPrincipal, level: str = Query("all")) -> Streami
                     entries = json.loads(message["data"])
                 except (json.JSONDecodeError, TypeError):
                     continue
+                entries = [e for e in entries if e.get("cluster") in (slug, None)]
                 if wanted in LEVELS:
                     entries = [e for e in entries if e.get("level") == wanted]
                 if entries:

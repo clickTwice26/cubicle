@@ -50,6 +50,67 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ── clusters ─────────────────────────────────────────────────────────────────
+
+
+class ClusterCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    slug: str | None = None
+    ingress_domain: str = Field(default="", max_length=255)
+    data_dir: str = Field(default="/var/lib/cubicle", max_length=255)
+    kms_backend: Literal["file", "vault", "kms", "pkcs11"] = "file"
+    default_node_pool: str = Field(default="general", max_length=40)
+    description: str = Field(default="", max_length=255)
+    make_default: bool = False
+
+    @field_validator("slug")
+    @classmethod
+    def _slug(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = validate_slug(v, what="Cluster slug")
+        if v in RESERVED_NAMESPACES:
+            raise ValueError(f"'{v}' is reserved by the console.")
+        return v
+
+    @field_validator("ingress_domain")
+    @classmethod
+    def _domain(cls, v: str) -> str:
+        return v.strip().lower().removeprefix("*.")
+
+
+class ClusterUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    ingress_domain: str | None = Field(default=None, max_length=255)
+    data_dir: str | None = Field(default=None, max_length=255)
+    default_node_pool: str | None = Field(default=None, max_length=40)
+    description: str | None = Field(default=None, max_length=255)
+    status: Literal["active", "paused"] | None = None
+
+    @field_validator("ingress_domain")
+    @classmethod
+    def _domain(cls, v: str | None) -> str | None:
+        return v.strip().lower().removeprefix("*.") if v is not None else None
+
+
+class ClusterOut(ORMModel):
+    id: UUID
+    name: str
+    slug: str
+    ingress_domain: str
+    data_dir: str
+    kms_backend: str
+    default_node_pool: str
+    is_default: bool
+    status: str
+    description: str
+    base_url: str = ""
+    node_count: int = 0
+    function_count: int = 0
+    namespace_count: int = 0
+    created_at: datetime
+
+
 # ── setup & auth ─────────────────────────────────────────────────────────────
 
 
@@ -427,11 +488,18 @@ class ServiceOut(BaseModel):
 
 
 class InstanceOut(BaseModel):
+    """The active cluster's settings, plus the instance-wide facts around it."""
+
+    cluster_id: UUID
     cluster_name: str
+    cluster_slug: str
     ingress_domain: str
     data_dir: str
     kms_backend: str
     default_node_pool: str
+    is_default: bool
+    base_url: str
+    cluster_count: int
     version: str
     public_url: str
     tls: bool
@@ -442,6 +510,11 @@ class InstanceUpdate(BaseModel):
     ingress_domain: str | None = Field(default=None, max_length=255)
     data_dir: str | None = Field(default=None, max_length=255)
     default_node_pool: str | None = Field(default=None, max_length=40)
+
+    @field_validator("ingress_domain")
+    @classmethod
+    def _domain(cls, v: str | None) -> str | None:
+        return v.strip().lower().removeprefix("*.") if v is not None else None
 
 
 class ApiKeyCreate(BaseModel):

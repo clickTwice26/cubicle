@@ -5,8 +5,10 @@ import {
   type UseQueryOptions,
 } from '@tanstack/react-query'
 import { api } from './api'
+import { setActiveCluster } from './cluster'
 import type {
   ApiKey,
+  Cluster,
   ContextState,
   Dashboard,
   EnvVar,
@@ -29,6 +31,7 @@ import type {
 
 export const keys = {
   setup: ['setup'] as const,
+  clusters: ['clusters'] as const,
   me: ['me'] as const,
   dashboard: (hours: number) => ['dashboard', hours] as const,
   groups: ['groups'] as const,
@@ -95,6 +98,63 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => api.post<void>('/api/auth/logout'),
     onSuccess: () => client.clear(),
+  })
+}
+
+// ── clusters ─────────────────────────────────────────────────────────────────
+
+export const useClusters = () =>
+  useQuery({ queryKey: keys.clusters, queryFn: () => api.get<Cluster[]>('/api/clusters') })
+
+/**
+ * Point the console at another cluster.
+ *
+ * Every cached query belongs to the cluster it was fetched from, so the whole
+ * cache is dropped rather than invalidated — showing production's functions
+ * under staging's name for even one frame would be worse than a brief spinner.
+ */
+export function useSwitchCluster() {
+  const client = useQueryClient()
+  return (slug: string | null) => {
+    setActiveCluster(slug)
+    client.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' })
+    void client.refetchQueries()
+  }
+}
+
+export function useCreateCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.post<Cluster>('/api/clusters', body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.clusters }),
+  })
+}
+
+export function useUpdateCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ref, ...body }: { ref: string } & Record<string, unknown>) =>
+      api.patch<Cluster>(`/api/clusters/${ref}`, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.clusters })
+      void client.invalidateQueries({ queryKey: keys.instance })
+    },
+  })
+}
+
+export function useSetDefaultCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => api.post<Cluster>(`/api/clusters/${ref}/default`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.clusters }),
+  })
+}
+
+export function useDeleteCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => api.delete<void>(`/api/clusters/${ref}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.clusters }),
   })
 }
 

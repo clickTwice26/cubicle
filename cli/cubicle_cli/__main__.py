@@ -33,10 +33,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--url", help="Override the configured instance URL.")
     parser.add_argument("--token", help="Override the configured API token.")
+    parser.add_argument(
+        "--cluster",
+        help="Cluster slug to act on. Defaults to the instance's default cluster.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     login = sub.add_parser("login", help="Authenticate against an instance.")
     login.add_argument("instance_url")
+
+    sub.add_parser("clusters", help="List the clusters on this instance.")
 
     sub.add_parser("status", help="Show control plane, node and isolate health.")
     sub.add_parser("ls", help="List namespaces and functions.")
@@ -94,19 +100,41 @@ def main(argv: list[str] | None = None) -> int:
 def cmd_login(args) -> int:
     url = args.instance_url.rstrip("/")
     token = args.token or getpass.getpass("token: ")
-    profile = Profile(url, token.strip())
+    profile = Profile(url, token.strip(), args.cluster)
     me = request(profile, "GET", "/api/auth/me")
     instance = request(profile, "GET", "/api/settings/instance")
     save_profile(profile)
     print(
         f"  {paint('authenticated', 'green')} as {me['email']} · {instance['cluster_name']}\n"
+        f"  {paint('cluster', 'dim')} {instance['cluster_slug']}"
+        f"{'' if args.cluster else paint('  (default — override with --cluster)', 'dim')}\n"
         f"  {paint('saved to', 'dim')} ~/.cubicle/config.toml"
     )
     return 0
 
 
+def cmd_clusters(args) -> int:
+    profile = load_profile(args.url, args.token, args.cluster)
+    rows = [
+        [
+            ("* " if c["is_default"] else "  ") + c["slug"],
+            c["name"],
+            c["base_url"],
+            str(c["namespace_count"]),
+            str(c["function_count"]),
+            str(c["node_count"]),
+        ]
+        for c in request(profile, "GET", "/api/clusters")
+    ]
+    print()
+    print(table(["cluster", "name", "base url", "ns", "fns", "nodes"], rows))
+    print(paint("\n  * default — used when --cluster is not given", "dim"))
+    print()
+    return 0
+
+
 def cmd_status(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     health = request(profile, "GET", "/healthz")
     instance = request(profile, "GET", "/api/settings/instance")
     nodes = request(profile, "GET", "/api/cluster/nodes")
@@ -124,13 +152,14 @@ def cmd_status(args) -> int:
     print(f"  DOCKER          {ok(health['checks']['docker'])}")
     print(f"  NODES           {paint(f'{ready}/{len(nodes)}', 'green')}      {names}")
     print(f"  ISOLATES        {isolates['count']} warm")
-    print(f"  INGRESS         {instance['public_url']}")
+    print(f"  INGRESS         {instance['base_url']}")
+    print(f"  CLUSTER         {instance['cluster_slug']} ({instance['cluster_count']} on this instance)")
     print()
     return 0
 
 
 def cmd_ls(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     functions = request(profile, "GET", "/api/functions")
     rows = [
         [
@@ -150,7 +179,7 @@ def cmd_ls(args) -> int:
 
 
 def cmd_init(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     namespace, name = _split(args.target)
 
     groups = request(profile, "GET", "/api/groups")
@@ -181,7 +210,7 @@ def cmd_init(args) -> int:
 
 
 def cmd_deploy(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     directory = Path(args.directory).resolve()
     config_path = directory / "cubicle.toml"
     if not config_path.exists():
@@ -215,7 +244,7 @@ def cmd_deploy(args) -> int:
 
 
 def cmd_invoke(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     namespace, name = _split(args.target)
     fn = _find_function(profile, namespace, name)
 
@@ -249,7 +278,7 @@ def cmd_invoke(args) -> int:
 
 
 def cmd_logs(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     if args.follow:
         print(paint("  tailing — ctrl-c to stop", "dim"))
         for batch in stream(profile, "/api/logs/stream", params={"level": args.level}):
@@ -266,7 +295,7 @@ def cmd_logs(args) -> int:
 
 
 def cmd_env(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     if args.env_command == "ls":
         rows = [
             [item["key"], item["value"], "secret" if item["is_secret"] else "plain"]
@@ -293,7 +322,7 @@ def cmd_env(args) -> int:
 
 
 def cmd_secrets(args) -> int:
-    profile = load_profile(args.url, args.token)
+    profile = load_profile(args.url, args.token, args.cluster)
     namespace, name = _split(args.function)
     fn = _find_function(profile, namespace, name)
 
@@ -354,6 +383,7 @@ def _print_log(entry: dict) -> None:
 
 COMMANDS = {
     "login": cmd_login,
+    "clusters": cmd_clusters,
     "status": cmd_status,
     "ls": cmd_ls,
     "init": cmd_init,

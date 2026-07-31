@@ -109,22 +109,25 @@ async def function_stats(db: AsyncSession, function_id: UUID, *, hours: int = 24
     }
 
 
-async def bulk_function_stats(db: AsyncSession, *, hours: int = 24) -> dict[UUID, dict[str, Any]]:
+async def bulk_function_stats(
+    db: AsyncSession, *, hours: int = 24, cluster_id: UUID | None = None
+) -> dict[UUID, dict[str, Any]]:
     since = datetime.now(UTC) - timedelta(hours=hours)
-    rows = (
-        await db.execute(
-            select(
-                Invocation.function_id,
-                func.count(Invocation.id),
-                func.sum(case((Invocation.status_code >= 400, 1), else_=0)),
-                func.sum(case((Invocation.cold.is_(True), 1), else_=0)),
-                func.percentile_cont(0.5).within_group(Invocation.duration_ms.asc()),
-                func.percentile_cont(0.95).within_group(Invocation.duration_ms.asc()),
-            )
-            .where(Invocation.ts >= since)
-            .group_by(Invocation.function_id)
+    stmt = (
+        select(
+            Invocation.function_id,
+            func.count(Invocation.id),
+            func.sum(case((Invocation.status_code >= 400, 1), else_=0)),
+            func.sum(case((Invocation.cold.is_(True), 1), else_=0)),
+            func.percentile_cont(0.5).within_group(Invocation.duration_ms.asc()),
+            func.percentile_cont(0.95).within_group(Invocation.duration_ms.asc()),
         )
-    ).all()
+        .where(Invocation.ts >= since)
+        .group_by(Invocation.function_id)
+    )
+    if cluster_id is not None:
+        stmt = stmt.where(Invocation.cluster_id == cluster_id)
+    rows = (await db.execute(stmt)).all()
 
     result: dict[UUID, dict[str, Any]] = {}
     for fid, total, errors, colds, p50, p95 in rows:
@@ -146,7 +149,12 @@ async def bulk_function_stats(db: AsyncSession, *, hours: int = 24) -> dict[UUID
 
 
 async def invocation_series(
-    db: AsyncSession, *, hours: int = 24, buckets: int = 28, function_id: UUID | None = None
+    db: AsyncSession,
+    *,
+    hours: int = 24,
+    buckets: int = 28,
+    function_id: UUID | None = None,
+    cluster_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
     """Bucketed success/error counts, oldest first, always ``buckets`` long."""
     now = datetime.now(UTC)
@@ -166,6 +174,8 @@ async def invocation_series(
     )
     if function_id is not None:
         stmt = stmt.where(Invocation.function_id == function_id)
+    if cluster_id is not None:
+        stmt = stmt.where(Invocation.cluster_id == cluster_id)
 
     counts = {
         int(b): (int(total or 0), int(errs or 0))
@@ -228,22 +238,23 @@ async def latency_series(
     return series
 
 
-async def cluster_kpis(db: AsyncSession, *, hours: int = 24) -> list[dict[str, Any]]:
+async def cluster_kpis(
+    db: AsyncSession, *, hours: int = 24, cluster_id: UUID | None = None
+) -> list[dict[str, Any]]:
     now = datetime.now(UTC)
     current_since = now - timedelta(hours=hours)
     previous_since = now - timedelta(hours=hours * 2)
 
     async def window(start: datetime, end: datetime):
-        return (
-            await db.execute(
-                select(
-                    func.count(Invocation.id),
-                    func.percentile_cont(0.5).within_group(Invocation.duration_ms.asc()),
-                    func.sum(case((Invocation.status_code >= 400, 1), else_=0)),
-                    func.sum(case((Invocation.cold.is_(True), 1), else_=0)),
-                ).where(Invocation.ts >= start, Invocation.ts < end)
-            )
-        ).one()
+        stmt = select(
+            func.count(Invocation.id),
+            func.percentile_cont(0.5).within_group(Invocation.duration_ms.asc()),
+            func.sum(case((Invocation.status_code >= 400, 1), else_=0)),
+            func.sum(case((Invocation.cold.is_(True), 1), else_=0)),
+        ).where(Invocation.ts >= start, Invocation.ts < end)
+        if cluster_id is not None:
+            stmt = stmt.where(Invocation.cluster_id == cluster_id)
+        return (await db.execute(stmt)).one()
 
     total, p50, errors, colds = await window(current_since, now)
     prev_total, prev_p50, prev_errors, prev_colds = await window(previous_since, current_since)
@@ -321,19 +332,22 @@ def month_window(now: datetime | None = None) -> tuple[datetime, datetime, float
     return start, end, min(1.0, max(0.0, progress))
 
 
-async def namespace_usage(db: AsyncSession, start: datetime, end: datetime) -> list[dict[str, Any]]:
-    rows = (
-        await db.execute(
-            select(
-                Invocation.namespace,
-                func.count(Invocation.id),
-                func.sum(Invocation.gb_seconds),
-            )
-            .where(Invocation.ts >= start, Invocation.ts < end)
-            .group_by(Invocation.namespace)
-            .order_by(func.count(Invocation.id).desc())
+async def namespace_usage(
+    db: AsyncSession, start: datetime, end: datetime, cluster_id: UUID | None = None
+) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            Invocation.namespace,
+            func.count(Invocation.id),
+            func.sum(Invocation.gb_seconds),
         )
-    ).all()
+        .where(Invocation.ts >= start, Invocation.ts < end)
+        .group_by(Invocation.namespace)
+        .order_by(func.count(Invocation.id).desc())
+    )
+    if cluster_id is not None:
+        stmt = stmt.where(Invocation.cluster_id == cluster_id)
+    rows = (await db.execute(stmt)).all()
     return [
         {
             "name": ns or "default",

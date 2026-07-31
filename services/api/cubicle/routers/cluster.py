@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import func, select
 
 from .. import analytics, pricing
-from ..deps import CurrentPrincipal, DbSession, RequireAdmin
+from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin
 from ..logging_setup import log
 from ..models import Invocation, Node
 from ..runtime.engine import LOCAL_HOST, EngineError, engines
@@ -22,9 +22,19 @@ from ..schemas import NodeCreate, NodeOut
 router = APIRouter(prefix="/api/cluster", tags=["cluster"])
 
 
+async def _node(db, node_id: uuid.UUID, cluster) -> Node:
+    """A node lookup that cannot reach into another cluster."""
+    node = (
+        await db.execute(select(Node).where(Node.id == node_id, Node.cluster_id == cluster.id))
+    ).scalar_one_or_none()
+    if node is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node in this cluster.")
+    return node
+
+
 @router.get("/nodes", response_model=list[NodeOut])
-async def list_nodes(db: DbSession, _: CurrentPrincipal):
-    nodes = await refresh_nodes(db)
+async def list_nodes(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
+    nodes = await refresh_nodes(db, cluster)
     load = allocation_by_node()
     result = []
     for node in nodes:
@@ -51,15 +61,23 @@ async def list_nodes(db: DbSession, _: CurrentPrincipal):
 
 
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
-async def add_node(payload: NodeCreate, db: DbSession, _: RequireAdmin):
+async def add_node(payload: NodeCreate, db: DbSession, cluster: CurrentCluster, _: RequireAdmin):
     existing = (
-        await db.execute(select(Node).where(Node.name == payload.name))
+        await db.execute(
+            select(Node).where(Node.cluster_id == cluster.id, Node.name == payload.name)
+        )
     ).scalar_one_or_none()
     if existing:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A node with that name already exists.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"{cluster.name} already has a node called that."
+        )
     try:
         node = await register_node(
-            db, name=payload.name, docker_host=payload.docker_host, pool_name=payload.pool
+            db,
+            cluster,
+            name=payload.name,
+            docker_host=payload.docker_host,
+            pool_name=payload.pool,
         )
     except EngineError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -76,10 +94,8 @@ async def add_node(payload: NodeCreate, db: DbSession, _: RequireAdmin):
 
 
 @router.post("/nodes/{node_id}/drain")
-async def drain_node(node_id: uuid.UUID, db: DbSession, _: RequireAdmin):
-    node = await db.get(Node, node_id)
-    if node is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node.")
+async def drain_node(node_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: RequireAdmin):
+    node = await _node(db, node_id, cluster)
     node.schedulable = False
     node.status = "draining"
     await db.commit()
@@ -88,10 +104,8 @@ async def drain_node(node_id: uuid.UUID, db: DbSession, _: RequireAdmin):
 
 
 @router.post("/nodes/{node_id}/resume")
-async def resume_node(node_id: uuid.UUID, db: DbSession, _: RequireAdmin):
-    node = await db.get(Node, node_id)
-    if node is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node.")
+async def resume_node(node_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: RequireAdmin):
+    node = await _node(db, node_id, cluster)
     node.schedulable = True
     node.status = "ready"
     await db.commit()
@@ -99,10 +113,10 @@ async def resume_node(node_id: uuid.UUID, db: DbSession, _: RequireAdmin):
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_node(node_id: uuid.UUID, db: DbSession, _: RequireAdmin) -> Response:
-    node = await db.get(Node, node_id)
-    if node is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node.")
+async def remove_node(
+    node_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: RequireAdmin
+) -> Response:
+    node = await _node(db, node_id, cluster)
     if node.is_local:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "The local engine cannot be removed from the cluster."
@@ -122,7 +136,7 @@ async def list_isolates(_: CurrentPrincipal):
 
 
 @router.get("/metering")
-async def metering(db: DbSession, _: CurrentPrincipal):
+async def metering(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     start, end, progress = analytics.month_window()
 
     totals = (
@@ -131,17 +145,22 @@ async def metering(db: DbSession, _: CurrentPrincipal):
                 func.count(Invocation.id),
                 func.sum(Invocation.gb_seconds),
                 func.sum(Invocation.egress_bytes),
-            ).where(Invocation.ts >= start, Invocation.ts < end)
+            ).where(
+                Invocation.cluster_id == cluster.id,
+                Invocation.ts >= start,
+                Invocation.ts < end,
+            )
         )
     ).one()
     invocations = int(totals[0] or 0)
     gb_seconds = float(totals[1] or 0.0)
     egress_bytes = int(totals[2] or 0)
 
-    namespaces = await analytics.namespace_usage(db, start, end)
+    namespaces = await analytics.namespace_usage(db, start, end, cluster.id)
     storage = await _storage_bytes()
 
     return {
+        "cluster": cluster.slug,
         "window_start": start,
         "window_end": end,
         "window_progress": round(progress * 100, 1),
@@ -162,16 +181,19 @@ async def metering(db: DbSession, _: CurrentPrincipal):
 
 
 @router.get("/metering/export.csv")
-async def export_metering(db: DbSession, _: CurrentPrincipal) -> Response:
+async def export_metering(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal) -> Response:
     start, end, _progress = analytics.month_window()
-    namespaces = await analytics.namespace_usage(db, start, end)
+    namespaces = await analytics.namespace_usage(db, start, end, cluster.id)
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["namespace", "invocations", "gb_seconds", "window_start", "window_end"])
+    writer.writerow(
+        ["cluster", "namespace", "invocations", "gb_seconds", "window_start", "window_end"]
+    )
     for row in namespaces:
         writer.writerow(
             [
+                cluster.slug,
                 row["name"],
                 row["invocations"],
                 f"{row['gb_seconds']:.4f}",
@@ -179,12 +201,11 @@ async def export_metering(db: DbSession, _: CurrentPrincipal) -> Response:
                 end.date().isoformat(),
             ]
         )
+    filename = f"cubicle-{cluster.slug}-metering-{start:%Y-%m}.csv"
     return Response(
         buffer.getvalue(),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="cubicle-metering-{start:%Y-%m}.csv"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

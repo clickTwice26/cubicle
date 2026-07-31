@@ -1,6 +1,7 @@
 from . import (
     auth,
     cluster,
+    clusters,
     config,
     data_services,
     functions,
@@ -13,6 +14,7 @@ from . import (
 ROUTERS = [
     setup.router,
     auth.router,
+    clusters.router,
     functions.router,
     config.router,
     observability.router,

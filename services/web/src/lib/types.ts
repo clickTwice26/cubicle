@@ -3,6 +3,24 @@ export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 export type CtxAccess = 'rw' | 'r' | 'w' | 'none'
 export type Role = 'owner' | 'admin' | 'developer' | 'readonly'
 
+export interface Cluster {
+  id: string
+  name: string
+  slug: string
+  ingress_domain: string
+  data_dir: string
+  kms_backend: string
+  default_node_pool: string
+  is_default: boolean
+  status: string
+  description: string
+  base_url: string
+  node_count: number
+  function_count: number
+  namespace_count: number
+  created_at: string
+}
+
 export interface SetupStatus {
   setup_complete: boolean
   version: string
@@ -79,6 +97,7 @@ export interface FunctionSummary {
   url: string
   version: number
   version_status: 'pending' | 'building' | 'ready' | 'failed'
+  cluster?: string
   updated_at: string
   created_at: string
   stats: FunctionStats
@@ -223,11 +242,16 @@ export interface ManagedService {
 }
 
 export interface Instance {
+  cluster_id: string
   cluster_name: string
+  cluster_slug: string
   ingress_domain: string
   data_dir: string
   kms_backend: string
   default_node_pool: string
+  is_default: boolean
+  base_url: string
+  cluster_count: number
   version: string
   public_url: string
   tls: boolean

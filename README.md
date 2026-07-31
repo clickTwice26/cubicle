@@ -49,6 +49,7 @@ never rotated.
 
 | Screen | What it actually does |
 | --- | --- |
+| **Clusters** | Several isolated scheduling domains on one instance — production and staging sharing hardware but nothing else. Switch from the sidebar |
 | **Overview** | KPIs, invocation histogram and per-function latency — all computed from recorded invocations, never sampled |
 | **Function playground** | Namespaces, a real code editor, immutable versioned deploys, and a test console that runs the function on the cluster |
 | **Global env** | One configuration store per cluster, resolved at invocation time so a change needs no redeploy |
@@ -57,6 +58,37 @@ never rotated.
 | **PostgreSQL / Redis** | Real instances provisioned on the cluster on demand, wired into every function with no credentials to copy |
 | **Settings** | Instance configuration, API keys, and local user accounts with roles |
 | **Docs** | Installation, quickstart, the handler contract, secrets, `cubicle.toml`, and the CLI |
+
+---
+
+## Clusters
+
+An instance holds one or more clusters. A cluster owns its namespaces,
+functions, configuration, data services, nodes and metrics; **nothing crosses
+the boundary**, so two clusters can both have a `payments` namespace and a
+`DATABASE_URL` without colliding. User accounts, the root encryption key and
+the edge are instance-wide.
+
+Create one from the sidebar switcher or **Settings → Clusters**. It is a row
+plus the local engine registered against it, so it costs nothing until you
+deploy into it.
+
+A request finds its cluster by three rules, in order:
+
+| Rule | Example |
+| --- | --- |
+| `Host` matches the cluster's ingress domain | `https://staging.example.com/payments/charge` |
+| Path begins with the cluster slug | `https://example.com/staging/payments/charge` |
+| Otherwise the default cluster answers | `https://example.com/payments/charge` |
+
+The default cluster keeps the short two-segment URL, so adding a second cluster
+never changes an endpoint that is already deployed.
+
+```bash
+cubicle clusters
+cubicle --cluster staging deploy
+CUBICLE_CLUSTER=staging cubicle logs --follow
+```
 
 ---
 
@@ -174,7 +206,8 @@ make logs S=api    # tail one service
 make ps            # status
 make migrate       # apply migrations (the API also does this on boot)
 make psql          # control-plane database shell
-make reset         # destroy the cluster and all volumes (asks first)
+make clean-isolates # reclaim isolates left by a stopped control plane
+make reset         # destroy everything and all volumes (asks first)
 ```
 
 **Back up** `.env` and the `pg_data` volume. `.env` holds `CUBICLE_MASTER_KEY`;
@@ -184,10 +217,11 @@ property, not a bug.
 **Metrics** are exposed unauthenticated on `/metrics` for Prometheus, so a
 scrape job inside your network needs no credentials.
 
-**Multi-node.** A node is a Docker engine. The local one registers itself; add
-more from Settings by URL (`tcp://host:2376`, client certificates in
-`/var/lib/cubicle/certs`). The scheduler places isolates on the least-loaded
-schedulable node in the requested pool.
+**Multi-node.** A node is a Docker engine. The local one registers itself
+against every cluster; add more from Settings by URL (`tcp://host:2376`, client
+certificates in `/var/lib/cubicle/certs`). The scheduler places isolates on the
+least-loaded schedulable node in the requested pool, and never crosses a cluster
+boundary even when two clusters sit on the same engine.
 
 ### Security posture
 

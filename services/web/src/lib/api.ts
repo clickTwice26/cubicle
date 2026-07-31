@@ -1,3 +1,5 @@
+import { activeCluster } from './cluster'
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -23,11 +25,14 @@ type Options = Omit<RequestInit, 'body'> & { body?: unknown; raw?: boolean }
 async function request<T>(path: string, options: Options = {}): Promise<T> {
   const { body, raw, headers, ...rest } = options
 
+  const cluster = activeCluster()
   const response = await fetch(path, {
     credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      // Every scoped endpoint reads this; omitting it means "the default".
+      ...(cluster ? { 'X-Cubicle-Cluster': cluster } : {}),
       ...headers,
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -81,7 +86,12 @@ export function subscribe<T>(
   onMessage: (payload: T) => void,
   onError?: (error: Event) => void,
 ): () => void {
-  const source = new EventSource(path, { withCredentials: true })
+  // EventSource cannot send headers, so the cluster travels in the query.
+  const cluster = activeCluster()
+  const url = cluster
+    ? `${path}${path.includes('?') ? '&' : '?'}cluster=${encodeURIComponent(cluster)}`
+    : path
+  const source = new EventSource(url, { withCredentials: true })
   source.onmessage = (event) => {
     try {
       onMessage(JSON.parse(event.data) as T)

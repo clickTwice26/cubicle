@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Response, status
 
 from ..analytics import fmt_bytes
-from ..deps import CurrentPrincipal, DbSession, RequireAdmin
+from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin
 from ..runtime import services
 from ..schemas import ServiceCreate, ServiceOut
 
@@ -17,8 +17,8 @@ DEFAULTS = {
 }
 
 
-async def _describe(db, kind: str, *, reveal: bool = False) -> ServiceOut:
-    service = await services.get_service(db, kind)
+async def _describe(db, cluster, kind: str, *, reveal: bool = False) -> ServiceOut:
+    service = await services.get_service(db, cluster.id, kind)
     if service is None:
         return ServiceOut(
             kind=kind,
@@ -55,33 +55,42 @@ async def _describe(db, kind: str, *, reveal: bool = False) -> ServiceOut:
 
 
 @router.get("", response_model=list[ServiceOut])
-async def list_services(db: DbSession, _: CurrentPrincipal):
-    return [await _describe(db, "postgres"), await _describe(db, "redis")]
+async def list_services(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
+    return [await _describe(db, cluster, "postgres"), await _describe(db, cluster, "redis")]
 
 
 @router.get("/{kind}", response_model=ServiceOut)
-async def get_service(kind: str, db: DbSession, _: CurrentPrincipal):
+async def get_service(kind: str, db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     _check(kind)
-    return await _describe(db, kind)
+    return await _describe(db, cluster, kind)
 
 
 @router.get("/{kind}/connection", response_model=ServiceOut)
-async def reveal_connection(kind: str, db: DbSession, principal: CurrentPrincipal):
+async def reveal_connection(
+    kind: str, db: DbSession, cluster: CurrentCluster, principal: CurrentPrincipal
+):
     _check(kind)
     if not principal.can("admin"):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Only admins can reveal connection credentials."
         )
-    return await _describe(db, kind, reveal=True)
+    return await _describe(db, cluster, kind, reveal=True)
 
 
 @router.post("/{kind}", response_model=ServiceOut, status_code=status.HTTP_201_CREATED)
-async def create_service(kind: str, payload: ServiceCreate, db: DbSession, _: RequireAdmin):
+async def create_service(
+    kind: str,
+    payload: ServiceCreate,
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: RequireAdmin,
+):
     _check(kind)
     try:
         if kind == "postgres":
             await services.create_postgres(
                 db,
+                cluster,
                 version=payload.version,
                 memory=payload.memory,
                 storage=payload.storage,
@@ -90,6 +99,7 @@ async def create_service(kind: str, payload: ServiceCreate, db: DbSession, _: Re
         else:
             await services.create_redis(
                 db,
+                cluster,
                 version=payload.version,
                 memory=payload.memory,
                 eviction=payload.eviction or "allkeys-lru",
@@ -97,41 +107,45 @@ async def create_service(kind: str, payload: ServiceCreate, db: DbSession, _: Re
             )
     except services.ServiceError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _describe(db, kind)
+    return await _describe(db, cluster, kind)
 
 
 @router.post("/{kind}/start", response_model=ServiceOut)
-async def start_service(kind: str, db: DbSession, _: RequireAdmin):
-    return await _toggle(kind, db, True)
+async def start_service(kind: str, db: DbSession, cluster: CurrentCluster, _: RequireAdmin):
+    return await _toggle(kind, db, cluster, True)
 
 
 @router.post("/{kind}/stop", response_model=ServiceOut)
-async def stop_service(kind: str, db: DbSession, _: RequireAdmin):
-    return await _toggle(kind, db, False)
+async def stop_service(kind: str, db: DbSession, cluster: CurrentCluster, _: RequireAdmin):
+    return await _toggle(kind, db, cluster, False)
 
 
 @router.delete("/{kind}", status_code=status.HTTP_204_NO_CONTENT)
 async def destroy_service(
-    kind: str, db: DbSession, _: RequireAdmin, keep_data: bool = False
+    kind: str,
+    db: DbSession,
+    cluster: CurrentCluster,
+    _: RequireAdmin,
+    keep_data: bool = False,
 ) -> Response:
     _check(kind)
-    service = await services.get_service(db, kind)
+    service = await services.get_service(db, cluster.id, kind)
     if service is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That service does not exist.")
     await services.destroy(db, service, keep_data=keep_data)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-async def _toggle(kind: str, db, running: bool) -> ServiceOut:
+async def _toggle(kind: str, db, cluster, running: bool) -> ServiceOut:
     _check(kind)
-    service = await services.get_service(db, kind)
+    service = await services.get_service(db, cluster.id, kind)
     if service is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That service does not exist.")
     try:
         await services.set_running(db, service, running)
     except services.ServiceError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _describe(db, kind)
+    return await _describe(db, cluster, kind)
 
 
 def _check(kind: str) -> None:

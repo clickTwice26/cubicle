@@ -438,6 +438,95 @@ export const DOCS: DocPage[] = [
     ),
   },
   {
+    id: 'clusters',
+    group: 'Guides',
+    label: 'Clusters',
+    title: 'Clusters',
+    lede: 'One instance, several isolated scheduling domains — production and staging on the same hardware, sharing nothing.',
+    body: () => (
+      <>
+        {h2('what', 'What a cluster owns')}
+        {p(
+          'A cluster has its own namespaces, functions, configuration store, data services, nodes and metrics. Nothing crosses the boundary, so two clusters can both hold a namespace called payments and a variable called DATABASE_URL without colliding.',
+        )}
+        {table(
+          ['Scoped to a cluster', 'Shared by the instance'],
+          [
+            ['Namespaces and functions', 'User accounts and roles'],
+            ['Global env and secrets', 'The administrator password'],
+            ['PostgreSQL and Redis', 'The root encryption key'],
+            ['Nodes and scheduling', 'The edge and its certificates'],
+            ['Invocations, logs, metering', 'The instance version'],
+          ],
+        )}
+
+        {h2('create', 'Creating one')}
+        {p(
+          <>
+            Use the switcher at the top of the sidebar, or <strong>Settings → Clusters</strong>.
+            A cluster is a row plus the local engine registered against it — it costs nothing
+            until you deploy into it, which is what makes a throwaway preview cluster
+            reasonable.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-ink-3">$</span> cubicle clusters{'\n\n'}
+            {'  '}CLUSTER{'       '}NAME{'          '}BASE URL{'\n'}
+            {'  '}* prod-cluster{'  '}Production{'    '}https://fn.example.com/{'\n'}
+            {'    '}staging{'       '}Staging{'       '}https://fn.example.com/staging/
+          </>,
+        )}
+
+        {h2('addressing', 'How a request finds its cluster')}
+        {p('Three rules, checked in order:')}
+        {table(
+          ['Rule', 'Example'],
+          [
+            [
+              'Host matches the cluster ingress domain',
+              'https://staging.example.com/payments/charge',
+            ],
+            [
+              'Path begins with the cluster slug',
+              'https://example.com/staging/payments/charge',
+            ],
+            ['Otherwise the default cluster answers', 'https://example.com/payments/charge'],
+          ],
+        )}
+        {note(
+          <>
+            The default cluster keeps the short two-segment URL, so adding a second cluster
+            never changes an endpoint that is already deployed. Give a cluster its own domain
+            and the edge routes that hostname straight to it — DNS has to point here, and the
+            certificate is issued on the first request.
+          </>,
+        )}
+
+        {h2('clients', 'Console and CLI')}
+        {p(
+          <>
+            The console sends the active cluster on every request and remembers your choice
+            between sessions. The CLI takes {mono('--cluster <slug>')}, reads{' '}
+            {mono('CUBICLE_CLUSTER')}, or falls back to the default.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-ink-3">$</span> cubicle --cluster staging deploy{'\n'}
+            <span className="text-ink-3">$</span> cubicle --cluster staging logs --follow{'\n'}
+            <span className="text-ink-3">$</span> CUBICLE_CLUSTER=staging cubicle ls
+          </>,
+        )}
+
+        {h2('deleting', 'Deleting one')}
+        {p(
+          'Deleting a cluster stops its isolates, destroys its data services and removes its namespaces, functions and history. The default cluster cannot be deleted — make another one the default first — and the instance always keeps at least one.',
+        )}
+      </>
+    ),
+  },
+  {
     id: 'config',
     group: 'Reference',
     label: 'cubicle.toml',

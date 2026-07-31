@@ -47,18 +47,46 @@ class TimestampMixin:
 
 
 class Instance(Base, TimestampMixin):
-    """Singleton row (id == 1) holding everything Settings can change."""
+    """Singleton row (id == 1) for state that spans every cluster.
+
+    Anything a single cluster owns — its name, ingress domain, nodes,
+    namespaces, configuration — lives on :class:`Cluster` instead.
+    """
 
     __tablename__ = "instance"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
-    cluster_name: Mapped[str] = mapped_column(String(80), default="prod-cluster")
-    ingress_domain: Mapped[str] = mapped_column(String(255), default="localhost")
+    setup_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[str] = mapped_column(String(20), default="1.0.0")
+
+
+class Cluster(Base, TimestampMixin):
+    """One scheduling domain: its own nodes, namespaces, config and data services.
+
+    Nothing crosses a cluster boundary. Two clusters may both own a namespace
+    called ``payments`` and a variable called ``DATABASE_URL`` without
+    colliding, which is what makes prod/staging separation on one instance
+    meaningful rather than cosmetic.
+
+    Requests reach a cluster in one of three ways, checked in this order:
+
+    1. the ``Host`` header matches ``ingress_domain``,
+    2. the path starts with ``/<slug>/``,
+    3. otherwise the default cluster answers, so ``/<ns>/<fn>`` keeps working.
+    """
+
+    __tablename__ = "clusters"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(80))
+    slug: Mapped[str] = mapped_column(String(63), unique=True, index=True)
+    ingress_domain: Mapped[str] = mapped_column(String(255), default="")
     data_dir: Mapped[str] = mapped_column(String(255), default="/var/lib/cubicle")
     kms_backend: Mapped[str] = mapped_column(String(20), default="file")
     default_node_pool: Mapped[str] = mapped_column(String(40), default="general")
-    setup_complete: Mapped[bool] = mapped_column(Boolean, default=False)
-    version: Mapped[str] = mapped_column(String(20), default="1.0.0")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    description: Mapped[str] = mapped_column(String(255), default="")
 
 
 class User(Base, TimestampMixin):
@@ -92,6 +120,10 @@ class ApiKey(Base, TimestampMixin):
     prefix: Mapped[str] = mapped_column(String(24), index=True)
     token_hash: Mapped[str] = mapped_column(String(255))
     scope: Mapped[str] = mapped_column(String(20), default="admin")
+    # Null means the key works against every cluster on this instance.
+    cluster_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -108,9 +140,13 @@ class Node(Base, TimestampMixin):
     """
 
     __tablename__ = "nodes"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_node_name_per_cluster"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(80), index=True)
     docker_host: Mapped[str] = mapped_column(String(255), default="unix:///var/run/docker.sock")
     pool: Mapped[str] = mapped_column(String(40), default="general")
     status: Mapped[str] = mapped_column(String(20), default="ready")
@@ -128,10 +164,14 @@ class Group(Base, TimestampMixin):
     """A namespace. Every function below it is served under ``/<ns>/``."""
 
     __tablename__ = "groups"
+    __table_args__ = (UniqueConstraint("cluster_id", "ns", name="uq_namespace_per_cluster"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
     name: Mapped[str] = mapped_column(String(120))
-    ns: Mapped[str] = mapped_column(String(63), unique=True, index=True)
+    ns: Mapped[str] = mapped_column(String(63), index=True)
 
     functions: Mapped[list[Function]] = relationship(
         back_populates="group", cascade="all, delete-orphan", lazy="selectin"
@@ -196,9 +236,13 @@ class EnvVar(Base):
     """Cluster-wide configuration, readable from any function at invoke time."""
 
     __tablename__ = "env_vars"
+    __table_args__ = (UniqueConstraint("cluster_id", "key", name="uq_env_key_per_cluster"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
-    key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    key: Mapped[str] = mapped_column(String(120), index=True)
     value_ciphertext: Mapped[str] = mapped_column(Text)
     is_secret: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -228,9 +272,14 @@ class Invocation(Base):
     __table_args__ = (
         Index("ix_invocations_ts", "ts"),
         Index("ix_invocations_fn_ts", "function_id", "ts"),
+        Index("ix_invocations_cluster_ts", "cluster_id", "ts"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+
     function_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("functions.id", ondelete="CASCADE")
     )
@@ -255,9 +304,14 @@ class LogEntry(Base):
     __table_args__ = (
         Index("ix_logs_ts", "ts"),
         Index("ix_logs_fn_ts", "function_id", "ts"),
+        Index("ix_logs_cluster_ts", "cluster_id", "ts"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+
     function_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("functions.id", ondelete="CASCADE")
     )
@@ -275,9 +329,13 @@ class ManagedService(Base, TimestampMixin):
     """A PostgreSQL or Redis instance the console provisions on the cluster."""
 
     __tablename__ = "managed_services"
+    __table_args__ = (UniqueConstraint("cluster_id", "kind", name="uq_service_per_cluster"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
-    kind: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), index=True)
     version: Mapped[str] = mapped_column(String(20), default="16.3")
     status: Mapped[str] = mapped_column(String(20), default="stopped")
     config: Mapped[dict] = mapped_column(JSONB, default=dict)

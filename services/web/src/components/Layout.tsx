@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { ClusterSwitcher } from './ClusterSwitcher'
 import { useInstance, useLogout, useMe, useServices } from '../lib/hooks'
 import { useTheme } from '../lib/theme'
 import {
   Bars,
   Bolt,
   Book,
-  ChevronDown,
   Globe,
   Grid,
   Lines,
@@ -112,25 +112,7 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
 
-        <div className="px-3 pb-2.5">
-          <Link
-            to="/console/settings"
-            className="flex items-center gap-2.5 rounded-[9px] border border-line px-2.5 py-2 transition hover:bg-panel-2"
-          >
-            <span className="grid h-5 w-5 flex-none place-items-center rounded-[5px] border border-accent bg-accent-soft">
-              <span className="h-[7px] w-[7px] rounded-full bg-ok" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] leading-tight font-semibold">
-                {instance?.cluster_name ?? '—'}
-              </span>
-              <span className="block font-mono text-[11.5px] text-ink-3">
-                self-hosted · v{instance?.version ?? '1.0.0'}
-              </span>
-            </span>
-            <ChevronDown size={14} className="text-ink-3" />
-          </Link>
-        </div>
+        <ClusterSwitcher />
 
         <nav className="flex flex-1 flex-col gap-[3px] px-3">
           {NAV.map(({ to, end, label, icon: Icon }) => (

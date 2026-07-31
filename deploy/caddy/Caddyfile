@@ -32,15 +32,18 @@
 		reverse_proxy api:8000
 	}
 
-	# Function invocations: https://<host>/<namespace>/<function>
-	# Console paths are excluded, so a namespace can never shadow the console.
+	# Function invocations. Two shapes reach the control plane:
+	#   /<namespace>/<function>            → the cluster owning this hostname,
+	#                                        or the default cluster
+	#   /<cluster>/<namespace>/<function>  → that cluster, explicitly
+	# Console paths are excluded, so neither can shadow the UI.
 	@invoke {
 		not path /console*
 		not path /docs*
 		not path /setup*
 		not path /assets/*
 		not path /fonts/*
-		path_regexp fn ^/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*/?$
+		path_regexp fn ^/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?/?$
 	}
 	handle @invoke {
 		rewrite * /api/invoke{uri}

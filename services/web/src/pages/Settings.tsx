@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus } from '../components/Icons'
+import { Check, Plus } from '../components/Icons'
 import {
   Badge,
   Button,
@@ -13,8 +13,14 @@ import {
   Skeleton,
   useToast,
 } from '../components/ui'
+import { NewClusterModal } from '../components/ClusterSwitcher'
+import { activeCluster } from '../lib/cluster'
 import {
   useApiKeys,
+  useClusters,
+  useDeleteCluster,
+  useSetDefaultCluster,
+  useSwitchCluster,
   useChangePassword,
   useCreateApiKey,
   useCreateUser,
@@ -35,11 +41,99 @@ export default function Settings() {
   return (
     <div className="mx-auto max-w-[960px] px-5 py-7 sm:px-8">
       <PageHeader title="Settings" />
+      <ClustersCard />
       <InstanceCard />
       <PasswordCard />
       <ApiKeysCard />
       <UsersCard />
     </div>
+  )
+}
+
+function ClustersCard() {
+  const toast = useToast()
+  const { data: clusters } = useClusters()
+  const setDefault = useSetDefaultCluster()
+  const remove = useDeleteCluster()
+  const switchCluster = useSwitchCluster()
+  const [creating, setCreating] = useState(false)
+  const current = activeCluster()
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <CardHeader
+        title="Clusters"
+        subtitle="Each has its own namespaces, configuration, data services and metrics"
+        action={
+          <Button size="sm" icon={<Plus size={13} />} onClick={() => setCreating(true)}>
+            New cluster
+          </Button>
+        }
+      />
+      {(clusters ?? []).map((cluster) => {
+        const selected = current
+          ? current === cluster.slug || current === cluster.id
+          : cluster.is_default
+        return (
+          <div
+            key={cluster.id}
+            className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3.5 last:border-b-0"
+          >
+            <span className="w-4 flex-none text-ink">
+              {selected ? <Check size={14} /> : null}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-[13.5px] font-semibold">
+                {cluster.name}
+                {cluster.is_default ? <Badge>default</Badge> : null}
+              </div>
+              <div className="truncate font-mono text-[11.5px] text-ink-3">
+                {cluster.base_url} · {cluster.namespace_count} ns · {cluster.function_count} fn
+              </div>
+            </div>
+            {!selected ? (
+              <button
+                type="button"
+                onClick={() => switchCluster(cluster.is_default ? null : cluster.slug)}
+                className="text-[12.5px] text-ink-3 transition hover:text-ink"
+              >
+                Switch to
+              </button>
+            ) : null}
+            {!cluster.is_default ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDefault.mutate(cluster.slug, {
+                      onSuccess: () => toast.push(`${cluster.name} is now the default`),
+                      onError: (error) => toast.push(error.message, 'err'),
+                    })
+                  }
+                  className="text-[12.5px] text-ink-3 transition hover:text-ink"
+                >
+                  Make default
+                </button>
+                <ConfirmButton
+                  label="Delete"
+                  confirmLabel="Click again — this destroys its functions and data"
+                  onConfirm={() =>
+                    remove.mutate(cluster.slug, {
+                      onSuccess: () => {
+                        toast.push(`${cluster.name} deleted`)
+                        if (selected) switchCluster(null)
+                      },
+                      onError: (error) => toast.push(error.message, 'err'),
+                    })
+                  }
+                />
+              </>
+            ) : null}
+          </div>
+        )
+      })}
+      <NewClusterModal open={creating} onClose={() => setCreating(false)} />
+    </Card>
   )
 }
 
@@ -69,7 +163,12 @@ function InstanceCard() {
   return (
     <Card className="mb-5 p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-[15px] font-semibold">Instance</div>
+        <div className="text-[15px] font-semibold">
+          {instance.cluster_name}
+          <span className="ml-2 font-mono text-[12px] font-normal text-ink-3">
+            {instance.cluster_slug}
+          </span>
+        </div>
         <div className="flex items-center gap-2.5 text-[12.5px] text-ink-2">
           <span className="font-mono">v{instance.version}</span>
           <Badge tone={instance.tls ? 'ok' : 'neutral'}>
@@ -81,7 +180,7 @@ function InstanceCard() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
-          label="Instance name"
+          label="Cluster name"
           value={form.cluster_name}
           onChange={(event) => setForm({ ...form, cluster_name: event.target.value })}
         />

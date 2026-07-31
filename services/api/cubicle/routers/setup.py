@@ -9,7 +9,9 @@ endpoints below refuse to run again.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -17,14 +19,15 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
+from .. import clusters as cluster_svc
 from .. import security
 from ..config import settings
 from ..db import get_redis, session_scope
 from ..deps import DbSession, InstanceDep
 from ..logging_setup import log
-from ..models import ApiKey, Instance, Node, User
-from ..runtime.engine import EngineError, engines
-from ..runtime.nodes import ensure_local_node, format_spec
+from ..models import ApiKey, Cluster, Instance, Node, User
+from ..runtime.engine import LOCAL_HOST, EngineError, engines
+from ..runtime.nodes import ensure_local_node
 from ..schemas import SetupRequest, SetupStatus
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
@@ -41,11 +44,15 @@ STEPS = [
 
 
 @router.get("/status", response_model=SetupStatus)
-async def setup_status(instance: InstanceDep) -> SetupStatus:
+async def setup_status(instance: InstanceDep, db: DbSession) -> SetupStatus:
+    cluster = None
+    if instance.setup_complete:
+        with contextlib.suppress(cluster_svc.NoClusterError):
+            cluster = await cluster_svc.default_cluster(db)
     return SetupStatus(
         setup_complete=instance.setup_complete,
         version=settings.version,
-        cluster_name=instance.cluster_name if instance.setup_complete else None,
+        cluster_name=cluster.name if cluster else None,
         public_url=settings.public_url,
         domain=settings.domain,
         tls=settings.public_url.startswith("https://"),
@@ -58,24 +65,23 @@ async def joinable_nodes(db: DbSession, instance: InstanceDep) -> list[dict]:
     if instance.setup_complete:
         raise HTTPException(status.HTTP_409_CONFLICT, "This instance is already set up.")
     try:
-        node = await ensure_local_node(db)
+        info = await engines.info(LOCAL_HOST)
     except EngineError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             f"The Docker engine is unreachable, so no isolates could run: {exc}",
         ) from exc
 
-    nodes = (await db.execute(select(Node).order_by(Node.created_at))).scalars().all()
+    gb = info.memory_bytes / 1024**3
     return [
         {
-            "name": n.name,
-            "spec": format_spec(n),
-            "status": n.status,
-            "is_local": n.is_local,
-            "engine_version": n.engine_version,
-            "detected": n.id == node.id,
+            "name": "node-01",
+            "spec": f"{info.cpus} vCPU · {gb:.0f} GB · {info.arch}",
+            "status": "ready",
+            "is_local": True,
+            "engine_version": info.engine_version,
+            "detected": True,
         }
-        for n in nodes
     ]
 
 
@@ -124,32 +130,42 @@ async def run_setup(
     )
     await _mark("keys", "done")
 
-    # 2 — control plane configuration
+    # 2 — control plane configuration and the first cluster
     await _mark("control", "running")
-    instance.cluster_name = payload.cluster_name
-    instance.ingress_domain = payload.ingress_domain.strip().lstrip("*.") or settings.domain
-    instance.data_dir = payload.data_dir.strip() or "/var/lib/cubicle"
-    instance.kms_backend = payload.kms_backend
+    domain = payload.ingress_domain.strip().removeprefix("*.").lower()
+    cluster = Cluster(
+        name=payload.cluster_name,
+        slug=payload.cluster_name,
+        # "localhost" means "no domain", not a routable hostname.
+        ingress_domain="" if domain in ("", "localhost") else domain,
+        data_dir=payload.data_dir.strip() or "/var/lib/cubicle",
+        kms_backend=payload.kms_backend,
+        is_default=True,
+        description="Created during first-run setup.",
+    )
+    db.add(cluster)
     instance.version = settings.version
     instance.setup_complete = True
     user.last_login_at = datetime.now(UTC)
     await db.commit()
+    await db.refresh(cluster)
     await _mark("control", "done")
 
     session_token = await security.create_session(str(user.id))
     security.set_session_cookie(response, session_token)
 
-    asyncio.create_task(_finish_provisioning(payload.nodes))  # noqa: RUF006
+    asyncio.create_task(_finish_provisioning(str(cluster.id), payload.nodes))  # noqa: RUF006
 
     log.info(
         "instance set up",
-        cluster=instance.cluster_name,
+        cluster=cluster.slug,
         admin=user.email,
         ip=security.client_ip(request),
     )
     return {
-        "cluster_name": instance.cluster_name,
-        "ingress_domain": instance.ingress_domain,
+        "cluster_name": cluster.name,
+        "cluster_slug": cluster.slug,
+        "ingress_domain": cluster.ingress_domain or settings.domain,
         "cli_token": token,
         "user": {"name": user.name, "email": user.email, "role": user.role},
     }
@@ -204,13 +220,18 @@ async def _mark(step_id: str, state: str, meta: str | None = None) -> None:
     await get_redis().setex(PROGRESS_KEY, 3600, json.dumps(payload))
 
 
-async def _finish_provisioning(selected: list[str]) -> None:
+async def _finish_provisioning(cluster_id: str, selected: list[str]) -> None:
     """Steps 3–5: real work, streamed to the wizard while it animates."""
     try:
         await _mark("nodes", "running")
         async with session_scope() as db:
-            node = await ensure_local_node(db)
-            nodes = (await db.execute(select(Node))).scalars().all()
+            cluster = await db.get(Cluster, uuid.UUID(cluster_id))
+            node = await ensure_local_node(db, cluster)
+            nodes = (
+                (await db.execute(select(Node).where(Node.cluster_id == cluster.id)))
+                .scalars()
+                .all()
+            )
             for n in nodes:
                 n.schedulable = (not selected) or n.name in selected
             if not any(n.schedulable for n in nodes):

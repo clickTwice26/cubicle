@@ -15,13 +15,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..logging_setup import log
-from ..models import Node
+from ..models import Cluster, Node
 from .engine import LOCAL_HOST, EngineError, engines
 from .pool import pool
 
 
-async def ensure_local_node(db: AsyncSession) -> Node:
-    node = (await db.execute(select(Node).where(Node.is_local.is_(True)))).scalar_one_or_none()
+async def ensure_local_node(db: AsyncSession, cluster: Cluster) -> Node:
+    """Register the engine this control plane runs on against ``cluster``.
+
+    Every cluster gets its own row for the same engine: they share hardware but
+    schedule independently, and draining one must not drain the other.
+    """
+    node = (
+        await db.execute(select(Node).where(Node.cluster_id == cluster.id, Node.is_local.is_(True)))
+    ).scalar_one_or_none()
     try:
         info = await engines.info(LOCAL_HOST)
     except EngineError as exc:
@@ -34,7 +41,13 @@ async def ensure_local_node(db: AsyncSession) -> Node:
         raise
 
     if node is None:
-        node = Node(name="node-01", docker_host=LOCAL_HOST, is_local=True)
+        node = Node(
+            cluster_id=cluster.id,
+            name="node-01",
+            docker_host=LOCAL_HOST,
+            pool=cluster.default_node_pool,
+            is_local=True,
+        )
         db.add(node)
 
     node.cpus = info.cpus
@@ -49,9 +62,12 @@ async def ensure_local_node(db: AsyncSession) -> Node:
     return node
 
 
-async def register_node(db: AsyncSession, *, name: str, docker_host: str, pool_name: str) -> Node:
+async def register_node(
+    db: AsyncSession, cluster: Cluster, *, name: str, docker_host: str, pool_name: str
+) -> Node:
     info = await engines.info(docker_host)
     node = Node(
+        cluster_id=cluster.id,
         name=name,
         docker_host=docker_host,
         pool=pool_name,
@@ -70,8 +86,16 @@ async def register_node(db: AsyncSession, *, name: str, docker_host: str, pool_n
     return node
 
 
-async def refresh_nodes(db: AsyncSession) -> list[Node]:
-    nodes = (await db.execute(select(Node).order_by(Node.created_at))).scalars().all()
+async def refresh_nodes(db: AsyncSession, cluster: Cluster) -> list[Node]:
+    nodes = (
+        (
+            await db.execute(
+                select(Node).where(Node.cluster_id == cluster.id).order_by(Node.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
     for node in nodes:
         try:
             info = await engines.info(node.docker_host)
@@ -91,13 +115,21 @@ async def refresh_nodes(db: AsyncSession) -> list[Node]:
     return list(nodes)
 
 
-async def pick_node(db: AsyncSession, pool_name: str) -> Node:
-    """Least-loaded schedulable node in the requested pool."""
+async def pick_node(db: AsyncSession, cluster: Cluster, pool_name: str) -> Node:
+    """Least-loaded schedulable node in the cluster's requested pool.
+
+    Scheduling never crosses a cluster boundary, even when two clusters happen
+    to sit on the same engine.
+    """
+    in_cluster = Node.cluster_id == cluster.id
     candidates = (
         (
             await db.execute(
                 select(Node).where(
-                    Node.pool == pool_name, Node.schedulable.is_(True), Node.status == "ready"
+                    in_cluster,
+                    Node.pool == pool_name,
+                    Node.schedulable.is_(True),
+                    Node.status == "ready",
                 )
             )
         )
@@ -108,16 +140,20 @@ async def pick_node(db: AsyncSession, pool_name: str) -> Node:
         candidates = (
             (
                 await db.execute(
-                    select(Node).where(Node.schedulable.is_(True), Node.status == "ready")
+                    select(Node).where(
+                        in_cluster, Node.schedulable.is_(True), Node.status == "ready"
+                    )
                 )
             )
             .scalars()
             .all()
         )
     if not candidates:
-        node = (await db.execute(select(Node).where(Node.is_local.is_(True)))).scalar_one_or_none()
+        node = (
+            await db.execute(select(Node).where(in_cluster, Node.is_local.is_(True)))
+        ).scalar_one_or_none()
         if node is None:
-            raise RuntimeError("no node is available to schedule this function")
+            raise RuntimeError(f"cluster '{cluster.slug}' has no node to schedule onto")
         return node
 
     load = allocation_by_node()

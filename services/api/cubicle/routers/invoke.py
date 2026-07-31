@@ -14,10 +14,11 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from .. import clusters as cluster_svc
 from .. import security
 from ..config import settings
 from ..deps import DbSession, _principal_from_api_key
-from ..models import Function, FunctionVersion, Group
+from ..models import Cluster, Function, FunctionVersion, Group
 from ..runtime import invoker
 from ..runtime.nodes import pick_node
 
@@ -40,12 +41,46 @@ HOP_BY_HOP = {
 
 
 @router.api_route(
+    "/{cluster_slug}/{namespace}/{name}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    include_in_schema=True,
+    summary="Invoke a function in a named cluster",
+)
+async def invoke_in_cluster(
+    cluster_slug: str, namespace: str, name: str, request: Request, db: DbSession
+) -> Response:
+    cluster = await cluster_svc.by_reference(db, cluster_slug)
+    if cluster is None:
+        return JSONResponse(
+            {"error": "not_found", "message": f"No cluster '{cluster_slug}'."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return await _invoke(cluster, namespace, name, request, db)
+
+
+@router.api_route(
     "/{namespace}/{name}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     include_in_schema=True,
     summary="Invoke a function",
 )
 async def invoke_function(namespace: str, name: str, request: Request, db: DbSession) -> Response:
+    """Two-segment form: the cluster comes from the Host header, or the default."""
+    cluster = await cluster_svc.by_domain(db, request.headers.get("host", ""))
+    if cluster is None:
+        try:
+            cluster = await cluster_svc.default_cluster(db)
+        except cluster_svc.NoClusterError:
+            return JSONResponse(
+                {"error": "not_configured", "message": "This instance has no cluster yet."},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+    return await _invoke(cluster, namespace, name, request, db)
+
+
+async def _invoke(
+    cluster: Cluster, namespace: str, name: str, request: Request, db: DbSession
+) -> Response:
     if request.method == "OPTIONS":
         return Response(status_code=204, headers={"Allow": "GET, POST, PUT, PATCH, DELETE"})
 
@@ -54,13 +89,20 @@ async def invoke_function(namespace: str, name: str, request: Request, db: DbSes
             select(Function)
             .options(selectinload(Function.group))
             .join(Group, Group.id == Function.group_id)
-            .where(Group.ns == namespace.lower(), Function.name == name.lower())
+            .where(
+                Group.cluster_id == cluster.id,
+                Group.ns == namespace.lower(),
+                Function.name == name.lower(),
+            )
         )
     ).scalar_one_or_none()
 
     if fn is None:
         return JSONResponse(
-            {"error": "not_found", "message": f"No function at /{namespace}/{name}."},
+            {
+                "error": "not_found",
+                "message": f"No function at /{namespace}/{name} in cluster '{cluster.slug}'.",
+            },
             status_code=status.HTTP_404_NOT_FOUND,
         )
     if fn.status == "paused":
@@ -110,11 +152,12 @@ async def invoke_function(namespace: str, name: str, request: Request, db: DbSes
     else:
         body = raw.decode("utf-8", errors="replace")
 
-    node = await pick_node(db, fn.node_pool)
+    node = await pick_node(db, cluster, fn.node_pool)
     session_id = request.headers.get(SESSION_HEADER) or "sess_" + uuid.uuid4().hex[:12]
 
     result = await invoker.invoke(
         db,
+        cluster=cluster,
         function=fn,
         version=version,
         node=node,
@@ -128,6 +171,7 @@ async def invoke_function(namespace: str, name: str, request: Request, db: DbSes
 
     headers = {
         "X-Cubicle-Request-Id": result.request_id,
+        "X-Cubicle-Cluster": cluster.slug,
         "X-Cubicle-Session": session_id,
         "X-Cubicle-Duration-Ms": f"{result.duration_ms:.1f}",
         "X-Cubicle-Cold-Start": "1" if result.cold else "0",
