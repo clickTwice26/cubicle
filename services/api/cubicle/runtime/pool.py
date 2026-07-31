@@ -201,9 +201,11 @@ class IsolatePool:
         busy = sum(1 for i in pool if i.busy)
         seen, at = self._peaks.get(key, (0, 0.0))
         now = time.monotonic()
-        # The mark decays, so yesterday's traffic spike does not pin the pool
-        # at its widest for the rest of the process's life.
-        if now - at > settings.isolate_idle_ttl:
+        # The mark decays quickly. Tying it to the idle TTL instead would make
+        # surplus trimming pointless: by the time the peak expired the isolates
+        # would be idle-stale anyway and the other rule would already have
+        # taken them.
+        if now - at > settings.isolate_scaledown_window:
             seen = 0
         if busy >= seen:
             self._peaks[key] = (busy, now)
@@ -212,7 +214,7 @@ class IsolatePool:
 
     def _peak_concurrency(self, key: str, now: float) -> int:
         seen, at = self._peaks.get(key, (0, 0.0))
-        return 0 if now - at > settings.isolate_idle_ttl else seen
+        return 0 if now - at > settings.isolate_scaledown_window else seen
 
     async def _start(self, spec: FunctionSpec) -> Isolate:
         image = settings.runtime_image(spec.runtime)
@@ -388,12 +390,14 @@ class IsolatePool:
         *Idle* — nothing has touched it for the TTL. This is what reclaims a
         function that stopped receiving traffic entirely.
 
-        *Surplus* — the pool is larger than the concurrency it has actually
-        seen recently. Spreading requests evenly keeps every isolate's
-        last-used timestamp fresh, so a pool that grew during a burst would
-        otherwise stay at its high-water mark forever: eight isolates each
-        taking an eighth of the traffic all look busy enough to keep. Trimming
-        to observed peak concurrency is what makes scale-down work.
+        *Surplus* — the pool is larger than the concurrency seen in the last
+        ``isolate_scaledown_window``. Spreading requests evenly keeps every
+        isolate's last-used timestamp fresh, so a pool that grew during a burst
+        would otherwise stay at its high-water mark for the whole idle TTL:
+        eight isolates each taking an eighth of the traffic all look busy
+        enough to keep. This is the rule that gives a spike's containers back
+        within a couple of minutes; the idle TTL is what eventually takes the
+        last one and returns the function to zero.
         """
         bounds = limits or {}
         now = time.monotonic()

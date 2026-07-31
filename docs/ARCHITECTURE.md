@@ -605,8 +605,12 @@ stateDiagram-v2
 
 Four properties fall out of this:
 
-- **Scale to zero.** An untouched function keeps no container. The reconcile
-  loop reclaims idle isolates every 30 s, down to `min_instances`.
+- **Scale to zero, in two stages.** The reconcile loop runs every 30 s. Once a
+  function has been quiet for `CUBICLE_ISOLATE_SCALEDOWN_WINDOW` (60 s) it gives
+  back the isolates a burst created, one per pass; the last one goes when it has
+  been idle for `CUBICLE_ISOLATE_IDLE_TTL` (900 s), and the function then costs
+  nothing but a database row. Verified: a 20-request burst against a cap of 6
+  went 6 → 1 in 2.5 minutes.
 - **Restarts stay warm.** Shutdown deliberately leaves isolates running; on the
   way back up `adopt` re-attaches to the ones whose version is still current and
   removes the rest. Verified: a request straight after a control-plane restart
@@ -624,7 +628,7 @@ Four properties fall out of this:
   five isolates landed 21/21/22/22/21. Spreading load keeps every isolate's
   last-used timestamp fresh, so idle-TTL alone would never shrink a pool that
   grew during a burst; the reconcile loop also trims one isolate per pass while
-  the pool is wider than the concurrency it has recently seen.
+  the pool is wider than the concurrency seen in the last scale-down window.
 
 ---
 

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     runtime_image_py312: str = "cubicle/runtime-py312:1.0.0"
     runtime_image_py311: str = "cubicle/runtime-py311:1.0.0"
     isolate_idle_ttl: int = 900
+    #: How long a burst keeps the pool wide. Once concurrency has not been seen
+    #: for this long the reconcile loop starts giving isolates back, one per
+    #: pass, without waiting out the much longer idle TTL — that one governs
+    #: going fully cold, not shedding the surplus a spike created.
+    isolate_scaledown_window: int = 60
     isolate_start_timeout: float = 30.0
     isolate_max_per_function: int = 8
     build_timeout: int = 600
