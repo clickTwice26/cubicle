@@ -285,6 +285,7 @@ async def create_function(
         memory_mb=fn.memory_mb,
         timeout_s=fn.timeout_s,
         ctx_access=fn.ctx_access,
+        max_instances=fn.max_instances,
         base_url=base_url(cluster, group.ns, fn.name),
     )
     version = FunctionVersion(function_id=fn.id, number=1, files=files, status="pending")

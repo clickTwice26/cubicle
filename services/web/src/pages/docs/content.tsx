@@ -158,6 +158,13 @@ export const DOCS: DocPage[] = [
         {p(
           'Then open the console. The first screen is setup: you name the cluster and choose the administrator password there. That password is the only credential on the instance.',
         )}
+        {note(
+          <>
+            The installer checks the port before claiming it and picks another if it is taken,
+            printing whichever it used. On macOS this matters: AirPlay Receiver holds port 7000
+            by default.
+          </>,
+        )}
       </>
     ),
   },
@@ -326,6 +333,13 @@ export const DOCS: DocPage[] = [
         {p(
           'A handler that exceeds its timeout gets a 504 and its isolate is destroyed, since a runaway thread cannot be reclaimed any other way.',
         )}
+        {p(
+          <>
+            One isolate serves one request at a time, so a handler never runs concurrently with
+            itself and does not need to be thread-safe. How many run in parallel, and how long
+            they stick around, is covered in <strong>Scaling and concurrency</strong>.
+          </>,
+        )}
       </>
     ),
   },
@@ -413,6 +427,22 @@ export const DOCS: DocPage[] = [
             itself is unrestricted, including DDL: it is your database. What bounds it is the
             admin role, a 15 second statement timeout and a 500 row cap on results.
           </>,
+        )}
+
+        {h2('lifecycle', 'Stop, recreate, destroy')}
+        {table(
+          ['Action', 'Effect'],
+          [
+            ['Stop', 'Stops the container. The volume, the password and the data all stay.'],
+            [
+              'Recreate',
+              'Rebuilds the container from the current spec, reusing the same volume and password. A restart, not a reset — use it when a running container predates a change to how they are created.',
+            ],
+            [
+              'Destroy',
+              'Removes the container and, unless you keep the volume, the data with it. It asks you to type the service name first.',
+            ],
+          ],
         )}
 
         {h2('use', 'Using them from a function')}
@@ -544,11 +574,250 @@ export const DOCS: DocPage[] = [
     ),
   },
   {
+    id: 'scaling',
+    group: 'Guides',
+    label: 'Scaling & concurrency',
+    title: 'Scaling and concurrency',
+    lede: 'How many containers your function gets, who decides, and when they go away again.',
+    body: () => (
+      <>
+        {h2('model', 'One request per isolate')}
+        {p(
+          <>
+            An isolate is a container running one function version. It serves exactly one
+            request at a time — the control plane marks it busy and will not hand it a second.
+            Concurrency therefore comes from having more isolates, not from threads inside one.
+          </>,
+        )}
+        {p(
+          <>
+            That is the whole scheduling model, and it is why your handler does not need to be
+            thread-safe: nothing else is running in it.
+          </>,
+        )}
+
+        {h2('bounds', 'The two numbers that matter')}
+        {table(
+          ['Setting', 'Default', 'What it does'],
+          [
+            [
+              'Warm instances',
+              '0',
+              'Isolates kept resident even with no traffic. Above zero there is no cold start, at the cost of memory held permanently.',
+            ],
+            [
+              'Max instances',
+              '4',
+              'Ceiling on concurrent isolates. Past it a request waits for a free one rather than starting another container.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            Both live on a function&apos;s <strong>Settings</strong> tab. Max instances is what
+            stops one busy function from taking a whole node: with it at 4 and a 128 MB
+            function, that endpoint can never hold more than 512 MB however hard it is hit.
+          </>,
+        )}
+        {note(
+          <>
+            The instance-wide {mono('CUBICLE_ISOLATE_MAX_PER_FUNCTION')} (8) is a hard ceiling
+            over the per-function setting. A function may restrain the platform, never overrule
+            it. Raise the instance limit first if you need a function above it.
+          </>,
+        )}
+
+        {h2('queue', 'What happens at the ceiling')}
+        {p(
+          <>
+            Requests beyond the ceiling do not fail — they wait for an isolate to free up, for
+            as long as the function&apos;s timeout allows. Only if nothing frees up in that
+            window do they get a {mono('503')} naming the limit they hit.
+          </>,
+        )}
+        {p(
+          <>
+            So max instances trades latency for memory. Ten simultaneous requests against a cap
+            of 2 all succeed; five of them just queue.
+          </>,
+        )}
+
+        {h2('spread', 'Work is spread, not stacked')}
+        {p(
+          <>
+            When several isolates are warm, an incoming request goes to the one that has served
+            the fewest so far. Load converges on an even split rather than piling onto whichever
+            container happened to start first — 60 sequential requests across five isolates land
+            close to 12 each.
+          </>,
+        )}
+
+        {h2('down', 'Coming back down')}
+        {p(
+          'A pool that grew during a burst gives the containers back in two stages, on separate timers.',
+        )}
+        {table(
+          ['Stage', 'Setting', 'Behaviour'],
+          [
+            [
+              'Shed the surplus',
+              'CUBICLE_ISOLATE_SCALEDOWN_WINDOW (60 s)',
+              'Once concurrency has not been seen for this long, the reconcile loop reclaims one isolate per pass while the pool is wider than recent demand.',
+            ],
+            [
+              'Go cold',
+              'CUBICLE_ISOLATE_IDLE_TTL (900 s)',
+              'The last isolate is reclaimed after this much idleness. The function then costs nothing but a database row.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            Two timers rather than one because they answer different questions. Spreading work
+            evenly keeps every isolate&apos;s last-used timestamp fresh, so idle time alone
+            would never shrink a pool that grew during a spike — eight isolates each taking an
+            eighth of the traffic all look busy enough to keep.
+          </>,
+        )}
+        {p(
+          <>
+            The reconcile loop runs every {mono('CUBICLE_RECONCILE_INTERVAL')} seconds (30), so
+            a pool of six drains to one in roughly two and a half minutes of quiet.
+          </>,
+        )}
+
+        {h2('cold', 'Cold starts')}
+        {p(
+          <>
+            A cold start is container create, start and agent readiness — a few hundred
+            milliseconds for a small function, longer if {mono('requirements.txt')} pulled in
+            something heavy. Warm invocations are 2–5 ms of platform overhead on top of your
+            handler.
+          </>,
+        )}
+        {p(
+          <>
+            Every response carries {mono('X-Cubicle-Cold-Start')}, so you can tell which kind
+            you got without guessing. Set warm instances above zero on latency-critical paths.
+          </>,
+        )}
+        {note(
+          <>
+            A cold start is <strong>not</strong> billed as compute when the isolate fails to
+            become ready — a {mono('503')} never reached your handler, so it records no
+            GB-seconds.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'observability',
+    group: 'Guides',
+    label: 'Observability',
+    title: 'Observability',
+    lede: 'Watching the cluster work: the live activity stream, logs, metrics and Prometheus.',
+    body: () => (
+      <>
+        {h2('live', 'Live activity')}
+        {p(
+          <>
+            <strong>Live activity</strong> streams the runtime&apos;s own events over
+            server-sent events and animates them: requests travelling from the edge through the
+            router to a function, isolates appearing while they boot, pulsing while they serve
+            and shrinking away when the pool reclaims them.
+          </>,
+        )}
+        {p(
+          'It is the fastest way to see what the scheduler is actually doing — whether a burst is fanning out or queueing at the ceiling, which isolates are carrying the load, how long cold starts really take.',
+        )}
+        {table(
+          ['Panel', 'Shows'],
+          [
+            ['Request path', 'Each function, its warm and busy isolates, and its ceiling.'],
+            ['Invocations / second', 'Throughput over the last minute.'],
+            ['Latency', 'Recent durations on a log scale — cold starts are the outliers.'],
+            ['Isolates', 'Every container, its state, request count and memory.'],
+            ['Event stream', 'The raw events, newest first.'],
+          ],
+        )}
+        {p(
+          <>
+            <strong>Send traffic</strong> generates load so an idle cluster has something to
+            show: choose a function, how many requests go out at once, how many times to repeat,
+            and how long to wait between rounds. Requests at once is the interesting one — it is
+            what makes the pool widen instead of reusing a single isolate.
+          </>,
+        )}
+        {note(
+          <>
+            Those are real invocations through the real endpoint. They are recorded, metered and
+            logged like any other request, so do not point the generator at something with side
+            effects you would not want repeated.
+          </>,
+        )}
+
+        {h2('logs', 'Logs')}
+        {p(
+          <>
+            Anything your handler prints, plus control-plane events, lands in{' '}
+            <strong>Logs &amp; monitoring</strong> — filterable by level, function and free
+            text, paginated, and tailing live while you are on the newest page. Logs are kept
+            for 14 days and then pruned.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-ink-3">$</span> cubicle logs --follow{'\n'}
+            <span className="text-ink-3">$</span> cubicle logs --function create-charge
+          </>,
+        )}
+
+        {h2('function', 'Per-function detail')}
+        {p(
+          <>
+            A function&apos;s own page carries its invocation count, p50/p90/p95/p99, error
+            rate, cold-start rate, metered GB-seconds, its version history with build times, and
+            its recent log lines.
+          </>,
+        )}
+
+        {h2('prometheus', 'Prometheus')}
+        {p(
+          <>
+            {mono('/metrics')} is a standard Prometheus endpoint. Scrape it directly; it needs
+            no authentication and carries no request payloads.
+          </>,
+        )}
+        {table(
+          ['Metric', 'Type', 'Labels'],
+          [
+            ['cubicle_invocations_total', 'counter', 'namespace, function, status'],
+            ['cubicle_invocation_duration_seconds', 'histogram', 'namespace, function'],
+            ['cubicle_cold_starts_total', 'counter', 'namespace, function'],
+            ['cubicle_builds_total', 'counter', 'result'],
+            ['cubicle_warm_isolates', 'gauge', '—'],
+            ['cubicle_gb_seconds_total', 'counter', 'namespace, function'],
+          ],
+        )}
+
+        {h2('health', 'Health')}
+        {p(
+          <>
+            {mono('/healthz')} reports the database, Redis and Docker engine separately, so a
+            failing check names what is wrong rather than returning a bare 500. It is what the
+            container healthcheck and any external monitor should watch.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
     id: 'config',
     group: 'Reference',
     label: 'cubicle.toml',
     title: 'cubicle.toml',
-    lede: 'Per-function configuration, kept next to the source and editable from either side.',
+    lede: 'The manifest that ties a source directory to a deployed function.',
     body: () => (
       <>
         {h2('example', 'Example')}
@@ -574,6 +843,8 @@ export const DOCS: DocPage[] = [
             {'\n'}
             min_instances = <span className="text-warn">0</span>
             {'\n'}
+            max_instances = <span className="text-warn">4</span>
+            {'\n'}
             node_pool{'     '}= <span className="text-ok">&quot;general&quot;</span>
             {'\n\n'}
             <span className="text-ink-3">[context]</span>
@@ -587,25 +858,54 @@ export const DOCS: DocPage[] = [
           'cubicle.toml',
         )}
 
-        {h2('options', 'Options')}
+        {h2('what', 'What it is read for')}
+        {p(
+          <>
+            {mono('cubicle deploy')} reads exactly two keys from this file:{' '}
+            {mono('function.namespace')} and {mono('function.name')}. They are how a directory
+            on your machine finds the function it belongs to, so that deploying is {mono('cd')}{' '}
+            and one command with no arguments.
+          </>,
+        )}
+        {note(
+          <>
+            <strong>The remaining sections are a record, not a control.</strong> They are
+            written by {mono('cubicle init')} to reflect the function&apos;s settings at that
+            moment, and they ship with the bundle so the deployed source is self-describing —
+            but the control plane does not apply them. Changing {mono('memory_mb')} here does
+            not change the memory the function runs with.
+          </>,
+        )}
+        {p(
+          <>
+            Resource settings are owned by the function itself, on its <strong>Settings</strong>{' '}
+            tab or through {mono('PATCH /api/functions/{id}')}. That is deliberate: an old
+            checkout redeploying a stale manifest would otherwise silently roll back a limit
+            someone raised in the console.
+          </>,
+        )}
+
+        {h2('options', 'Fields')}
         {table(
-          ['Key', 'Default', 'Notes'],
+          ['Key', 'Read by deploy', 'Notes'],
           [
-            ['resources.memory_mb', '512', 'Hard cap. The isolate is killed on overrun.'],
-            ['resources.timeout_s', '30', 'Wall clock per invocation, up to 900.'],
-            [
-              'resources.min_instances',
-              '0',
-              'Isolates kept resident. Above 0 removes cold starts at the cost of held memory.',
-            ],
-            ['resources.node_pool', '"general"', 'Schedules onto a labelled pool of nodes.'],
-            [
-              'context.access',
-              '"read+write"',
-              'read+write, read only, write only, or no access.',
-            ],
-            ['function.method', '"POST"', 'The single method this endpoint accepts.'],
+            ['function.namespace', 'yes', 'Which namespace to deploy into. Required.'],
+            ['function.name', 'yes', 'Which function. Required, and it must already exist.'],
+            ['function.runtime', 'no', 'Mirrors the interpreter the function is set to use.'],
+            ['function.method', 'no', 'Mirrors the method the endpoint accepts.'],
+            ['resources.*', 'no', 'Mirrors memory, timeout, warm instances and node pool.'],
+            ['context.*', 'no', 'Mirrors the session context access mode and TTL.'],
           ],
+        )}
+
+        {h2('bundle', 'What gets deployed')}
+        {p(
+          <>
+            A deploy sends four files and nothing else: {mono('handler.py')} (required),{' '}
+            {mono('requirements.txt')}, {mono('cubicle.toml')} and {mono('README.md')}. Anything
+            else in the directory is ignored, so a virtualenv or a test folder sitting next to
+            the handler costs nothing.
+          </>,
         )}
       </>
     ),
@@ -641,18 +941,26 @@ export const DOCS: DocPage[] = [
         {table(
           ['Command', 'Description'],
           [
+            ['cubicle login <url>', 'Authenticate and store the profile.'],
+            ['cubicle clusters', 'List the clusters on this instance.'],
             ['cubicle status', 'Control plane, node and isolate health.'],
+            ['cubicle ls', 'List namespaces and functions.'],
             ['cubicle init <ns>/<name>', 'Scaffold a function directory locally.'],
-            ['cubicle deploy', 'Bundle the current directory and deploy it.'],
+            ['cubicle deploy [dir]', 'Bundle a directory and deploy it.'],
             [
               'cubicle invoke <ns>/<name>',
               'Send a test event and print the response with timing.',
             ],
-            ['cubicle logs [--follow]', 'Tail structured logs across functions.'],
-            ['cubicle env set KEY=value', 'Write a cluster-wide variable.'],
-            ['cubicle secrets set KEY', 'Create or rotate a per-function secret.'],
-            ['cubicle ls', 'List namespaces and functions.'],
+            ['cubicle logs [--follow]', 'Show or follow structured logs.'],
+            ['cubicle env ls | set KEY=value | rm KEY', 'Cluster-wide configuration.'],
+            ['cubicle secrets ls | set KEY | rm KEY', 'Per-function secrets.'],
           ],
+        )}
+        {p(
+          <>
+            Every command takes {mono('--cluster <slug>')}, and each of them honours{' '}
+            {mono('CUBICLE_CLUSTER')} when it is not given.
+          </>,
         )}
 
         {h2('api', 'HTTP API')}
@@ -660,6 +968,193 @@ export const DOCS: DocPage[] = [
           <>
             The full OpenAPI document is served at {mono('/api/openapi.json')} with a browsable
             UI at {mono('/api/docs')}. Authenticate with {mono('Authorization: Bearer cbcl_…')}.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'access',
+    group: 'Reference',
+    label: 'Access & API keys',
+    title: 'Access and API keys',
+    lede: 'Who can do what, and how machines authenticate.',
+    body: () => (
+      <>
+        {h2('sessions', 'Signing in')}
+        {p(
+          <>
+            There is no registration. Setup creates a single administrator and its password, and
+            that account can add more users afterwards. A browser session is an opaque token
+            held in Redis and sent as an httpOnly cookie — nothing about the session lives in
+            the token itself, so signing out revokes it server-side.
+          </>,
+        )}
+        {p(
+          <>
+            Passwords are hashed with Argon2id. Repeated failures against one account are rate
+            limited.
+          </>,
+        )}
+
+        {h2('roles', 'Roles')}
+        {table(
+          ['Role', 'Can'],
+          [
+            ['readonly', 'View everything: functions, logs, metrics, configuration keys.'],
+            ['developer', 'Everything above, plus create, edit, deploy and delete functions.'],
+            ['admin', 'Everything above, plus data services, nodes, API keys and settings.'],
+            ['owner', 'Everything above, plus deleting clusters and users.'],
+          ],
+        )}
+
+        {h2('keys', 'API keys')}
+        {p(
+          <>
+            Machines authenticate with a bearer token from <strong>Settings → API keys</strong>.
+            A key is shown once, at creation; only an HMAC of it is stored, so a database dump
+            does not yield usable credentials and a lost key can only be replaced, never
+            recovered.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-ink-3">$</span> curl
+            https://fn.example.com/prod-cluster/payments/create-charge \{'\n'}
+            {'    '}-H <span className="text-ok">&apos;Authorization: Bearer cbcl_…&apos;</span>{' '}
+            \{'\n'}
+            {'    '}-d <span className="text-ok">&apos;{'{"amount": 4200}'}&apos;</span>
+          </>,
+        )}
+        {p(
+          <>
+            A key may be scoped to one cluster or left instance-wide. Revoking takes effect on
+            the next request.
+          </>,
+        )}
+
+        {h2('public', 'Public endpoints')}
+        {p(
+          <>
+            A function requires a key by default. Turning off{' '}
+            <strong>Require an API key</strong> makes the endpoint public, which is what you
+            want for an inbound webhook whose sender cannot carry your credentials — verify the
+            provider&apos;s own signature inside the handler instead.
+          </>,
+        )}
+
+        {h2('http', 'The HTTP API')}
+        {p(
+          <>
+            The console is a client of the same API you have. The full OpenAPI document is at{' '}
+            {mono('/api/openapi.json')}, with a browsable UI at {mono('/api/docs')}. Every
+            cluster-scoped endpoint takes the cluster from an {mono('X-Cubicle-Cluster')}{' '}
+            header, a {mono('?cluster=')} parameter, or the key&apos;s own scope.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'troubleshooting',
+    group: 'Reference',
+    label: 'Troubleshooting',
+    title: 'Troubleshooting',
+    lede: 'What the common failures look like and what actually causes them.',
+    body: () => (
+      <>
+        {h2('responses', 'Responses from an endpoint')}
+        {table(
+          ['You see', 'Cause'],
+          [
+            [
+              '404 not_found',
+              'No function at that path in that cluster. The response names the clusters that do hold it.',
+            ],
+            [
+              '401 unauthorized',
+              'The function requires an API key and none was sent, or the key was revoked.',
+            ],
+            [
+              '405 method_not_allowed',
+              'A function accepts one method. The Allow header says which.',
+            ],
+            [
+              '503 not_deployed',
+              'The function has never built successfully. Check the build log on its Code tab.',
+            ],
+            [
+              '503 isolate_unavailable',
+              'The container never became ready — usually a dependency that fails at import. Its output is in the logs.',
+            ],
+            [
+              '504',
+              'The handler exceeded its timeout. Its isolate is destroyed, since a runaway thread cannot be reclaimed any other way.',
+            ],
+            ['502 invocation_failed', 'The handler raised. The traceback is in the logs.'],
+          ],
+        )}
+
+        {h2('builds', 'Builds')}
+        {p(
+          <>
+            A failed build never replaces the running version — the deploy is rejected and
+            traffic keeps going to the last good one. The full build log is on the
+            function&apos;s <strong>Code</strong> tab.
+          </>,
+        )}
+        {p(
+          <>
+            Builds run in a container with no network restrictions of their own, so a private
+            index needs its credentials in {mono('requirements.txt')} the usual pip way, and a
+            dependency that needs a compiler will fail unless the runtime image has one.
+          </>,
+        )}
+
+        {h2('cold', 'Everything feels slow')}
+        {p(
+          <>
+            Check the cold-start rate on the dashboard. If it is high, traffic is arriving
+            spread further apart than {mono('CUBICLE_ISOLATE_IDLE_TTL')} and every request is
+            paying for a container start — set warm instances to 1. If latency is high but cold
+            starts are not, the handler itself is the cost, and the per-function latency chart
+            will show it.
+          </>,
+        )}
+
+        {h2('platform', 'Platform')}
+        {table(
+          ['Symptom', 'Cause'],
+          [
+            [
+              'Console loads, nothing works',
+              'Check /healthz — it reports database, Redis and Docker separately.',
+            ],
+            [
+              'docker: false',
+              'The api container lost the Docker socket. Nothing can be built or invoked until it is back.',
+            ],
+            [
+              'Isolates vanish after a restart',
+              'Expected on a version change: adopt keeps only isolates whose version is still current.',
+            ],
+            [
+              '"root key changed" instead of a secret',
+              'CUBICLE_MASTER_KEY is not the one that encrypted it. Restore the original .env; there is no recovery path.',
+            ],
+            [
+              'Port already in use',
+              'Something else holds the port. On macOS, AirPlay Receiver holds 7000 — the installer detects this and picks another.',
+            ],
+          ],
+        )}
+
+        {h2('reset', 'Starting over')}
+        {p(
+          <>
+            {mono('docker compose down -v')} removes the containers and every volume, including
+            the control-plane database and any managed PostgreSQL. It is a complete reset with
+            no confirmation, so be sure that is what you want.
           </>,
         )}
       </>

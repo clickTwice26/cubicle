@@ -77,6 +77,7 @@ def default_toml(
     memory_mb: int,
     timeout_s: int,
     ctx_access: str,
+    max_instances: int = 4,
 ) -> str:
     return f"""[function]
 name       = "{name}"
@@ -89,6 +90,7 @@ method     = "{method}"
 memory_mb     = {memory_mb}
 timeout_s     = {timeout_s}
 min_instances = 0
+max_instances = {max_instances}
 node_pool     = "general"
 
 [context]
@@ -125,6 +127,7 @@ def scaffold(
     timeout_s: int,
     ctx_access: str,
     base_url: str,
+    max_instances: int = 4,
 ) -> dict[str, str]:
     return {
         "handler.py": default_handler(name, namespace),
@@ -137,6 +140,7 @@ def scaffold(
             memory_mb=memory_mb,
             timeout_s=timeout_s,
             ctx_access=ctx_access,
+            max_instances=max_instances,
         ),
         "README.md": default_readme(name, namespace, base_url),
     }
