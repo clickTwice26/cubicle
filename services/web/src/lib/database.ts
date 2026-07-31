@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
+import { useActiveCluster } from './cluster'
 
 const ROOT = '/api/services/postgres/db'
 
@@ -80,15 +81,26 @@ const keys = {
   structure: (s: string, t: string) => ['db', 'structure', s, t] as const,
 }
 
-export const useDbOverview = () =>
-  useQuery({ queryKey: keys.overview, queryFn: () => api.get<DbOverview>(`${ROOT}/overview`) })
+export function useDbOverview() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.overview, scope],
+    queryFn: () => api.get<DbOverview>(`${ROOT}/overview`),
+  })
+}
 
-export const useDbTables = () =>
-  useQuery({ queryKey: keys.tables, queryFn: () => api.get<TableRef[]>(`${ROOT}/tables`) })
+export function useDbTables() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.tables, scope],
+    queryFn: () => api.get<TableRef[]>(`${ROOT}/tables`),
+  })
+}
 
 export function useDbPage(args: BrowseArgs | null) {
+  const scope = useActiveCluster()
   return useQuery({
-    queryKey: keys.page(args ?? ({} as BrowseArgs)),
+    queryKey: [...keys.page(args ?? ({} as BrowseArgs)), scope],
     enabled: Boolean(args),
     queryFn: () => {
       const a = args!
@@ -107,15 +119,17 @@ export function useDbPage(args: BrowseArgs | null) {
   })
 }
 
-export const useDbStructure = (schema?: string, table?: string) =>
-  useQuery({
-    queryKey: keys.structure(schema ?? '', table ?? ''),
+export function useDbStructure(schema?: string, table?: string) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.structure(schema ?? '', table ?? ''), scope],
     enabled: Boolean(schema && table),
     queryFn: () =>
       api.get<Structure>(
         `${ROOT}/tables/${encodeURIComponent(schema!)}/${encodeURIComponent(table!)}/structure`,
       ),
   })
+}
 
 /** Any write invalidates the browse cache — the grid must not show stale rows. */
 function useWriter<T, V>(fn: (vars: V) => Promise<T>) {

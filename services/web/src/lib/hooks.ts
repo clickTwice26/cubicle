@@ -5,7 +5,7 @@ import {
   type UseQueryOptions,
 } from '@tanstack/react-query'
 import { api } from './api'
-import { setActiveCluster } from './cluster'
+import { setActiveCluster, useActiveCluster } from './cluster'
 import type {
   ApiKey,
   Cluster,
@@ -109,16 +109,19 @@ export const useClusters = () =>
 /**
  * Point the console at another cluster.
  *
- * Every cached query belongs to the cluster it was fetched from, so the whole
- * cache is dropped rather than invalidated — showing production's functions
- * under staging's name for even one frame would be worse than a brief spinner.
+ * Every cluster-scoped query key ends with the cluster, so this only has to
+ * change the cluster: the keys change with it and React Query fetches the new
+ * ones. Nothing has to be evicted, which means a switch can never render one
+ * cluster's data under another's name, and switching back is instant because
+ * the previous cluster's pages are still cached.
  */
 export function useSwitchCluster() {
   const client = useQueryClient()
   return (slug: string | null) => {
     setActiveCluster(slug)
-    client.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' })
-    void client.refetchQueries()
+    // The cluster list itself is instance-wide, but its per-cluster counts
+    // change as soon as you act inside one.
+    void client.invalidateQueries({ queryKey: keys.clusters })
   }
 }
 
@@ -160,17 +163,24 @@ export function useDeleteCluster() {
 
 // ── dashboard ────────────────────────────────────────────────────────────────
 
-export const useDashboard = (hours = 24) =>
-  useQuery({
-    queryKey: keys.dashboard(hours),
+export function useDashboard(hours = 24) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.dashboard(hours), scope],
     queryFn: () => api.get<Dashboard>(`/api/dashboard?hours=${hours}`),
     refetchInterval: 15_000,
   })
+}
 
 // ── namespaces & functions ───────────────────────────────────────────────────
 
-export const useGroups = () =>
-  useQuery({ queryKey: keys.groups, queryFn: () => api.get<Group[]>('/api/groups') })
+export function useGroups() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.groups, scope],
+    queryFn: () => api.get<Group[]>('/api/groups'),
+  })
+}
 
 export function useCreateGroup() {
   const client = useQueryClient()
@@ -191,44 +201,54 @@ export function useDeleteGroup() {
   })
 }
 
-export const useFunctions = (groupId?: string) =>
-  useQuery({
-    queryKey: groupId ? ([...keys.functions, groupId] as const) : keys.functions,
+export function useFunctions(groupId?: string) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: groupId ? [...keys.functions, groupId, scope] : [...keys.functions, scope],
     queryFn: () =>
       api.get<FunctionSummary[]>(
         groupId ? `/api/functions?group_id=${groupId}` : '/api/functions',
       ),
   })
+}
 
-export const useFunction = (id: string | undefined, options: Q<FunctionDetail> = {}) =>
-  useQuery({
-    queryKey: keys.fn(id ?? ''),
+export function useFunction(id: string | undefined, options: Q<FunctionDetail> = {}) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.fn(id ?? ''), scope],
     queryFn: () => api.get<FunctionDetail>(`/api/functions/${id}`),
     enabled: Boolean(id),
     ...options,
   })
+}
 
-export const useFunctionMetrics = (id: string | undefined) =>
-  useQuery({
-    queryKey: keys.fnMetrics(id ?? ''),
+export function useFunctionMetrics(id: string | undefined) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.fnMetrics(id ?? ''), scope],
     queryFn: () => api.get<FunctionMetrics>(`/api/functions/${id}/metrics`),
     enabled: Boolean(id),
   })
+}
 
-export const useFunctionLogs = (id: string | undefined) =>
-  useQuery({
-    queryKey: keys.fnLogs(id ?? ''),
+export function useFunctionLogs(id: string | undefined) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.fnLogs(id ?? ''), scope],
     queryFn: () => api.get<LogLine[]>(`/api/functions/${id}/logs`),
     enabled: Boolean(id),
     refetchInterval: 10_000,
   })
+}
 
-export const useVersions = (id: string | undefined) =>
-  useQuery({
-    queryKey: keys.versions(id ?? ''),
+export function useVersions(id: string | undefined) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.versions(id ?? ''), scope],
     queryFn: () => api.get<Version[]>(`/api/functions/${id}/versions`),
     enabled: Boolean(id),
   })
+}
 
 export function useCreateFunction(groupId: string) {
   const client = useQueryClient()
@@ -244,11 +264,12 @@ export function useCreateFunction(groupId: string) {
 
 export function useUpdateFunction(id: string) {
   const client = useQueryClient()
+  const scope = useActiveCluster()
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api.patch<FunctionDetail>(`/api/functions/${id}`, body),
     onSuccess: (data) => {
-      client.setQueryData(keys.fn(id), data)
+      client.setQueryData([...keys.fn(id), scope], data)
       void client.invalidateQueries({ queryKey: keys.functions })
     },
   })
@@ -256,11 +277,12 @@ export function useUpdateFunction(id: string) {
 
 export function useDeployFunction(id: string) {
   const client = useQueryClient()
+  const scope = useActiveCluster()
   return useMutation({
     mutationFn: (files: Record<string, string>) =>
       api.post<FunctionDetail>(`/api/functions/${id}/deploy`, { files }),
     onSuccess: (data) => {
-      client.setQueryData(keys.fn(id), data)
+      client.setQueryData([...keys.fn(id), scope], data)
       void client.invalidateQueries({ queryKey: keys.versions(id) })
       void client.invalidateQueries({ queryKey: keys.functions })
     },
@@ -292,15 +314,17 @@ export function useTestInvoke(id: string) {
 
 // ── session context ──────────────────────────────────────────────────────────
 
-export const useContextState = (groupId: string | undefined, session: string) =>
-  useQuery({
-    queryKey: keys.context(groupId ?? '', session),
+export function useContextState(groupId: string | undefined, session: string) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.context(groupId ?? '', session), scope],
     queryFn: () =>
       api.get<ContextState>(
         `/api/groups/${groupId}/context?session=${encodeURIComponent(session)}`,
       ),
     enabled: Boolean(groupId && session),
   })
+}
 
 export function useClearContext(groupId: string) {
   const client = useQueryClient()
@@ -313,8 +337,13 @@ export function useClearContext(groupId: string) {
 
 // ── configuration ────────────────────────────────────────────────────────────
 
-export const useEnvVars = () =>
-  useQuery({ queryKey: keys.env, queryFn: () => api.get<EnvVar[]>('/api/env') })
+export function useEnvVars() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.env, scope],
+    queryFn: () => api.get<EnvVar[]>('/api/env'),
+  })
+}
 
 export function useSaveEnvVar() {
   const client = useQueryClient()
@@ -336,12 +365,14 @@ export function useDeleteEnvVar() {
 export const revealEnvVar = (key: string) =>
   api.get<EnvVar>(`/api/env/${encodeURIComponent(key)}/reveal`)
 
-export const useSecrets = (functionId: string | undefined) =>
-  useQuery({
-    queryKey: keys.fnSecrets(functionId ?? ''),
+export function useSecrets(functionId: string | undefined) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.fnSecrets(functionId ?? ''), scope],
     queryFn: () => api.get<Secret[]>(`/api/functions/${functionId}/secrets`),
     enabled: Boolean(functionId),
   })
+}
 
 export function useSaveSecret(functionId: string) {
   const client = useQueryClient()
@@ -363,27 +394,33 @@ export function useDeleteSecret(functionId: string) {
 
 // ── observability ────────────────────────────────────────────────────────────
 
-export const useLogs = (level: string) =>
-  useQuery({
-    queryKey: keys.logs(level),
+export function useLogs(level: string) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.logs(level), scope],
     queryFn: () => api.get<LogLine[]>(`/api/logs?level=${level}&limit=150`),
   })
+}
 
 // ── cluster ──────────────────────────────────────────────────────────────────
 
-export const useNodes = () =>
-  useQuery({
-    queryKey: keys.nodes,
+export function useNodes() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.nodes, scope],
     queryFn: () => api.get<NodeInfo[]>('/api/cluster/nodes'),
     refetchInterval: 20_000,
   })
+}
 
-export const useMetering = () =>
-  useQuery({
-    queryKey: keys.metering,
+export function useMetering() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.metering, scope],
     queryFn: () => api.get<Metering>('/api/cluster/metering'),
     refetchInterval: 60_000,
   })
+}
 
 export function useDrainNode() {
   const client = useQueryClient()
@@ -396,12 +433,14 @@ export function useDrainNode() {
 
 // ── managed services ─────────────────────────────────────────────────────────
 
-export const useServices = () =>
-  useQuery({
-    queryKey: keys.services,
+export function useServices() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.services, scope],
     queryFn: () => api.get<ManagedService[]>('/api/services'),
     refetchInterval: 20_000,
   })
+}
 
 export function useServiceAction(kind: 'postgres' | 'redis') {
   const client = useQueryClient()
@@ -431,18 +470,21 @@ export function useServiceAction(kind: 'postgres' | 'redis') {
 
 // ── settings ─────────────────────────────────────────────────────────────────
 
-export const useInstance = () =>
-  useQuery({
-    queryKey: keys.instance,
+export function useInstance() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.instance, scope],
     queryFn: () => api.get<Instance>('/api/settings/instance'),
   })
+}
 
 export function useUpdateInstance() {
   const client = useQueryClient()
+  const scope = useActiveCluster()
   return useMutation({
     mutationFn: (body: Record<string, string>) =>
       api.patch<Instance>('/api/settings/instance', body),
-    onSuccess: (data) => client.setQueryData(keys.instance, data),
+    onSuccess: (data) => client.setQueryData([...keys.instance, scope], data),
   })
 }
 

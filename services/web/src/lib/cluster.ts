@@ -7,6 +7,8 @@
  * single-cluster install always wants.
  */
 
+import { useSyncExternalStore } from 'react'
+
 const STORAGE_KEY = 'cubicle-cluster'
 
 let active: string | null = read()
@@ -38,4 +40,20 @@ export function setActiveCluster(slugOrId: string | null): void {
 export function onClusterChange(listener: (next: string | null) => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+/**
+ * The active cluster, as React state.
+ *
+ * Every cluster-scoped query key ends with this value, so switching clusters
+ * changes the keys rather than refetching the same ones. Without that, two
+ * clusters share a cache slot and a switch shows the previous cluster's
+ * numbers under the new cluster's name until each panel happens to settle.
+ */
+export function useActiveCluster(): string {
+  return useSyncExternalStore(
+    onClusterChange,
+    () => active ?? 'default',
+    () => 'default',
+  )
 }

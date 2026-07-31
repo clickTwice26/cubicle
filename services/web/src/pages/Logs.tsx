@@ -14,6 +14,7 @@ import {
   cx,
 } from '../components/ui'
 import { api, subscribe } from '../lib/api'
+import { useActiveCluster } from '../lib/cluster'
 import { useQuery } from '@tanstack/react-query'
 import { levelColour } from '../lib/format'
 import type { LogLine } from '../lib/types'
@@ -38,6 +39,7 @@ interface LogPage {
 
 export default function Logs() {
   const [params, setParams] = useSearchParams()
+  const scope = useActiveCluster()
 
   const level = LEVELS.some((l) => l.value === params.get('level'))
     ? params.get('level')!
@@ -70,7 +72,7 @@ export default function Logs() {
   const live = page === 1
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['logs', level, fn, search, page, size],
+    queryKey: ['logs', level, fn, search, page, size, scope],
     queryFn: () => {
       const query = new URLSearchParams({
         level,
@@ -85,7 +87,7 @@ export default function Logs() {
   })
 
   const { data: functions } = useQuery({
-    queryKey: ['log-functions'],
+    queryKey: ['log-functions', scope],
     queryFn: () => api.get<string[]>('/api/logs/functions'),
     staleTime: 60_000,
   })
@@ -123,7 +125,7 @@ export default function Logs() {
       () => setConnected(false),
     )
     return stop
-  }, [live, level, fn, search])
+  }, [live, level, fn, search, scope])
 
   // Live lines sit above the fetched page; the page itself is never reordered.
   // Each carries a generated id, so no de-duplication against the page is
