@@ -87,6 +87,10 @@ never rotated.
 </tr>
 <tr>
 <td width="50%">
+<a href="docs/screenshots/08-database.png"><img src="docs/screenshots/08-database.png" alt="The database manager browsing a table" width="100%"></a>
+<sub><b>Database manager</b> — browse and edit the managed PostgreSQL: rows, structure, and a SQL console.</sub>
+</td>
+<td width="50%">
 <a href="docs/screenshots/01-landing.png"><img src="docs/screenshots/01-landing.png" alt="The landing page" width="100%"></a>
 <sub><b>Landing</b> — served by the same instance, no marketing site to host.</sub>
 </td>

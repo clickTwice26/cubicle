@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CodeEditor } from '../components/CodeEditor'
 import {
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -39,21 +41,44 @@ import {
   type TableRef,
 } from '../lib/database'
 
-const PAGE_SIZE = 50
+const DEFAULT_PAGE_SIZE = 50
+
+type Tab = 'rows' | 'structure' | 'query'
+
+const TABS: Tab[] = ['rows', 'structure', 'query']
 
 export default function DatabaseBrowser() {
   const { data: tables, isLoading, error } = useDbTables()
   const { data: overview } = useDbOverview()
-  const [selected, setSelected] = useState<TableRef | null>(null)
-  const [tab, setTab] = useState<'rows' | 'structure' | 'query'>('rows')
+  const [params, setParams] = useSearchParams()
 
-  useEffect(() => {
-    if (tables?.length && !selected) setSelected(tables[0])
-  }, [tables, selected])
+  // The whole view is addressable: which tab, which table, which page, the
+  // search and the sort. Refreshing, linking and the back button all work.
+  const tab = (TABS.find((value) => value === params.get('tab')) ?? 'rows') as Tab
+  const tableParam = params.get('table')
+  const selected =
+    (tables ?? []).find((entry) => `${entry.schema}.${entry.name}` === tableParam) ??
+    tables?.[0] ??
+    null
+
+  const setTab = (next: Tab) => {
+    const updated = new URLSearchParams(params)
+    if (next === 'rows') updated.delete('tab')
+    else updated.set('tab', next)
+    setParams(updated)
+  }
+
+  const setTable = (next: TableRef) => {
+    const updated = new URLSearchParams(params)
+    updated.set('table', `${next.schema}.${next.name}`)
+    // A different table invalidates where you were in the old one.
+    for (const key of ['page', 'q', 'sort', 'dir']) updated.delete(key)
+    setParams(updated)
+  }
 
   if (error) {
     return (
-      <div className="mx-auto max-w-[1240px] px-5 py-7 sm:px-8">
+      <div className="px-5 py-7 sm:px-8">
         <PageHeader title="Database" />
         <EmptyState
           title="The database is not reachable"
@@ -69,7 +94,9 @@ export default function DatabaseBrowser() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 py-7 sm:px-8">
+    // No max width: this page is a data grid, and every pixel it does not use
+    // is a column the operator has to scroll for.
+    <div className="px-5 py-7 sm:px-8">
       <Link
         to="/console/services/postgres"
         className="mb-3.5 inline-flex items-center gap-1.5 text-[13px] text-ink-2 transition hover:text-ink"
@@ -91,103 +118,214 @@ export default function DatabaseBrowser() {
         }
       />
 
-      <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <Card className="h-fit overflow-hidden">
-          <div className="border-b border-line px-4 py-3 text-[11px] font-bold tracking-[0.06em] text-ink-3 uppercase">
-            Tables
-          </div>
-          {isLoading ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-9 w-full" />
-              ))}
-            </div>
-          ) : tables?.length ? (
-            <div className="max-h-[70vh] overflow-auto">
-              {tables.map((t) => {
-                const active = selected?.schema === t.schema && selected?.name === t.name
-                return (
-                  <button
-                    key={`${t.schema}.${t.name}`}
-                    type="button"
-                    onClick={() => setSelected(t)}
-                    className={cx(
-                      'flex w-full items-center gap-2 border-b border-line px-4 py-2.5 text-left transition last:border-b-0',
-                      active ? 'bg-accent-soft' : 'hover:bg-panel-2',
-                    )}
-                  >
-                    <Database size={14} className="flex-none text-ink-3" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[12.5px] font-semibold">
-                        {t.name}
-                      </span>
-                      <span className="block truncate text-[11px] text-ink-3">
-                        {t.schema} · {formatBytes(t.size_bytes)}
-                        {t.kind === 'view' ? ' · view' : ''}
-                        {!t.editable && t.kind !== 'view' ? ' · no primary key' : ''}
-                      </span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="px-4 py-8 text-center text-[13px] text-ink-3">
-              No tables yet. Create one from the query console.
-            </div>
-          )}
-        </Card>
-
-        <div className="min-w-0">
-          <Tabs
-            value={tab}
-            onChange={setTab}
-            className="mb-4"
-            tabs={[
-              { value: 'rows', label: 'Rows' },
-              { value: 'structure', label: 'Structure' },
-              { value: 'query', label: 'Query' },
-            ]}
+      <div className="mb-4 flex flex-wrap items-center gap-4 border-b border-line">
+        {tab === 'query' ? null : (
+          <TablePicker
+            tables={tables ?? []}
+            loading={isLoading}
+            selected={selected}
+            onSelect={setTable}
           />
-          {tab === 'rows' && selected ? <RowsTab table={selected} /> : null}
-          {tab === 'structure' && selected ? <StructureTab table={selected} /> : null}
-          {tab === 'query' ? <QueryTab /> : null}
-          {!selected && tab !== 'query' ? (
-            <EmptyState
-              title="Select a table"
-              body="Pick one on the left to browse its rows."
-            />
-          ) : null}
-        </div>
+        )}
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          className="ml-auto border-b-0"
+          tabs={[
+            { value: 'rows', label: 'Rows' },
+            { value: 'structure', label: 'Structure' },
+            { value: 'query', label: 'Query' },
+          ]}
+        />
       </div>
+
+      {isLoading ? <Skeleton className="h-64 w-full" /> : null}
+      {!isLoading && tab === 'rows' && selected ? <RowsTab table={selected} /> : null}
+      {!isLoading && tab === 'structure' && selected ? <StructureTab table={selected} /> : null}
+      {tab === 'query' ? <QueryTab /> : null}
+      {!isLoading && !selected && tab !== 'query' ? (
+        <EmptyState
+          title="No tables yet"
+          body="Create one from the query console, then it appears here."
+          action={
+            <Button variant="primary" onClick={() => setTab('query')}>
+              Open the query console
+            </Button>
+          }
+        />
+      ) : null}
+    </div>
+  )
+}
+
+/** Table selection, as a dropdown rather than a column that eats the grid. */
+function TablePicker({
+  tables,
+  loading,
+  selected,
+  onSelect,
+}: {
+  tables: TableRef[]
+  loading: boolean
+  selected: TableRef | null
+  onSelect: (table: TableRef) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState('')
+  const container = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (!container.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => event.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open])
+
+  const shown = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    if (!needle) return tables
+    return tables.filter((t) => `${t.schema}.${t.name}`.toLowerCase().includes(needle))
+  }, [tables, filter])
+
+  return (
+    <div className="relative pb-2.5" ref={container}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={loading || tables.length === 0}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-10 min-w-[260px] items-center gap-2.5 rounded-[9px] border border-line-strong bg-panel px-3 text-left transition hover:bg-panel-2 disabled:opacity-55"
+      >
+        <Database size={15} className="flex-none text-ink-3" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[13px] font-semibold">
+            {selected ? `${selected.schema}.${selected.name}` : 'No table'}
+          </span>
+          {selected ? (
+            <span className="block truncate text-[11px] text-ink-3">
+              {selected.estimated_rows > 0
+                ? `~${selected.estimated_rows.toLocaleString()} rows · `
+                : ''}
+              {formatBytes(selected.size_bytes)}
+              {selected.kind === 'view' ? ' · view' : ''}
+              {!selected.editable && selected.kind !== 'view' ? ' · no primary key' : ''}
+            </span>
+          ) : null}
+        </span>
+        <Badge>{tables.length}</Badge>
+        <ChevronDown
+          size={14}
+          className={cx('flex-none text-ink-3 transition', open && 'rotate-180')}
+        />
+      </button>
+
+      {open ? (
+        <div
+          role="listbox"
+          className="animate-rise absolute top-full left-0 z-30 mt-1 w-[340px] overflow-hidden rounded-xl border border-line-strong bg-panel shadow-2xl"
+        >
+          {tables.length > 8 ? (
+            <div className="border-b border-line p-2">
+              <input
+                autoFocus
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder="Filter tables…"
+                className="h-8 w-full rounded-lg border border-line bg-bg px-2.5 text-[12.5px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
+              />
+            </div>
+          ) : null}
+          <div className="max-h-[60vh] overflow-auto">
+            {shown.map((t) => {
+              const active = selected?.schema === t.schema && selected?.name === t.name
+              return (
+                <button
+                  key={`${t.schema}.${t.name}`}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onSelect(t)
+                    setOpen(false)
+                    setFilter('')
+                  }}
+                  className={cx(
+                    'flex w-full items-center gap-2.5 px-3 py-2 text-left transition',
+                    active ? 'bg-accent-soft' : 'hover:bg-panel-2',
+                  )}
+                >
+                  <span className="w-3.5 flex-none text-ink">
+                    {active ? <Check size={13} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-[12.5px] font-semibold">
+                      {t.name}
+                    </span>
+                    <span className="block truncate text-[11px] text-ink-3">
+                      {t.schema} · {formatBytes(t.size_bytes)}
+                      {t.kind === 'view' ? ' · view' : ''}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+            {shown.length === 0 ? (
+              <div className="px-3 py-6 text-center text-[12.5px] text-ink-3">
+                Nothing matches that.
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
 
 // ── rows ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZES = [25, 50, 100, 200]
+
 function RowsTab({ table }: { table: TableRef }) {
   const toast = useToast()
-  const [offset, setOffset] = useState(0)
-  const [orderBy, setOrderBy] = useState<string | undefined>()
-  const [descending, setDescending] = useState(false)
-  const [term, setTerm] = useState('')
-  const [search, setSearch] = useState('')
+  const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState<Row | null>(null)
   const [creating, setCreating] = useState(false)
 
-  useEffect(() => {
-    setOffset(0)
-    setOrderBy(undefined)
-    setSearch('')
-    setTerm('')
-  }, [table.schema, table.name])
+  const page = Math.max(1, Number(params.get('page') ?? 1) || 1)
+  const size = PAGE_SIZES.includes(Number(params.get('size')))
+    ? Number(params.get('size'))
+    : DEFAULT_PAGE_SIZE
+  const search = params.get('q') ?? ''
+  const orderBy = params.get('sort') ?? undefined
+  const descending = params.get('dir') === 'desc'
+  const [term, setTerm] = useState(search)
+
+  useEffect(() => setTerm(search), [search])
+
+  const patch = (changes: Record<string, string | null>) => {
+    const updated = new URLSearchParams(params)
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) updated.delete(key)
+      else updated.set(key, value)
+    }
+    // Paging and sorting replace rather than stack — the back button should
+    // leave the page, not walk back through every sort you tried.
+    setParams(updated, { replace: true })
+  }
 
   const { data, isFetching } = useDbPage({
     schema: table.schema,
     table: table.name,
-    limit: PAGE_SIZE,
-    offset,
+    limit: size,
+    offset: (page - 1) * size,
     orderBy,
     descending,
     search: search || undefined,
@@ -197,6 +335,7 @@ function RowsTab({ table }: { table: TableRef }) {
   const columns = data?.columns ?? []
   const pk = data?.primary_key ?? []
   const editable = Boolean(data?.editable)
+  const pages = data ? Math.max(1, Math.ceil(data.total / size)) : 1
 
   const keyOf = (row: Row): Row => Object.fromEntries(pk.map((k) => [k, row[k]]))
 
@@ -207,8 +346,7 @@ function RowsTab({ table }: { table: TableRef }) {
           className="flex items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault()
-            setSearch(term)
-            setOffset(0)
+            patch({ q: term.trim() || null, page: null })
           }}
         >
           <div className="flex h-8 items-center gap-2 rounded-lg border border-line bg-panel px-2.5">
@@ -224,15 +362,7 @@ function RowsTab({ table }: { table: TableRef }) {
             Search
           </Button>
           {search ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setSearch('')
-                setTerm('')
-                setOffset(0)
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={() => patch({ q: null, page: null })}>
               Clear
             </Button>
           ) : null}
@@ -276,14 +406,13 @@ function RowsTab({ table }: { table: TableRef }) {
                   >
                     <button
                       type="button"
-                      onClick={() => {
-                        if (orderBy === c.name) setDescending((d) => !d)
-                        else {
-                          setOrderBy(c.name)
-                          setDescending(false)
-                        }
-                        setOffset(0)
-                      }}
+                      onClick={() =>
+                        patch({
+                          sort: c.name,
+                          dir: orderBy === c.name && !descending ? 'desc' : 'asc',
+                          page: null,
+                        })
+                      }
                       className="inline-flex items-center gap-1.5 uppercase transition hover:text-ink"
                     >
                       {c.name}
@@ -349,32 +478,19 @@ function RowsTab({ table }: { table: TableRef }) {
           </div>
         ) : null}
 
-        {data && data.total > PAGE_SIZE ? (
-          <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[12.5px] text-ink-2">
-            <span className="font-mono">
-              {data.offset + 1}–{Math.min(data.offset + data.limit, data.total)} of{' '}
-              {data.total.toLocaleString()}
-            </span>
-            <span className="flex gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                icon={<ChevronLeft size={13} />}
-              >
-                Previous
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={offset + PAGE_SIZE >= data.total}
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-              >
-                Next <ChevronRight size={13} />
-              </Button>
-            </span>
-          </div>
+        {data ? (
+          <Pagination
+            page={page}
+            pages={pages}
+            size={size}
+            total={data.total}
+            from={data.total === 0 ? 0 : data.offset + 1}
+            to={Math.min(data.offset + data.limit, data.total)}
+            onPage={(next) => patch({ page: next === 1 ? null : String(next) })}
+            onSize={(next) =>
+              patch({ size: next === DEFAULT_PAGE_SIZE ? null : String(next), page: null })
+            }
+          />
         ) : null}
       </Card>
 
@@ -395,6 +511,95 @@ function RowsTab({ table }: { table: TableRef }) {
         onClose={() => setCreating(false)}
       />
     </>
+  )
+}
+
+/** Always present, even on a single page — the page-size control lives here. */
+function Pagination({
+  page,
+  pages,
+  size,
+  total,
+  from,
+  to,
+  onPage,
+  onSize,
+}: {
+  page: number
+  pages: number
+  size: number
+  total: number
+  from: number
+  to: number
+  onPage: (page: number) => void
+  onSize: (size: number) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-2.5 text-[12.5px] text-ink-2">
+      <span className="flex items-center gap-1.5">
+        <span className="text-ink-3">Rows per page</span>
+        {PAGE_SIZES.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onSize(option)}
+            className={cx(
+              'rounded-md border px-2 py-0.5 font-mono text-[11.5px] transition',
+              option === size
+                ? 'border-accent bg-accent-soft text-ink'
+                : 'border-line text-ink-3 hover:text-ink',
+            )}
+          >
+            {option}
+          </button>
+        ))}
+      </span>
+
+      <span className="font-mono">
+        {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
+      </span>
+
+      <span className="ml-auto flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page <= 1}
+          onClick={() => onPage(1)}
+          title="First page"
+        >
+          «
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+          icon={<ChevronLeft size={13} />}
+        >
+          Previous
+        </Button>
+        <span className="px-2 font-mono whitespace-nowrap">
+          Page {page.toLocaleString()} of {pages.toLocaleString()}
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+        >
+          Next <ChevronRight size={13} />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page >= pages}
+          onClick={() => onPage(pages)}
+          title="Last page"
+        >
+          »
+        </Button>
+      </span>
+    </div>
   )
 }
 
