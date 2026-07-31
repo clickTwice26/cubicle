@@ -94,10 +94,13 @@ never rotated.
 <a href="docs/screenshots/01-landing.png"><img src="docs/screenshots/01-landing.png" alt="The landing page" width="100%"></a>
 <sub><b>Landing</b> — served by the same instance, no marketing site to host.</sub>
 </td>
+</tr>
+<tr>
 <td width="50%">
 <a href="docs/screenshots/07-docs.png"><img src="docs/screenshots/07-docs.png" alt="Built-in documentation" width="100%"></a>
 <sub><b>Docs</b> — bundled and versioned with the instance, so they match what you are running.</sub>
 </td>
+<td width="50%"></td>
 </tr>
 </table>
 

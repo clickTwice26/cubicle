@@ -300,6 +300,47 @@ export function useDeleteFunction() {
   })
 }
 
+export interface FunctionIsolate {
+  id: string
+  node: string
+  busy: boolean
+  invocations: number
+  memory_mb: number
+  cpus: number
+  age_s: number
+  idle_s: number
+}
+
+export interface IsolateList {
+  isolates: FunctionIsolate[]
+  min_instances: number
+  max_instances: number
+  memory_mb: number
+  version: number
+}
+
+/** What is running for this function right now. Polled, because isolates are
+ *  runtime state and the pool is the only thing that knows. */
+export function useFunctionIsolates(id: string, enabled = true) {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: ['fn-isolates', id, scope],
+    queryFn: () => api.get<IsolateList>(`/api/functions/${id}/isolates`),
+    enabled: Boolean(id) && enabled,
+    refetchInterval: enabled ? 3000 : false,
+  })
+}
+
+export function useDestroyIsolate(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (isolateId: string) => api.delete(`/api/functions/${id}/isolates/${isolateId}`),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['fn-isolates', id] })
+    },
+  })
+}
+
 export function useTestInvoke(id: string) {
   const client = useQueryClient()
   return useMutation({

@@ -358,6 +358,57 @@ async def update_function(
     return await _detail(db, fn, cluster)
 
 
+@router.get("/functions/{function_id}/isolates")
+async def list_isolates(
+    function_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal
+):
+    """The containers currently serving this function.
+
+    Read from the pool rather than the database: isolates are runtime state,
+    and the only authoritative answer to "what is running right now" is the
+    scheduler's own bookkeeping.
+    """
+    fn = await load_function(db, function_id, cluster)
+    version = await current_version(db, fn)
+    return {
+        "isolates": pool.isolates_for(str(fn.id), cluster.slug),
+        "min_instances": fn.min_instances,
+        "max_instances": fn.max_instances,
+        "memory_mb": fn.memory_mb,
+        "version": version.number if version else 0,
+    }
+
+
+@router.delete(
+    "/functions/{function_id}/isolates/{isolate_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def destroy_isolate(
+    function_id: uuid.UUID,
+    isolate_id: str,
+    db: DbSession,
+    cluster: CurrentCluster,
+    principal: RequireDeveloper,
+) -> Response:
+    """Reclaim one isolate.
+
+    The function keeps serving: the next request either finds another warm
+    isolate or cold-starts a replacement. Destroying one that is mid-request
+    fails that request, which is the point when the isolate is wedged.
+    """
+    fn = await load_function(db, function_id, cluster)
+    # Confirm the isolate belongs to this function before touching it, so an
+    # id from another function — or another cluster — cannot be destroyed
+    # through this route.
+    mine = {entry["id"] for entry in pool.isolates_for(str(fn.id), cluster.slug)}
+    if isolate_id not in mine:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such isolate for this function.")
+
+    if not await pool.destroy_isolate(isolate_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That isolate is already gone.")
+    log.info("isolate destroyed", isolate=isolate_id, function=fn.name, by=principal.user.email)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete("/functions/{function_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_function(
     function_id: uuid.UUID, db: DbSession, cluster: CurrentCluster, _: RequireDeveloper

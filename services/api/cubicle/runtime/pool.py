@@ -435,6 +435,45 @@ class IsolatePool:
             log.info("reclaimed idle isolates", count=len(victims))
         return len(victims)
 
+    async def destroy_isolate(self, container_id: str) -> bool:
+        """Reclaim one isolate by id. Returns whether it was found.
+
+        Accepts a busy isolate on purpose: an operator reaching for this is
+        usually dealing with one that is wedged mid-request, which is exactly
+        the case a "only when idle" rule would refuse. The request it is
+        serving fails, and the caller sees a 502.
+        """
+        victim: Isolate | None = None
+        async with self._cond:
+            for key, isolates in list(self._isolates.items()):
+                for isolate in isolates:
+                    if isolate.container_id.startswith(container_id):
+                        victim = isolate
+                        isolates.remove(isolate)
+                        if not isolates:
+                            self._isolates.pop(key, None)
+                        break
+                if victim:
+                    break
+            self._cond.notify_all()
+
+        if victim is None:
+            return False
+        await self._destroy(victim)
+        log.info(
+            "isolate destroyed by operator",
+            container=victim.container_id[:12],
+            function=victim.name,
+            busy=victim.busy,
+        )
+        return True
+
+    def isolates_for(self, function_id: str, cluster: str) -> list[dict]:
+        """This function's isolates, in the shape the snapshot uses."""
+        return [
+            entry for entry in self.snapshot(cluster=cluster) if entry["function_id"] == function_id
+        ]
+
     async def adopt(self, *, hosts: list[str], live_versions: dict[str, dict]) -> None:
         """Re-attach to isolates that outlived a control-plane restart.
 

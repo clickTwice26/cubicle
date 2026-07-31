@@ -23,7 +23,9 @@ import {
   useContextState,
   useDeleteFunction,
   useDeployFunction,
+  useDestroyIsolate,
   useFunction,
+  useFunctionIsolates,
   useGroups,
   useTestInvoke,
   useUpdateFunction,
@@ -40,7 +42,7 @@ const TIMEOUTS = [5, 30, 60, 300]
 const MAX_INSTANCES = [1, 2, 4, 8]
 const FILES = ['handler.py', 'requirements.txt', 'cubicle.toml', 'README.md'] as const
 
-const TABS = ['code', 'test', 'settings'] as const
+const TABS = ['code', 'test', 'instances', 'settings'] as const
 type Tab = (typeof TABS)[number]
 type FileName = (typeof FILES)[number]
 
@@ -212,6 +214,7 @@ export default function FunctionWorkbench() {
         tabs={[
           { value: 'code', label: 'Code' },
           { value: 'test', label: 'Test' },
+          { value: 'instances', label: 'Instances' },
           { value: 'settings', label: 'Settings' },
         ]}
       />
@@ -420,6 +423,10 @@ export default function FunctionWorkbench() {
         </>
       ) : null}
 
+      {tab === 'instances' ? (
+        <Instances functionId={functionId} name={fn.name} live={tab === 'instances'} />
+      ) : null}
+
       {tab === 'settings' ? (
         <Card className="grid gap-5 p-5">
           <ChipGroup
@@ -520,6 +527,128 @@ export default function FunctionWorkbench() {
         </Card>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * The containers serving this function right now.
+ *
+ * Polled while the tab is open rather than streamed: this is a handful of
+ * rows that change on the scale of seconds, and a second SSE connection per
+ * function page would cost more than it is worth.
+ */
+function Instances({
+  functionId,
+  name,
+  live,
+}: {
+  functionId: string
+  name: string
+  live: boolean
+}) {
+  const toast = useToast()
+  const { data, isLoading } = useFunctionIsolates(functionId, live)
+  const destroy = useDestroyIsolate(functionId)
+  const [pending, setPending] = useState<string | null>(null)
+
+  if (isLoading || !data) return <Skeleton className="h-40 w-full" />
+
+  const busy = data.isolates.filter((isolate) => isolate.busy).length
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+        <div>
+          <div className="text-sm font-semibold">
+            {data.isolates.length} running instance{data.isolates.length === 1 ? '' : 's'}
+            {busy > 0 ? (
+              <span className="font-normal text-ink-2"> · {busy} working</span>
+            ) : null}
+          </div>
+          <div className="mt-0.5 text-[12.5px] text-ink-2">
+            One container per concurrent request · {data.min_instances} warm ·{' '}
+            {data.max_instances} max · {data.memory_mb} MB each
+          </div>
+        </div>
+        <Badge tone={data.isolates.length ? 'accent' : 'neutral'}>
+          {data.isolates.length
+            ? `${
+                (data.isolates.length * data.memory_mb) / 1024 >= 1
+                  ? `${((data.isolates.length * data.memory_mb) / 1024).toFixed(1)} GB`
+                  : `${data.isolates.length * data.memory_mb} MB`
+              } held`
+            : 'scaled to zero'}
+        </Badge>
+      </div>
+
+      {data.isolates.length === 0 ? (
+        <div className="px-5 py-10 text-center text-[13px] text-ink-3">
+          Nothing running — this function is scaled to zero.
+          <div className="mt-1 text-[12px]">
+            The next request starts a container; it appears here while it boots.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="hidden grid-cols-[130px_84px_1fr_90px_90px_92px] gap-3 border-b border-line px-5 py-2.5 text-[11px] font-bold tracking-[0.05em] text-ink-3 uppercase sm:grid">
+            <span>Container</span>
+            <span>State</span>
+            <span>Node</span>
+            <span>Requests</span>
+            <span>Idle</span>
+            <span />
+          </div>
+          {data.isolates.map((isolate) => (
+            <div
+              key={isolate.id}
+              className="grid grid-cols-1 items-center gap-3 border-b border-line px-5 py-3 text-[13px] last:border-b-0 sm:grid-cols-[130px_84px_1fr_90px_90px_92px]"
+            >
+              <span className="font-mono text-[12.5px]">{isolate.id}</span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={cx(
+                    'h-1.5 w-1.5 rounded-full',
+                    isolate.busy && 'animate-pulse-dot',
+                  )}
+                  style={{ background: isolate.busy ? 'var(--accent)' : 'var(--ok)' }}
+                />
+                {isolate.busy ? 'working' : 'idle'}
+              </span>
+              <span className="truncate font-mono text-[12px] text-ink-2">
+                {isolate.node} · {isolate.cpus.toFixed(2)} vCPU
+              </span>
+              <span className="font-mono text-ink-2">{isolate.invocations}</span>
+              <span className="font-mono text-ink-2">
+                {isolate.idle_s < 60
+                  ? `${Math.round(isolate.idle_s)}s`
+                  : `${Math.round(isolate.idle_s / 60)}m`}
+              </span>
+              <span className="flex justify-end">
+                <ConfirmButton
+                  label={pending === isolate.id ? 'Destroying…' : 'Destroy'}
+                  confirmLabel={isolate.busy ? 'Kill mid-request' : 'Click again'}
+                  onConfirm={() => {
+                    if (pending) return
+                    setPending(isolate.id)
+                    destroy.mutate(isolate.id, {
+                      onSuccess: () => toast.push(`Instance ${isolate.id} destroyed`),
+                      onError: (error) => toast.push(error.message, 'err'),
+                      onSettled: () => setPending(null),
+                    })
+                  }}
+                />
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="border-t border-line px-5 py-3 text-[12.5px] text-ink-3">
+        Destroying an instance does not stop <span className="font-mono">{name}</span> — the
+        next request finds another warm one or starts a replacement. An instance that is working
+        loses the request it is serving.
+      </div>
+    </Card>
   )
 }
 
