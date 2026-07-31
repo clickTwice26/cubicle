@@ -16,7 +16,7 @@ import {
   Terminal,
 } from '../components/Icons'
 import { Button, Card } from '../components/ui'
-import { CountUp, Reveal } from '../components/landing/Motion'
+import { Reveal } from '../components/landing/Motion'
 import { FlowStrip } from '../components/landing/FlowStrip'
 import { useSetupStatus } from '../lib/hooks'
 
@@ -151,7 +151,7 @@ export default function Landing() {
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-6 sm:px-8">
           <div className="flex items-center gap-9">
             <Logo />
-            <nav className="hidden gap-6 text-sm text-ink-2 sm:flex">
+            <nav className="flex gap-6 text-sm text-ink-2">
               <Link to="/docs" className="transition hover:text-ink">
                 Docs
               </Link>
@@ -176,7 +176,7 @@ export default function Landing() {
       </header>
 
       {/* ── hero ─────────────────────────────────────────────────────────── */}
-      <section className="relative mx-auto max-w-[1180px] px-6 pt-16 pb-12 text-center sm:px-8 sm:pt-24">
+      <section className="relative mx-auto max-w-[1180px] px-5 pt-12 pb-12 text-center sm:px-8 sm:pt-24">
         {/* Ambient wash behind the headline. Decorative, so it drifts slowly
             and disappears entirely under prefers-reduced-motion. */}
         <div
@@ -189,23 +189,31 @@ export default function Landing() {
 
         <Reveal>
 
-          <h1 className="mx-auto max-w-[840px] text-[clamp(2.5rem,7vw,3.9rem)] leading-[1.03] font-bold tracking-[-0.035em] text-balance">
+          <h1 className="mx-auto max-w-[840px] text-[clamp(2.05rem,7vw,3.9rem)] leading-[1.03] font-bold tracking-[-0.035em] text-balance">
             Serverless.
             <br />
             On your own metal.
           </h1>
-          <p className="mx-auto mt-5 max-w-[660px] text-[19px] leading-[1.55] text-ink-2 text-pretty">
+          <p className="mx-auto mt-5 max-w-[660px] text-[16.5px] leading-[1.55] text-ink-2 text-pretty sm:text-[19px]">
             Cubicle is an open-source functions platform you run yourself. Python 3.12 and 3.11,
             warm isolates with scale-to-zero, managed Postgres and Redis, several isolated
             clusters on one machine — and a live view of all of it. Your hardware, your data, no
             account anywhere.
           </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Button variant="primary" size="lg" onClick={enter} icon={<ArrowRight size={16} />}>
+          {/* Stacked and full width on a phone: a thumb should not have to
+              aim at a centred pill. Side by side from sm up. */}
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={enter}
+              icon={<ArrowRight size={16} />}
+              className="w-full justify-center sm:w-auto"
+            >
               {cta}
             </Button>
-            <Link to="/docs/install">
-              <Button variant="secondary" size="lg">
+            <Link to="/docs/install" className="w-full sm:w-auto">
+              <Button variant="secondary" size="lg" className="w-full justify-center sm:w-auto">
                 Read the install guide
               </Button>
             </Link>
@@ -231,8 +239,8 @@ export default function Landing() {
       </section>
 
       {/* ── the function ─────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1180px] px-6 py-10 sm:px-8">
-        <div className="grid items-center gap-8 lg:grid-cols-[1.05fr_1fr]">
+      <section className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8">
+        <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
           <Reveal>
             <h2 className="m-0 text-[clamp(1.75rem,3.4vw,2.3rem)] tracking-[-0.03em] text-balance">
               A function is a handler and an envelope.
@@ -300,10 +308,10 @@ export default function Landing() {
                 <span className="text-warn">True</span>
                 {'}'}
               </pre>
-              <div className="flex flex-wrap items-center gap-3 border-t border-line px-4.5 py-3 font-mono text-xs text-ink-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-4.5 py-3 font-mono text-[11px] break-all text-ink-2 sm:text-xs">
                 <span>$ cubicle deploy</span>
                 <span className="text-ink-3">→</span>
-                <span className="text-ok">
+                <span className="min-w-0 break-all text-ok">
                   built v4 · https://your-host/prod/payments/create-charge
                 </span>
                 <span className="animate-blink ml-auto text-accent">▍</span>
@@ -314,7 +322,7 @@ export default function Landing() {
       </section>
 
       {/* ── features ─────────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1180px] px-6 py-16 sm:px-8">
+      <section className="mx-auto max-w-[1180px] px-5 py-16 sm:px-8">
         <Reveal>
           <h2 className="m-0 mb-2 text-center text-[clamp(1.9rem,4vw,2.4rem)] tracking-[-0.03em]">
             Everything a platform needs, nothing it does not.
@@ -325,7 +333,7 @@ export default function Landing() {
           </p>
         </Reveal>
 
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map(({ icon: Icon, title, body }, index) => (
             <Reveal key={title} delay={(index % 4) * 80}>
               <Card className="h-full p-6 transition-transform duration-300 hover:-translate-y-1">
@@ -342,7 +350,7 @@ export default function Landing() {
 
       {/* ── the console ──────────────────────────────────────────────────── */}
       <section className="border-y border-line bg-panel-2">
-        <div className="mx-auto max-w-[1180px] px-6 py-16 sm:px-8">
+        <div className="mx-auto max-w-[1180px] px-5 py-16 sm:px-8">
           <Reveal>
             <h2 className="m-0 mb-2 text-[clamp(1.75rem,3.4vw,2.2rem)] tracking-[-0.03em]">
               A console you would actually use.
@@ -353,7 +361,7 @@ export default function Landing() {
             </p>
           </Reveal>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {CONSOLE.map(({ icon: Icon, title, body }, index) => (
               <Reveal key={title} delay={(index % 3) * 80}>
                 <div className="flex h-full items-start gap-3.5 rounded-xl border border-line bg-panel px-4.5 py-4">
@@ -372,13 +380,13 @@ export default function Landing() {
       </section>
 
       {/* ── how it works ─────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1180px] px-6 py-16 sm:px-8">
+      <section className="mx-auto max-w-[1180px] px-5 py-16 sm:px-8">
         <Reveal>
           <h2 className="m-0 mb-10 text-center text-[clamp(1.75rem,3.4vw,2.2rem)] tracking-[-0.03em]">
             Four steps, then it is running.
           </h2>
         </Reveal>
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((step, index) => (
             <Reveal key={step.n} delay={index * 90}>
               <div className="relative h-full rounded-xl border border-line bg-panel p-6">
@@ -392,7 +400,7 @@ export default function Landing() {
       </section>
 
       {/* ── install ──────────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1180px] px-6 pt-6 pb-12 sm:px-8">
+      <section className="mx-auto max-w-[1180px] px-5 pt-6 pb-12 sm:px-8">
         <Reveal>
           <h2 className="m-0 mb-2 text-center text-[clamp(1.9rem,4vw,2.4rem)] tracking-[-0.03em]">
             Free forever. Yours to run.
@@ -403,7 +411,7 @@ export default function Landing() {
           </p>
         </Reveal>
 
-        <div className="mx-auto grid max-w-[1000px] gap-5 md:grid-cols-3">
+        <div className="mx-auto grid max-w-[1000px] grid-cols-1 gap-5 md:grid-cols-3">
           {INSTALLS.map((install, index) => (
             <Reveal key={install.title} delay={index * 90}>
               <Card className="flex h-full min-w-0 flex-col gap-3.5 p-6">
@@ -423,17 +431,12 @@ export default function Landing() {
         </div>
 
         <Reveal delay={120}>
-          <Card className="mx-auto mt-5 grid max-w-[1000px] grid-cols-2 gap-5 px-7 py-6 md:grid-cols-4">
-            <Stat value="Apache-2.0" label="Permissive license" />
-            <Stat value="3.12 · 3.11" label="Python runtimes" />
-            <Stat value={<CountUp to={1} />} label="Command to install" />
-            <Stat value={<CountUp to={0} />} label="Telemetry calls home" />
-          </Card>
+          <Comparison />
         </Reveal>
       </section>
 
       {/* ── closing ──────────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1180px] px-6 pb-20 sm:px-8">
+      <section className="mx-auto max-w-[1180px] px-5 pb-20 sm:px-8">
         <Reveal>
           <Card className="relative overflow-hidden px-7 py-12 text-center">
             <div
@@ -504,7 +507,7 @@ export default function Landing() {
           />
         </div>
         <div className="border-t border-line">
-          <div className="mx-auto max-w-[1180px] px-6 py-5 text-[12.5px] text-ink-3 sm:px-8">
+          <div className="mx-auto max-w-[1180px] px-5 py-5 text-[12.5px] text-ink-3 sm:px-8">
             Cubicle — self-hosted, no telemetry, no account.
           </div>
         </div>
@@ -513,14 +516,112 @@ export default function Landing() {
   )
 }
 
-function Stat({ value, label }: { value: React.ReactNode; label: string }) {
+/**
+ * Cubicle against the managed platforms.
+ *
+ * Every row is a structural difference that does not move with a price list —
+ * where the code runs, who holds the data, whether you can run it at all
+ * without an account. No latency figures and no dollar amounts, because those
+ * change monthly and a stale number is worse than none.
+ *
+ * The note underneath is deliberate: a comparison that claims to win on every
+ * row is marketing, and nobody believes it.
+ */
+const RIVALS = ['AWS Lambda', 'Azure Functions', 'Google Cloud Run', 'DigitalOcean Functions']
+
+const ROWS: { label: string; cubicle: string; rivals: string | string[] }[] = [
+  {
+    label: 'Runs on',
+    cubicle: 'Hardware you own',
+    rivals: ["Amazon's", "Microsoft's", "Google's", "DigitalOcean's"],
+  },
+  {
+    label: 'What a request costs',
+    cubicle: 'Nothing — it is your machine',
+    rivals: 'Per request and GB-second',
+  },
+  { label: 'Where the data sits', cubicle: 'Your disk', rivals: 'A region you pick' },
+  { label: 'Account needed', cubicle: 'None', rivals: 'Yes, with a card' },
+  { label: 'Can you run it yourself', cubicle: 'That is the point', rivals: 'No' },
+  { label: 'Works air-gapped', cubicle: 'Yes', rivals: 'No' },
+  {
+    label: 'Postgres and Redis',
+    cubicle: 'In the same box, one click',
+    rivals: 'A separate billable service',
+  },
+  { label: 'Licence', cubicle: 'Apache-2.0', rivals: 'Terms of service' },
+]
+
+function Comparison() {
   return (
-    <div>
-      <div className="font-mono text-2xl font-semibold tracking-[-0.02em]">{value}</div>
-      <div className="mt-1.5 text-[12.5px] text-ink-2">{label}</div>
-    </div>
+    <Card className="mx-auto mt-5 max-w-[1000px] overflow-hidden">
+      <div className="border-b border-line px-5 py-4 sm:px-7">
+        <div className="text-[15.5px] font-semibold tracking-[-0.01em]">
+          How that differs from the managed platforms
+        </div>
+        <div className="mt-1 text-[13px] text-ink-2">
+          Structural differences only — no prices or latency numbers, because those go stale.
+        </div>
+      </div>
+
+      {/* A five-column table cannot fit a phone, so it scrolls sideways and
+          the label column stays put while it does. */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-left">
+          <thead>
+            <tr className="border-b border-line">
+              <th className="sticky left-0 z-10 bg-panel px-5 py-3 text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase sm:px-7" />
+              <th className="bg-accent-soft px-4 py-3 text-[13px] font-semibold whitespace-nowrap text-ink">
+                Cubicle
+              </th>
+              {RIVALS.map((name) => (
+                <th
+                  key={name}
+                  className="px-4 py-3 text-[12.5px] font-medium whitespace-nowrap text-ink-2"
+                >
+                  {name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ROWS.map((row) => {
+              const cells = Array.isArray(row.rivals)
+                ? row.rivals
+                : RIVALS.map(() => row.rivals as string)
+              return (
+                <tr key={row.label} className="border-b border-line last:border-b-0">
+                  <th
+                    scope="row"
+                    className="sticky left-0 z-10 bg-panel px-5 py-3 text-[13px] font-medium whitespace-nowrap text-ink-2 sm:px-7"
+                  >
+                    {row.label}
+                  </th>
+                  <td className="bg-accent-soft/50 px-4 py-3 text-[13px] font-semibold text-ink">
+                    {row.cubicle}
+                  </td>
+                  {cells.map((value, index) => (
+                    <td key={RIVALS[index]} className="px-4 py-3 text-[13px] text-ink-2">
+                      {value}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="border-t border-line bg-panel-2 px-5 py-4 text-[13px] leading-relaxed text-ink-2 sm:px-7">
+        <span className="font-semibold text-ink">What they do that Cubicle does not.</span> Edge
+        locations on every continent, capacity you could not exhaust if you tried, and someone
+        else awake when it breaks at 3am. If you need those, use them. Cubicle is for the case
+        where you would rather own the machine.
+      </div>
+    </Card>
   )
 }
+
 
 function FooterColumn({ title, links }: { title: string; links: [string, string][] }) {
   return (
@@ -530,7 +631,11 @@ function FooterColumn({ title, links }: { title: string; links: [string, string]
       </div>
       <div className="grid gap-2 text-[13.5px] text-ink-2">
         {links.map(([label, href]) => (
-          <Link key={href} to={href} className="transition hover:text-ink">
+          <Link
+            key={href}
+            to={href}
+            className="-mx-2 rounded-md px-2 py-2 transition hover:bg-panel-2 hover:text-ink sm:mx-0 sm:px-0 sm:py-0.5 sm:hover:bg-transparent"
+          >
             {label}
           </Link>
         ))}

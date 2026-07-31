@@ -83,7 +83,7 @@ export function Reveal({
   return (
     <div
       ref={ref}
-      className={cx('reveal', className)}
+      className={cx('reveal min-w-0', className)}
       data-shown={shown}
       style={{ '--reveal-delay': `${delay}ms` } as React.CSSProperties}
     >

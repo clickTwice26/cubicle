@@ -277,91 +277,365 @@ export const DOCS: DocPage[] = [
     group: 'Guides',
     label: 'Writing functions',
     title: 'Writing functions',
-    lede: 'The handler contract, the objects it receives, and the limits it runs under.',
+    lede: 'Everything the handler receives, every shape it may return, and the rules it runs under.',
     body: () => (
       <>
-        {h2('signature', 'Handler signature')}
+        {h2('signature', 'The handler')}
         {p(
           <>
-            Export one callable named {mono('handler')}. It receives a {mono('Request')} and a{' '}
-            {mono('Context')}. A single-argument handler works too, and a request also behaves
-            like a plain mapping, so {mono('event["body"]')} is valid.
+            Export one callable named {mono('handler')} from {mono('handler.py')}. It receives a{' '}
+            {mono('Request')} and a {mono('Context')}. A one-argument handler works too — the
+            runtime inspects the signature and passes what fits — so {mono('def handler(req):')}{' '}
+            is valid when you have no use for the context.
           </>,
         )}
         {code(
           <>
-            <span className="text-info">def</span> handler(req, ctx):{'\n'}
+            <span className="text-info">from</span> cubicle_context{' '}
+            <span className="text-info">import</span> Request, Context{'\n\n'}
+            <span className="text-info">def</span>{' '}
+            <span className="rounded bg-accent-soft px-1">handler</span>(req: Request, ctx:
+            Context):{'\n'}
             {'    '}
             <span className="text-info">return</span> {'{'}
-            <span className="text-ok">&quot;statusCode&quot;</span>:{' '}
-            <span className="text-warn">200</span>,{' '}
-            <span className="text-ok">&quot;body&quot;</span>: {'{'}
             <span className="text-ok">&quot;ok&quot;</span>:{' '}
             <span className="text-warn">True</span>
-            {'}}'}
+            {'}'}
           </>,
           'handler.py',
         )}
         {p(
           <>
-            Return a dict with {mono('statusCode')} to control the response, or return any
-            JSON-serialisable value and it is sent with a 200.
+            The name is configurable — {mono('cubicle.toml')} records it as{' '}
+            {mono('handler.handler')} — but there is rarely a reason to change it.
           </>,
         )}
 
-        {h2('request', 'The request object')}
+        {h2('request', 'What the request carries')}
         {table(
-          ['Attribute', 'Description'],
+          ['Attribute', 'Type', 'What it holds'],
           [
-            ['req.json()', 'Parsed JSON body, or {} when there is none'],
-            ['req.text()', 'Raw body as text'],
-            ['req.headers', 'Lower-cased request headers; hop-by-hop headers are stripped'],
-            ['req.method', 'HTTP method'],
-            ['req.query', 'Parsed query string'],
-            ['req.session_id', 'Value of X-Cubicle-Session, generated if absent'],
-            ['req.request_id', 'Correlation id, echoed in X-Cubicle-Request-Id'],
+            ['req.body', 'Any', 'Parsed JSON, raw text, or None when there was no body.'],
+            ['req.json()', 'Any', 'The body as JSON. Returns the default rather than raising.'],
+            ['req.text()', 'str', 'The body as text, whatever its content type.'],
+            ['req.headers', 'dict', 'Lower-cased. Hop-by-hop headers are already stripped.'],
+            [
+              'req.header(name)',
+              'str | None',
+              'One header, case-insensitively, with a default.',
+            ],
+            ['req.method', 'str', 'The HTTP method.'],
+            ['req.query', 'dict', 'The parsed query string.'],
+            ['req.path', 'str', 'The path the caller used.'],
+            ['req.session_id', 'str', 'X-Cubicle-Session, generated when absent.'],
+            ['req.request_id', 'str', 'Correlation id, echoed as X-Cubicle-Request-Id.'],
+            ['req.namespace', 'str', 'The namespace this function lives in.'],
+            ['req.function', 'str', 'Its own name.'],
           ],
         )}
-
-        {h2('context', 'Session context')}
         {p(
           <>
-            {mono('ctx')} is a small store shared by every function in the namespace, keyed by
-            the {mono('X-Cubicle-Session')} header and expiring after 30 minutes. What a
-            function may do with it is set per function; a read-only function that calls{' '}
-            {mono('ctx.set()')} raises rather than silently dropping the write.
+            A request is also a {mono('Mapping')}, so {mono('req["body"]')} works and a handler
+            written against a plain event dict ports across without changes.
+          </>,
+        )}
+
+        {h2('returning', 'What you may return')}
+        {p('Four shapes are accepted, checked in this order:')}
+        {table(
+          ['Return', 'Becomes'],
+          [
+            ['{"ok": True}', '200 with that object as the JSON body.'],
+            ['(body, 201)', 'A two-tuple sets the status explicitly.'],
+            [
+              '{"statusCode": 404, "body": {...}}',
+              'Full control. headers is honoured; a JSON string body is parsed for you.',
+            ],
+            ['"plain text"', '200 with the string as the body.'],
+          ],
+        )}
+        {code(
+          <>
+            <span className="text-info">def</span> handler(req, ctx):{'\n'}
+            {'    '}order = req.json() <span className="text-info">or</span> {'{}'}
+            {'\n'}
+            {'    '}
+            <span className="text-info">if</span>{' '}
+            <span className="text-ok">&quot;id&quot;</span>{' '}
+            <span className="text-info">not in</span> order:{'\n'}
+            {'        '}
+            <span className="text-info">return</span> {'{'}
+            <span className="text-ok">&quot;error&quot;</span>:{' '}
+            <span className="text-ok">&quot;id is required&quot;</span>
+            {'}'}, <span className="text-warn">400</span>
+            {'\n\n'}
+            {'    '}
+            <span className="text-info">return</span> {'{'}
+            {'\n'}
+            {'        '}
+            <span className="text-ok">&quot;statusCode&quot;</span>:{' '}
+            <span className="text-warn">201</span>,{'\n'}
+            {'        '}
+            <span className="text-ok">&quot;headers&quot;</span>: {'{'}
+            <span className="text-ok">&quot;Location&quot;</span>:{' '}
+            <span className="text-ok">
+              f&quot;/orders/{'{'}order[&#39;id&#39;]{'}'}&quot;
+            </span>
+            {'}'},{'\n'}
+            {'        '}
+            <span className="text-ok">&quot;body&quot;</span>: {'{'}
+            <span className="text-ok">&quot;created&quot;</span>:{' '}
+            <span className="text-warn">True</span>
+            {'}'},{'\n'}
+            {'    '}
+            {'}'}
+          </>,
+        )}
+        {note(
+          <>
+            An unhandled exception is a {mono('502')} with the traceback in the logs, and the
+            isolate is destroyed rather than reused — a handler that died halfway may have left
+            module state you would not want the next request to inherit.
+          </>,
+        )}
+
+        {h2('context', 'The session context')}
+        {p(
+          <>
+            {mono('ctx')} is a small JSON store shared by every function in the namespace, keyed
+            by the {mono('X-Cubicle-Session')} header and expiring after 30 minutes. It is how
+            two functions in a flow pass state without a database round trip.
           </>,
         )}
         {code(
           <>
-            actor = ctx.get(<span className="text-ok">&quot;actor&quot;</span>) or {'{}'}
+            actor = ctx.get(<span className="text-ok">&quot;actor&quot;</span>){' '}
+            <span className="text-info">or</span> {'{}'}
             {'\n'}
             ctx.set(<span className="text-ok">&quot;actor&quot;</span>, {'{'}
             <span className="text-ok">&quot;id&quot;</span>:{' '}
             <span className="text-ok">&quot;usr_9f2c&quot;</span>
             {'}'}){'\n'}
-            ctx.delete(<span className="text-ok">&quot;cart&quot;</span>)
+            ctx.delete(<span className="text-ok">&quot;cart&quot;</span>){'\n'}
+            everything = ctx.all(){'\n'}
+            <span className="text-info">if</span>{' '}
+            <span className="text-ok">&quot;cart&quot;</span>{' '}
+            <span className="text-info">in</span> ctx: ...
+          </>,
+        )}
+        {table(
+          ['Access mode', 'get / all', 'set / delete'],
+          [
+            ['read+write', 'yes', 'yes'],
+            ['read only', 'yes', 'raises PermissionError'],
+            ['write only', 'returns the default', 'yes'],
+            ['no access', 'returns the default', 'raises PermissionError'],
+          ],
+        )}
+        {p(
+          <>
+            Values must be JSON-serialisable, and {mono('ctx.set()')} checks that immediately
+            rather than failing later at the edge. Writes are collected during the invocation
+            and applied once at the end, so a handler that raises leaves the context as it found
+            it.
           </>,
         )}
 
-        {h2('limits', 'Execution limits')}
+        {h2('config', 'Configuration and secrets')}
         {p(
           <>
-            Defaults are 512 MB and a 30 second timeout, both settable per function. The isolate
-            runs unprivileged with a read-only root filesystem, all capabilities dropped and{' '}
-            {mono('no-new-privileges')} set. {mono('/tmp')} is a 64 MB tmpfs and is the only
-            writable path — it is discarded when the isolate is reclaimed, so use the database
-            or an object store for anything durable.
+            {mono('env')} reads the cluster-wide store merged with this function&apos;s own
+            secrets. Values resolve at invocation time, so changing one in the console applies
+            to the next request without a redeploy.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-info">from</span> cubicle_context{' '}
+            <span className="text-info">import</span> env{'\n\n'}
+            base{'  '}= env.get(<span className="text-ok">&quot;API_BASE&quot;</span>,{' '}
+            <span className="text-ok">&quot;https://example.test&quot;</span>){'\n'}
+            key{'   '}= env.require(<span className="text-ok">&quot;STRIPE_KEY&quot;</span>)
+            {'      '}
+            <span className="text-ink-3"># raises if unset</span>
+            {'\n'}
+            pool{'  '}= env.get_int(<span className="text-ok">&quot;POOL&quot;</span>,{' '}
+            <span className="text-warn">10</span>){'\n'}
+            debug = env.get_bool(<span className="text-ok">&quot;DEBUG&quot;</span>){'\n'}
+            rules = env.get_json(<span className="text-ok">&quot;RULES&quot;</span>,{' '}
+            <span className="text-warn">[]</span>)
           </>,
         )}
         {p(
-          'A handler that exceeds its timeout gets a 504 and its isolate is destroyed, since a runaway thread cannot be reclaimed any other way.',
+          <>
+            Secrets shadow global values of the same name, so a function can override a
+            cluster-wide default without touching it. See <strong>Env and secrets</strong> for
+            how they are stored.
+          </>,
+        )}
+
+        {h2('data', 'Talking to Postgres and Redis')}
+        {p(
+          <>
+            If the cluster has managed data services, the connection details arrive with the
+            invocation — there is no URL to copy and no secret to rotate into your code.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-info">from</span> cubicle_db{' '}
+            <span className="text-info">import</span> postgres, redis{'\n\n'}
+            <span className="text-info">if</span> postgres.available:{'\n'}
+            {'    '}
+            <span className="text-info">with</span> postgres.session(){' '}
+            <span className="text-info">as</span> db:{'\n'}
+            {'        '}db.execute({'\n'}
+            {'            '}
+            <span className="text-ok">
+              &quot;insert into orders (ref, amount) values (:ref, :amount)&quot;
+            </span>
+            ,{'\n'}
+            {'            '}ref=<span className="text-ok">&quot;ord_8fk2&quot;</span>, amount=
+            <span className="text-warn">4200</span>,{'\n'}
+            {'        '}){'\n'}
+            {'        '}rows = db.execute(
+            <span className="text-ok">&quot;select * from orders limit 10&quot;</span>
+            ).fetchall(){'\n\n'}
+            redis.setex(<span className="text-ok">&quot;seen&quot;</span>,{' '}
+            <span className="text-warn">300</span>,{' '}
+            <span className="text-ok">&quot;1&quot;</span>)
+          </>,
+        )}
+        {table(
+          ['Call', 'Does'],
+          [
+            [
+              'postgres.available',
+              'False when the operator has not created it, or stopped it.',
+            ],
+            [
+              'postgres.session()',
+              'A transaction. Commits on exit, rolls back on an exception.',
+            ],
+            ['postgres.execute(sql, **p)', 'One statement, rows returned as dicts.'],
+            ['.fetchone() / .fetchall() / .scalar()', 'Read the result of a cursor.'],
+            ['redis.get / set / setex / incr / delete', 'The common commands, wrapped.'],
+            ['redis.client', 'The raw client, for anything not wrapped.'],
+          ],
+        )}
+        {note(
+          <>
+            <strong>Bind values, never format them.</strong> {mono(':name')} placeholders are
+            rewritten for the driver and the values are sent separately — string literals in
+            your SQL are left alone, so a colon inside quotes is safe. An f-string is how you
+            get an injection.
+          </>,
+        )}
+
+        {h2('logging', 'Logging')}
+        {p(
+          <>
+            Anything the handler prints is captured per invocation and attributed to it —{' '}
+            {mono('print()')} goes to INFO, {mono('sys.stderr')} to ERROR. It appears in the
+            test panel, in <strong>Logs &amp; monitoring</strong>, and in{' '}
+            {mono('cubicle logs --follow')}.
+          </>,
         )}
         {p(
           <>
-            One isolate serves one request at a time, so a handler never runs concurrently with
-            itself and does not need to be thread-safe. How many run in parallel, and how long
-            they stick around, is covered in <strong>Scaling and concurrency</strong>.
+            Up to 200 lines are kept per invocation and each is truncated at 4000 characters, so
+            a runaway loop cannot fill the database.
+          </>,
+        )}
+
+        {h2('deps', 'Dependencies')}
+        {p(
+          <>
+            {mono('requirements.txt')} is installed into the version&apos;s own volume at deploy
+            time. Pin what you depend on: a version is immutable once built, and a floating
+            requirement means two deploys of identical source can produce different behaviour.
+          </>,
+        )}
+        {code(
+          <>
+            httpx==0.28.1{'\n'}
+            pydantic==2.10.4
+          </>,
+          'requirements.txt',
+        )}
+        {p(
+          <>
+            {mono('psycopg')} and {mono('redis')} are already in the runtime image — the data
+            SDK needs them — so you do not list those.
+          </>,
+        )}
+
+        {h2('limits', 'What it runs inside')}
+        {table(
+          ['Limit', 'Default', 'Notes'],
+          [
+            ['Memory', '512 MB', 'A hard cap. The isolate is killed on overrun.'],
+            [
+              'Timeout',
+              '30 s',
+              'Wall clock, up to 900. Overrun is a 504 and the isolate dies.',
+            ],
+            ['Concurrency', '4 isolates', 'One request each. Past the cap, requests queue.'],
+            [
+              'Writable disk',
+              '/tmp only',
+              '64 MB tmpfs, discarded when the isolate is reclaimed.',
+            ],
+            [
+              'Filesystem',
+              'read-only',
+              'Your code is mounted read-only from its version volume.',
+            ],
+            [
+              'Privileges',
+              'none',
+              'Unprivileged user, all capabilities dropped, no-new-privileges.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            One request per isolate means your handler never runs concurrently with itself, so
+            module-level state is safe from races — but it is also not shared with anything, and
+            it disappears when the isolate is reclaimed. Anything durable belongs in Postgres,
+            Redis or an object store. <strong>Scaling and concurrency</strong> covers how many
+            isolates you get and for how long.
+          </>,
+        )}
+
+        {h2('patterns', 'Two things worth knowing')}
+        {p(
+          <>
+            <strong>Module scope runs once per isolate, not once per request.</strong> A client
+            or a compiled regex created at import is reused by every request that isolate serves
+            — which is the cheapest caching available to you, and the reason a cold start costs
+            more than a warm one.
+          </>,
+        )}
+        {code(
+          <>
+            <span className="text-info">import</span> httpx{'\n\n'}
+            <span className="text-ink-3">
+              # built once per isolate, reused by every request
+            </span>
+            {'\n'}
+            client = httpx.Client(timeout=<span className="text-warn">5.0</span>){'\n\n'}
+            <span className="text-info">def</span> handler(req, ctx):{'\n'}
+            {'    '}
+            <span className="text-info">return</span> client.get(
+            <span className="text-ok">&quot;https://api.example.test/ping&quot;</span>).json()
+          </>,
+        )}
+        {p(
+          <>
+            <strong>A function accepts one method.</strong> It is set per function, and anything
+            else gets a {mono('405')} with an {mono('Allow')} header. If you want a resource
+            with several verbs, that is several functions in one namespace.
           </>,
         )}
       </>
