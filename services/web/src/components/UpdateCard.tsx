@@ -28,8 +28,15 @@ export function UpdateCard() {
   const start = useStartUpdate()
 
   const [running, setRunning] = useState(false)
+  const [applied, setApplied] = useState(false)
   const progress = useUpdateProgress(running)
   const wasRunning = useRef(false)
+
+  // Calling the mutation from an effect without making the effect depend on it:
+  // a mutation object is a new value on most renders, and depending on it would
+  // re-run this every time the poll returns.
+  const recheck = useRef(check.mutate)
+  recheck.current = check.mutate
 
   // An update started in another tab — or before a reload — is still ours to
   // follow, so pick it up rather than showing a stale "up to date".
@@ -45,7 +52,13 @@ export function UpdateCard() {
     if (progress.data?.state === 'success') {
       setRunning(false)
       wasRunning.current = false
-      toast.push('Updated — reload to pick up the new console')
+      setApplied(true)
+      // Forced, not merely invalidated. The answer is cached for fifteen
+      // minutes on the server, and an update that only rebuilt the web
+      // container leaves that cache — and its "an update is available" — in
+      // place on an API process that never restarted.
+      recheck.current()
+      toast.push('Update finished')
     } else if (progress.data?.state === 'failed') {
       setRunning(false)
       wasRunning.current = false
@@ -101,7 +114,23 @@ export function UpdateCard() {
             />
           </div>
 
-          {data?.error ? (
+          {applied ? (
+            <div className="border-t border-line bg-accent-soft px-5 py-4">
+              <div className="text-[13px] font-semibold">Updated.</div>
+              <div className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+                The containers were rebuilt and restarted. This tab is still running the console
+                from before the update — reload to pick up the new one.
+              </div>
+              <Button
+                className="mt-3.5"
+                variant="primary"
+                size="sm"
+                onClick={() => window.location.reload()}
+              >
+                Reload the console
+              </Button>
+            </div>
+          ) : data?.error ? (
             <div className="border-t border-line px-5 py-3 text-[12.5px] leading-relaxed text-err">
               {data.error}
             </div>

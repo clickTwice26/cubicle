@@ -176,7 +176,7 @@ function Overview({ functionId }: { functionId: string }) {
         {(versions ?? []).slice(0, 8).map((version) => (
           <div
             key={version.id}
-            className="grid grid-cols-[70px_100px_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-[13px] last:border-b-0"
+            className="grid grid-cols-[70px_1fr] items-center gap-x-3 gap-y-1 border-b border-line px-5 py-3 text-[13px] last:border-b-0 sm:grid-cols-[70px_100px_minmax(0,1fr)_auto] sm:gap-3"
           >
             <span className="font-mono font-semibold">v{version.number}</span>
             <span
@@ -317,7 +317,7 @@ function Secrets({ functionId }: { functionId: string }) {
         secrets.map((secret) => (
           <div
             key={secret.key}
-            className="grid grid-cols-[1.2fr_1.4fr_0.8fr_auto] items-center gap-3.5 border-b border-line px-5 py-3.5 text-[13px] last:border-b-0"
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1 border-b border-line px-5 py-3.5 text-[13px] last:border-b-0 sm:grid-cols-[1.2fr_1.4fr_0.8fr_auto]"
           >
             <span className="font-mono font-semibold">{secret.key}</span>
             <span className="font-mono tracking-[1px] text-ink-3">{secret.value}</span>

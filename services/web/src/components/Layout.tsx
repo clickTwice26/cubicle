@@ -23,6 +23,7 @@ import {
   Sliders,
   Sun,
   Terminal,
+  X,
 } from './Icons'
 import { Spinner, cx } from './ui'
 
@@ -286,14 +287,18 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
             <Lines size={16} />
           </button>
 
-          <div className="flex items-center gap-2 text-sm text-ink-2">
-            <Link to="/console" className="flex-shrink-0 font-mono whitespace-nowrap">
+          {/* The trail is desktop-only. On a phone the cluster name and the
+              separator cost more width than they are worth, and the drawer
+              already shows which page is current — so this is a plain title. */}
+          <div className="flex min-w-0 items-center gap-2 text-sm text-ink-2">
+            <Link
+              to="/console"
+              className="hidden flex-shrink-0 font-mono whitespace-nowrap sm:block"
+            >
               {instance?.cluster_name ?? 'cubicle'}
             </Link>
-            <span className="text-ink-3">/</span>
-            <span className="flex-shrink-0 font-semibold whitespace-nowrap text-ink">
-              {crumb}
-            </span>
+            <span className="hidden text-ink-3 sm:block">/</span>
+            <span className="truncate font-semibold text-ink">{crumb}</span>
           </div>
 
           <div className="ml-4 hidden max-w-[420px] flex-1 md:block">
@@ -310,16 +315,18 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            aria-label="Search"
-            className="ml-auto grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-2 transition hover:text-ink md:hidden"
-          >
-            <Search size={15} />
-          </button>
-
-          <div className="ml-auto flex flex-none items-center gap-2">
+          {/* One `ml-auto`, not two. With both the search button and this group
+              claiming it, the free space was split between them and neither
+              ended up against the edge. */}
+          <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search"
+              className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-2 transition hover:text-ink md:hidden"
+            >
+              <Search size={15} />
+            </button>
             <HelpButton />
             <ThemeToggle />
             <AccountMenu
@@ -332,35 +339,139 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {menuOpen ? (
-          <nav className="flex flex-col gap-1 border-b border-line bg-panel px-3 py-3 lg:hidden">
+        <MobileNav
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          postgres={postgres?.status}
+          redis={redis?.status}
+        />
+
+        {/* Deliberately not `overflow-x-hidden`: clipping a row that is too
+            wide puts its Delete button somewhere you cannot reach. Anything
+            still too wide should scroll, and be fixed where it is defined. */}
+        <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+      </div>
+
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+    </div>
+  )
+}
+
+/**
+ * The same sidebar, as a drawer over the page.
+ *
+ * It used to be a block that pushed the page down when opened, which moved
+ * whatever you were reading and left navigation and content fighting for the
+ * same column. A drawer covers instead of displaces, so closing it puts you
+ * back exactly where you were.
+ *
+ * Always mounted rather than conditionally rendered — a panel that only exists
+ * while open cannot animate its way in.
+ */
+function MobileNav({
+  open,
+  onClose,
+  postgres,
+  redis,
+}: {
+  open: boolean
+  onClose: () => void
+  postgres?: string
+  redis?: string
+}) {
+  // Escape closes it, and the page underneath must not scroll while a drawer
+  // is over it — on iOS that scrolls the thing you cannot see.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previous
+    }
+  }, [open, onClose])
+
+  return (
+    <div className="lg:hidden" aria-hidden={!open}>
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Close navigation"
+        onClick={onClose}
+        className={cx(
+          'fixed inset-0 z-40 bg-[color-mix(in_srgb,var(--bg)_45%,#000)] transition-opacity duration-200',
+          open ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+      />
+
+      <nav
+        className={cx(
+          'fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[85vw] flex-col border-r border-line bg-panel transition-transform duration-200 ease-out',
+          open ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <div className="flex h-[60px] flex-none items-center justify-between border-b border-line px-4">
+          <Link to="/console" onClick={onClose}>
+            <Logo size={24} />
+          </Link>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="grid h-8 w-8 place-items-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto py-2">
+          <ClusterSwitcher collapsed={false} />
+
+          <div className="flex flex-col gap-[3px] px-3">
             {NAV.map(({ to, end, label, icon: Icon }) => (
-              <NavLink key={to} to={to} end={end} className={navClass}>
+              <NavLink key={to} to={to} end={end} onClick={onClose} className={navClass}>
                 <Icon size={17} />
                 {label}
               </NavLink>
             ))}
+
+            <div className="px-2.5 pt-3.5 pb-1 text-[11px] font-bold tracking-[0.06em] text-ink-3 uppercase">
+              Data services
+            </div>
             <ServiceLink
               to="/console/services/postgres"
               label="PostgreSQL"
               icon={Database}
-              status={postgres?.status}
+              status={postgres}
               collapsed={false}
+              onNavigate={onClose}
             />
             <ServiceLink
               to="/console/services/redis"
               label="Redis"
               icon={Layers}
-              status={redis?.status}
+              status={redis}
               collapsed={false}
+              onNavigate={onClose}
             />
-          </nav>
-        ) : null}
+          </div>
+        </div>
 
-        <main className="flex-1 overflow-auto">{children}</main>
-      </div>
-
-      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <div className="flex-none border-t border-line px-3 py-2.5">
+          <UpdateNudge collapsed={false} />
+          <a
+            href="/docs"
+            className={cx(NAV_ITEM, 'bg-transparent text-ink-2 hover:bg-panel-2')}
+          >
+            <Book size={17} />
+            Docs
+          </a>
+        </div>
+      </nav>
     </div>
   )
 }
@@ -485,12 +596,15 @@ function ServiceLink({
   icon: Icon,
   status,
   collapsed,
+  onNavigate,
 }: {
   to: string
   label: string
   icon: (props: { size?: number; className?: string }) => React.ReactElement
   status?: string
   collapsed: boolean
+  /** Set in the drawer, so following a link also closes it. */
+  onNavigate?: () => void
 }) {
   const colour =
     status === 'running'
@@ -502,6 +616,7 @@ function ServiceLink({
     <NavLink
       to={to}
       title={collapsed ? `${label} — ${status ?? 'not created'}` : undefined}
+      onClick={onNavigate}
       className={(state) => cx(navClass(state), collapsed && 'justify-center px-0')}
     >
       <span className="relative flex-none">

@@ -93,7 +93,9 @@ function ClustersCard() {
             <span className="w-4 flex-none text-ink">
               {selected ? <Check size={14} /> : null}
             </span>
-            <div className="min-w-0 flex-1">
+            {/* A basis, so the row wraps the buttons onto their own line rather
+                than letting a non-shrinking group push them off the screen. */}
+            <div className="min-w-0 flex-1 basis-[200px]">
               <div className="flex items-center gap-2 text-[13.5px] font-semibold">
                 {cluster.name}
                 {cluster.is_default ? <Badge>default</Badge> : null}

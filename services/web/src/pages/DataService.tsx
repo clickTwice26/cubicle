@@ -79,7 +79,7 @@ export default function DataService() {
             <span className="grid h-[38px] w-[38px] flex-none place-items-center rounded-[10px] bg-accent-soft">
               <Icon size={18} />
             </span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-[200px]">
               <div className="flex items-center gap-2.5">
                 <span className="text-base font-semibold">{config.title}</span>
                 <span className="font-mono text-xs text-ink-3">{service.version}</span>
