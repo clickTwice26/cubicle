@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AiSidebar } from '../components/AiSidebar'
 import { CodeEditor } from '../components/CodeEditor'
-import { Bars, ChevronLeft, Play } from '../components/Icons'
+import { Bars, Bolt, ChevronLeft, Play } from '../components/Icons'
 import {
   Badge,
   Button,
@@ -99,6 +99,7 @@ export default function FunctionWorkbench() {
     setParams(updated, { replace: true })
   }
 
+  const [aiOpen, setAiOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [requestBody, setRequestBody] = useState('{\n  "amount": 4200,\n  "currency": "usd"\n}')
   const [result, setResult] = useState<TestResult | null>(null)
@@ -269,35 +270,6 @@ export default function FunctionWorkbench() {
               Cubicle AI
             </button>
           </div>
-
-          {/* The assistant only ever produces a draft; deploying stays a
-              deliberate second action, exactly as it is for typed changes. */}
-          <AiPanel
-            functionId={functionId}
-            currentCode={drafts['handler.py'] ?? fn.files?.['handler.py'] ?? ''}
-            requirements={drafts['requirements.txt'] ?? fn.files?.['requirements.txt'] ?? ''}
-            sessionId={session}
-            onApply={(code, packages) =>
-              setDrafts((current) => {
-                const next: Record<string, string> = { ...current, 'handler.py': code }
-                if (packages.length) {
-                  const existing = (
-                    current['requirements.txt'] ??
-                    fn.files?.['requirements.txt'] ??
-                    ''
-                  )
-                    .split('\n')
-                    .map((line) => line.trim())
-                    .filter(Boolean)
-                  // Merge by package name so a re-pin replaces rather than doubles.
-                  const byName = new Map(existing.map((line) => [pkgName(line), line]))
-                  for (const line of packages) byName.set(pkgName(line), line)
-                  next['requirements.txt'] = [...byName.values()].join('\n') + '\n'
-                }
-                return next
-              })
-            }
-          />
 
           <div className="border-b border-line">
             <CodeEditor
@@ -477,6 +449,37 @@ export default function FunctionWorkbench() {
       {tab === 'instances' ? (
         <Instances functionId={functionId} name={fn.name} live={tab === 'instances'} />
       ) : null}
+
+      {/* The assistant only ever produces a draft; deploying stays a
+              deliberate second action, exactly as it is for typed changes. */}
+      <AiSidebar
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        functionId={functionId}
+        currentCode={drafts['handler.py'] ?? fn.files?.['handler.py'] ?? ''}
+        requirements={drafts['requirements.txt'] ?? fn.files?.['requirements.txt'] ?? ''}
+        sessionId={session}
+        onApply={(code, packages) =>
+          setDrafts((current) => {
+            const next: Record<string, string> = { ...current, 'handler.py': code }
+            if (packages.length) {
+              const existing = (
+                current['requirements.txt'] ??
+                fn.files?.['requirements.txt'] ??
+                ''
+              )
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean)
+              // Merge by package name so a re-pin replaces rather than doubles.
+              const byName = new Map(existing.map((line) => [pkgName(line), line]))
+              for (const line of packages) byName.set(pkgName(line), line)
+              next['requirements.txt'] = [...byName.values()].join('\n') + '\n'
+            }
+            return next
+          })
+        }
+      />
 
       {tab === 'settings' ? (
         <Card className="grid gap-5 p-5">

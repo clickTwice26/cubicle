@@ -248,7 +248,8 @@ function Empty({ mode }: { mode: 'edit' | 'write' }) {
           : 'Starting from nothing — the current file is not sent.'}
       </div>
       <div className="mt-2.5">
-        Nothing it produces is deployed. It lands as an unsaved draft and you deploy it yourself.
+        Nothing it produces is deployed. It lands as an unsaved draft and you deploy it
+        yourself.
       </div>
     </div>
   )
@@ -339,7 +340,9 @@ function Sent({ context }: { context: ContextSent }) {
             </div>
           ) : null}
           {context.secret_keys.length ? (
-            <div className="break-all">secrets, names only: {context.secret_keys.join(', ')}</div>
+            <div className="break-all">
+              secrets, names only: {context.secret_keys.join(', ')}
+            </div>
           ) : null}
           <div className="text-ink-2">Values of env and secrets are never sent.</div>
         </div>
