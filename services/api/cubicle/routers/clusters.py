@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import clusters as cluster_svc
 from ..deps import CurrentPrincipal, DbSession, RequireAdmin, RequireOwner
 from ..logging_setup import log
-from ..models import Cluster, Function, Group, Node
+from ..models import Cluster, Function, Group, Node, UserCluster
 from ..runtime import services as service_svc
 from ..runtime.engine import EngineError
 from ..runtime.nodes import ensure_local_node
@@ -54,13 +54,35 @@ async def _serialize(db, cluster: Cluster) -> ClusterOut:
 
 
 @router.get("", response_model=list[ClusterOut])
-async def list_clusters(db: DbSession, _: CurrentPrincipal):
-    rows = (
-        (await db.execute(select(Cluster).order_by(Cluster.is_default.desc(), Cluster.created_at)))
-        .scalars()
-        .all()
-    )
+async def list_clusters(db: DbSession, principal: CurrentPrincipal):
+    """Only the clusters this account may reach.
+
+    The switcher is built from this, so a user is never shown the name of a
+    cluster they cannot open.
+    """
+    stmt = select(Cluster).order_by(Cluster.is_default.desc(), Cluster.created_at)
+    allowed = await cluster_svc.accessible_ids(db, principal.user)
+    if allowed is not None:
+        if not allowed:
+            return []
+        stmt = stmt.where(Cluster.id.in_(allowed))
+    rows = (await db.execute(stmt)).scalars().all()
     return [await _serialize(db, cluster) for cluster in rows]
+
+
+async def _load(db, principal, ref: str) -> Cluster:
+    """Resolve a cluster named in the path, or answer as if it is not there.
+
+    These routes take the reference straight from the URL rather than through
+    ``deps.get_cluster``, so the access check has to be repeated here. A
+    cluster the caller may not reach 404s exactly like one that does not exist.
+    """
+    cluster = await cluster_svc.by_reference(db, ref)
+    if cluster is None or not await cluster_svc.may_access(db, principal.user, cluster.id):
+        if cluster is not None:
+            log.warning("cluster access denied", cluster=cluster.slug, user=principal.user.email)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such cluster.")
+    return cluster
 
 
 @router.post("", response_model=ClusterOut, status_code=status.HTTP_201_CREATED)
@@ -106,16 +128,20 @@ async def create_cluster(payload: ClusterCreate, db: DbSession, principal: Requi
     if payload.make_default:
         await _make_default(db, cluster)
 
+    # Without this an admin could create a cluster and immediately be locked
+    # out of it, since grants — not roles — decide what you can address.
+    if not cluster_svc.is_super_admin(principal.user):
+        db.add(UserCluster(user_id=principal.user.id, cluster_id=cluster.id))
+        await db.commit()
+
     log.info("cluster created", slug=cluster.slug, by=principal.user.email)
     await db.refresh(cluster)
     return await _serialize(db, cluster)
 
 
 @router.get("/{cluster_ref}", response_model=ClusterOut)
-async def get_cluster(cluster_ref: str, db: DbSession, _: CurrentPrincipal):
-    cluster = await cluster_svc.by_reference(db, cluster_ref)
-    if cluster is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such cluster.")
+async def get_cluster(cluster_ref: str, db: DbSession, principal: CurrentPrincipal):
+    cluster = await _load(db, principal, cluster_ref)
     return await _serialize(db, cluster)
 
 
@@ -123,9 +149,7 @@ async def get_cluster(cluster_ref: str, db: DbSession, _: CurrentPrincipal):
 async def update_cluster(
     cluster_ref: str, payload: ClusterUpdate, db: DbSession, principal: RequireAdmin
 ):
-    cluster = await cluster_svc.by_reference(db, cluster_ref)
-    if cluster is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such cluster.")
+    cluster = await _load(db, principal, cluster_ref)
 
     data = payload.model_dump(exclude_unset=True)
     if data.get("ingress_domain"):
@@ -147,9 +171,7 @@ async def update_cluster(
 
 @router.post("/{cluster_ref}/default", response_model=ClusterOut)
 async def set_default(cluster_ref: str, db: DbSession, principal: RequireAdmin):
-    cluster = await cluster_svc.by_reference(db, cluster_ref)
-    if cluster is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such cluster.")
+    cluster = await _load(db, principal, cluster_ref)
     await _make_default(db, cluster)
     log.info("default cluster changed", slug=cluster.slug, by=principal.user.email)
     return await _serialize(db, cluster)
@@ -157,9 +179,7 @@ async def set_default(cluster_ref: str, db: DbSession, principal: RequireAdmin):
 
 @router.delete("/{cluster_ref}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_cluster(cluster_ref: str, db: DbSession, principal: RequireOwner) -> Response:
-    cluster = await cluster_svc.by_reference(db, cluster_ref)
-    if cluster is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such cluster.")
+    cluster = await _load(db, principal, cluster_ref)
 
     total = await cluster_svc.count(db)
     if total <= 1:

@@ -18,7 +18,7 @@ from .. import clusters as cluster_svc
 from .. import security
 from ..config import settings
 from ..deps import DbSession, _principal_from_api_key
-from ..models import Cluster, Function, FunctionVersion, Group
+from ..models import Cluster, Function, FunctionVersion, Group, User
 from ..runtime import invoker
 from ..runtime.nodes import pick_node
 
@@ -146,7 +146,7 @@ async def _invoke(
             headers={"Allow": fn.method},
         )
 
-    if fn.auth_required and not await _authorised(request, db):
+    if fn.auth_required and not await _authorised(request, db, cluster):
         return JSONResponse(
             {"error": "unauthorized", "message": "This endpoint requires an API key."},
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -212,11 +212,31 @@ async def _invoke(
     return PlainTextResponse(str(result.body), status_code=result.status_code, headers=headers)
 
 
-async def _authorised(request: Request, db) -> bool:
+async def _authorised(request: Request, db, cluster: Cluster) -> bool:
+    """Whether this caller may invoke a protected function *in this cluster*.
+
+    Being a valid credential somewhere on the instance is not enough. A key
+    scoped to staging must not reach production, and an account that was never
+    granted a cluster must not reach it either — otherwise the console enforces
+    a boundary that the data plane hands straight back.
+    """
     token = security.bearer_token(request)
     if token:
-        return await _principal_from_api_key(db, token) is not None
+        principal = await _principal_from_api_key(db, token)
+        if principal is None:
+            return False
+        key = principal.api_key
+        if key is not None and key.cluster_id is not None and key.cluster_id != cluster.id:
+            return False
+        return await cluster_svc.may_access(db, principal.user, cluster.id)
+
     cookie = request.cookies.get(settings.session_cookie)
-    if cookie:
-        return bool(await security.read_session(cookie))
-    return False
+    if not cookie:
+        return False
+    user_id = await security.read_session(cookie)
+    if not user_id:
+        return False
+    user = await db.get(User, uuid.UUID(user_id))
+    if user is None or not user.is_active:
+        return False
+    return await cluster_svc.may_access(db, user, cluster.id)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import clusters as cluster_svc
@@ -13,7 +13,7 @@ from .. import security
 from ..config import settings
 from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin, RequireOwner
 from ..logging_setup import log
-from ..models import ApiKey, Cluster, User
+from ..models import ApiKey, Cluster, User, UserCluster
 from ..schemas import (
     ApiKeyCreate,
     ApiKeyOut,
@@ -130,10 +130,56 @@ async def revoke_key(key_id: uuid.UUID, db: DbSession, principal: RequireAdmin) 
 # ── users ────────────────────────────────────────────────────────────────────
 
 
+async def _grants(db, user: User) -> list[uuid.UUID]:
+    rows = await db.execute(select(UserCluster.cluster_id).where(UserCluster.user_id == user.id))
+    return list(rows.scalars())
+
+
+async def _user_out(db, user: User) -> dict:
+    return {
+        **{c.name: getattr(user, c.name) for c in User.__table__.columns},
+        "initials": user.initials,
+        "cluster_ids": [] if cluster_svc.is_super_admin(user) else await _grants(db, user),
+        "is_super_admin": cluster_svc.is_super_admin(user),
+    }
+
+
+async def _set_grants(db, user: User, wanted: list[uuid.UUID], principal) -> None:
+    """Replace a user's grants, refusing to hand out what you do not hold.
+
+    An admin can only delegate access they have themselves. Without this an
+    admin scoped to staging could grant themselves — or anyone — production by
+    creating an account and signing in as it.
+    """
+    unique = list(dict.fromkeys(wanted))
+    existing = (
+        {c for c in (await db.execute(select(Cluster.id).where(Cluster.id.in_(unique)))).scalars()}
+        if unique
+        else set()
+    )
+    missing = [str(c) for c in unique if c not in existing]
+    if missing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No cluster {missing[0]}.")
+
+    allowed = await cluster_svc.accessible_ids(db, principal.user)
+    if allowed is not None:
+        beyond = [str(c) for c in unique if c not in allowed]
+        if beyond:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "You can only grant access to clusters you have access to yourself.",
+            )
+
+    await db.execute(delete(UserCluster).where(UserCluster.user_id == user.id))
+    for cluster_id in unique:
+        db.add(UserCluster(user_id=user.id, cluster_id=cluster_id))
+    await db.commit()
+
+
 @router.get("/users", response_model=list[UserOut])
 async def list_users(db: DbSession, _: CurrentPrincipal):
     rows = (await db.execute(select(User).order_by(User.created_at))).scalars().all()
-    return list(rows)
+    return [await _user_out(db, user) for user in rows]
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -157,8 +203,15 @@ async def create_user(payload: UserCreate, db: DbSession, principal: RequireAdmi
         await db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "That email is already in use.") from exc
     await db.refresh(user)
-    log.info("user created", email=user.email, role=user.role, by=principal.user.email)
-    return user
+    await _set_grants(db, user, payload.cluster_ids, principal)
+    log.info(
+        "user created",
+        email=user.email,
+        role=user.role,
+        clusters=len(payload.cluster_ids),
+        by=principal.user.email,
+    )
+    return await _user_out(db, user)
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -186,15 +239,21 @@ async def update_user(
                 status.HTTP_409_CONFLICT, "The cluster must keep at least one active owner."
             )
 
+    grants = data.pop("cluster_ids", None)
     for key, value in data.items():
         if value is not None:
             setattr(user, key, value)
     await db.commit()
     await db.refresh(user)
 
-    if data.get("is_active") is False:
+    if grants is not None:
+        await _set_grants(db, user, grants, principal)
+
+    # Losing access should take effect now, not whenever the session happens to
+    # expire. Deactivation and a narrowed set of grants both qualify.
+    if data.get("is_active") is False or grants is not None:
         await security.destroy_all_sessions(str(user.id))
-    return user
+    return await _user_out(db, user)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

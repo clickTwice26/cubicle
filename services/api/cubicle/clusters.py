@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
-from .models import Cluster
+from .models import Cluster, UserCluster
 
 CLUSTER_HEADER = "x-cubicle-cluster"
 
@@ -105,3 +105,49 @@ def resource_suffix(cluster: Cluster) -> str:
     install that predates multi-cluster is untouched by this.
     """
     return cluster.slug[:24]
+
+
+# ── access ───────────────────────────────────────────────────────────────────
+#
+# One rule, in one place: the owner reaches everything, and everybody else
+# reaches exactly what `user_clusters` says. Every cluster-scoped endpoint goes
+# through `deps.get_cluster`, which calls this, so there is no route that can
+# forget to ask.
+
+
+def is_super_admin(user) -> bool:
+    """The account that completed setup, and anyone it later promoted.
+
+    Deliberately exempt from grants: an instance whose owner can lock itself
+    out of its own clusters has no recovery path that does not involve psql.
+    """
+    return user.role == "owner"
+
+
+async def accessible_ids(db: AsyncSession, user) -> set[uuid.UUID] | None:
+    """Cluster ids this user may address. ``None`` means every one of them."""
+    if is_super_admin(user):
+        return None
+    rows = await db.execute(select(UserCluster.cluster_id).where(UserCluster.user_id == user.id))
+    return set(rows.scalars())
+
+
+async def may_access(db: AsyncSession, user, cluster_id: uuid.UUID) -> bool:
+    if is_super_admin(user):
+        return True
+    granted = await db.execute(
+        select(UserCluster.id).where(
+            UserCluster.user_id == user.id, UserCluster.cluster_id == cluster_id
+        )
+    )
+    return granted.first() is not None
+
+
+async def first_accessible(db: AsyncSession, user) -> Cluster | None:
+    """The cluster to fall back to when a request names none."""
+    stmt = select(Cluster).order_by(Cluster.is_default.desc(), Cluster.created_at)
+    if not is_super_admin(user):
+        stmt = stmt.join(UserCluster, UserCluster.cluster_id == Cluster.id).where(
+            UserCluster.user_id == user.id
+        )
+    return (await db.execute(stmt.limit(1))).scalars().first()

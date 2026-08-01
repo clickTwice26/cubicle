@@ -54,6 +54,9 @@ export interface User {
   initials: string
   is_active: boolean
   last_login_at: string | null
+  /** Clusters this account may address. Empty for a super admin, who has all. */
+  cluster_ids: string[]
+  is_super_admin: boolean
 }
 
 export interface Group {

@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardHeader,
+  Checkbox,
   CodeBlock,
   ConfirmButton,
   Field,
@@ -12,6 +13,7 @@ import {
   PAGE,
   PageHeader,
   Skeleton,
+  cx,
   useToast,
 } from '../components/ui'
 import { NewClusterModal } from '../components/ClusterSwitcher'
@@ -35,7 +37,7 @@ import {
   useUsers,
 } from '../lib/hooks'
 import { formatDate, relativeTime } from '../lib/format'
-import type { Role } from '../lib/types'
+import type { Cluster, Role, User } from '../lib/types'
 
 const ROLES: Role[] = ['owner', 'admin', 'developer', 'readonly']
 
@@ -584,6 +586,101 @@ function ApiKeysCard() {
   )
 }
 
+/**
+ * Which clusters an account may address.
+ *
+ * The super admin is shown as such rather than with every box ticked: their
+ * access does not come from grants, and rendering it as if it did would
+ * suggest it could be taken away here.
+ */
+function ClusterGrants({
+  user,
+  clusters,
+  onChange,
+}: {
+  user: User
+  clusters: Cluster[]
+  onChange: (ids: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (user.is_super_admin) {
+    return (
+      <span className="rounded-full border border-accent bg-accent-soft px-2.5 py-1 text-[11.5px] font-semibold">
+        every cluster
+      </span>
+    )
+  }
+
+  const granted = user.cluster_ids ?? []
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={cx(
+          'rounded-full border px-2.5 py-1 text-[11.5px] transition',
+          granted.length === 0
+            ? 'border-warn text-warn'
+            : 'border-line text-ink-2 hover:border-line-strong hover:text-ink',
+        )}
+      >
+        {granted.length === 0
+          ? 'no cluster access'
+          : `${granted.length} cluster${granted.length === 1 ? '' : 's'}`}
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Cluster access for ${user.name}`}
+        footer={
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        }
+      >
+        <div className="grid gap-2">
+          {clusters.map((cluster) => {
+            const has = granted.includes(cluster.id)
+            return (
+              <label
+                key={cluster.id}
+                className="flex cursor-pointer items-center gap-3 rounded-[9px] border border-line px-3.5 py-2.5 transition hover:bg-panel-2"
+              >
+                <Checkbox
+                  checked={has}
+                  onChange={(next: boolean) =>
+                    onChange(
+                      next
+                        ? [...granted, cluster.id]
+                        : granted.filter((id) => id !== cluster.id),
+                    )
+                  }
+                  label=""
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-semibold">
+                    {cluster.name}
+                  </span>
+                  <span className="block truncate font-mono text-[11.5px] text-ink-3">
+                    {cluster.slug}
+                  </span>
+                </span>
+                {cluster.is_default ? <Badge>default</Badge> : null}
+              </label>
+            )
+          })}
+        </div>
+        <p className="mt-4 mb-0 text-[12.5px] leading-relaxed text-ink-3">
+          Removing a cluster signs the account out everywhere, so the change takes effect at
+          once rather than whenever their session happens to expire.
+        </p>
+      </Modal>
+    </>
+  )
+}
+
 function UsersCard() {
   const toast = useToast()
   const { data: users } = useUsers()
@@ -592,7 +689,14 @@ function UsersCard() {
   const update = useUpdateUser()
   const remove = useDeleteUser()
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'developer' })
+  const { data: clusters } = useClusters()
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'developer',
+    cluster_ids: [] as string[],
+  })
 
   return (
     <Card className="overflow-hidden">
@@ -640,6 +744,19 @@ function UsersCard() {
               </option>
             ))}
           </select>
+          <ClusterGrants
+            user={user}
+            clusters={clusters ?? []}
+            onChange={(cluster_ids) =>
+              update.mutate(
+                { id: user.id, cluster_ids },
+                {
+                  onSuccess: () => toast.push('Cluster access updated'),
+                  onError: (error) => toast.push(error.message, 'err'),
+                },
+              )
+            }
+          />
           {user.id !== me?.id ? (
             <ConfirmButton
               label="Remove"
@@ -673,7 +790,13 @@ function UsersCard() {
                   onSuccess: () => {
                     toast.push('User created')
                     setOpen(false)
-                    setForm({ name: '', email: '', password: '', role: 'developer' })
+                    setForm({
+                      name: '',
+                      email: '',
+                      password: '',
+                      role: 'developer',
+                      cluster_ids: [],
+                    })
                   },
                   onError: (error) => toast.push(error.message, 'err'),
                 })
@@ -722,6 +845,36 @@ function UsersCard() {
                   {role}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-[12.5px] text-ink-2">Cluster access</span>
+            <div className="grid gap-1.5">
+              {(clusters ?? []).map((cluster) => (
+                <label
+                  key={cluster.id}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-[9px] border border-line px-3 py-2 transition hover:bg-panel-2"
+                >
+                  <Checkbox
+                    checked={form.cluster_ids.includes(cluster.id)}
+                    onChange={(next: boolean) =>
+                      setForm({
+                        ...form,
+                        cluster_ids: next
+                          ? [...form.cluster_ids, cluster.id]
+                          : form.cluster_ids.filter((id) => id !== cluster.id),
+                      })
+                    }
+                    label=""
+                  />
+                  <span className="text-[13px]">{cluster.name}</span>
+                  <span className="font-mono text-[11.5px] text-ink-3">{cluster.slug}</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[12px] text-ink-3">
+              An account with none can sign in and reach nothing.
             </div>
           </div>
         </div>

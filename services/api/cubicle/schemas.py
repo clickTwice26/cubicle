@@ -162,6 +162,11 @@ class UserOut(ORMModel):
     initials: str
     is_active: bool
     last_login_at: datetime | None = None
+    #: Clusters this account may address. Empty for an owner, who reaches
+    #: everything without a grant — the console labels that case rather than
+    #: listing every cluster back.
+    cluster_ids: list[UUID] = []
+    is_super_admin: bool = False
 
 
 class UserCreate(BaseModel):
@@ -169,12 +174,17 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=12, max_length=256)
     role: Role = "developer"
+    #: Which clusters the account may address. An account created without any
+    #: can sign in and see nothing, which is the safe default.
+    cluster_ids: list[UUID] = []
 
 
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     role: Role | None = None
     is_active: bool | None = None
+    #: Replaces the grants outright when present. Omit to leave them alone.
+    cluster_ids: list[UUID] | None = None
 
 
 # ── namespaces & functions ───────────────────────────────────────────────────

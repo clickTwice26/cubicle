@@ -137,6 +137,28 @@ class ApiKey(Base, TimestampMixin):
     )
 
 
+class UserCluster(Base):
+    """Which clusters a user may touch.
+
+    Absent a row, a user cannot see or address a cluster at all — not its
+    functions, not its logs, not its data services. The owner is the exception
+    and is checked before this table is consulted: the account that completed
+    setup is the super admin and always reaches everything, which is what keeps
+    an instance recoverable when a grant is misconfigured.
+    """
+
+    __tablename__ = "user_clusters"
+    __table_args__ = (UniqueConstraint("user_id", "cluster_id", name="uq_user_cluster"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+
+
 class Node(Base, TimestampMixin):
     """A Docker engine that can run isolates.
 

@@ -562,7 +562,8 @@ export const useUsers = () =>
 export function useCreateUser() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (body: Record<string, string>) => api.post<User>('/api/settings/users', body),
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post<User>('/api/settings/users', body),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.users }),
   })
 }
