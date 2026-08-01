@@ -428,7 +428,7 @@ function Empty({ mode }: { mode: 'edit' | 'write' }) {
 function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
   if (turn.role === 'user') {
     return (
-      <div className="animate-turn-in ml-4 min-w-0 rounded-xl rounded-br-[4px] border border-accent bg-accent-soft px-3.5 py-2.5 text-[13px] leading-relaxed break-words">
+      <div className="animate-turn-in ml-4 min-w-0 rounded-xl rounded-br-[4px] border border-accent bg-accent-soft px-3.5 py-2.5 text-[13px] leading-relaxed [overflow-wrap:anywhere]">
         {turn.text}
       </div>
     )
@@ -441,7 +441,7 @@ function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
         turn.failed ? 'border-err bg-err-bg' : 'border-line bg-panel-2',
       )}
     >
-      <div className={cx('break-words', turn.failed ? 'text-ink' : 'text-ink-2')}>
+      <div className={cx('[overflow-wrap:anywhere]', turn.failed ? 'text-ink' : 'text-ink-2')}>
         {turn.text}
       </div>
 
