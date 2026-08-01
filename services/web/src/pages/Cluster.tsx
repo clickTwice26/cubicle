@@ -14,7 +14,6 @@ import {
   StatusDot,
   useToast,
 } from '../components/ui'
-import { ClusterQuota } from '../components/ClusterQuota'
 import { api } from '../lib/api'
 import { useDrainNode, useMetering, useNodes } from '../lib/hooks'
 import { formatMoney, statusTone } from '../lib/format'
@@ -98,8 +97,6 @@ export default function Cluster() {
           </a>
         </Card>
       </div>
-
-      <ClusterQuota />
 
       <Card className="mb-5 overflow-hidden">
         <CardHeader title="Nodes" subtitle="Docker engines this control plane schedules onto" />

@@ -17,6 +17,7 @@ import {
   useToast,
 } from '../components/ui'
 import { NewClusterModal } from '../components/ClusterSwitcher'
+import { ClusterQuotaCard } from '../components/ClusterQuota'
 import { activeCluster } from '../lib/cluster'
 import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
 import {
@@ -46,6 +47,7 @@ export default function Settings() {
     <div className={PAGE}>
       <PageHeader title="Settings" />
       <ClustersCard />
+      <ClusterQuotaCard />
       <InstanceCard />
       <AssistantCard />
       <PasswordCard />
