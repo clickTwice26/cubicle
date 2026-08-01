@@ -678,6 +678,30 @@ class IsolatePool:
             if cluster is None or isolate.cluster == cluster
         ]
 
+    def tracked(self) -> list[Isolate]:
+        """Every isolate the pool believes in, for comparing against Docker.
+
+        A flat copy rather than the live lists: the caller is about to make slow
+        engine calls, and holding a reference into pool state across them would
+        read entries that acquire and release have since moved.
+        """
+        return [isolate for pool in self._isolates.values() for isolate in pool]
+
+    def forget(self, container_id: str) -> bool:
+        """Drop a tracked isolate without touching Docker.
+
+        For entries whose container is already gone, where ``_destroy`` would
+        announce a reclaim that did not happen and try to remove nothing. The
+        caller removes the container separately when there is one to remove.
+        """
+        for key, entries in self._isolates.items():
+            for isolate in entries:
+                if isolate.container_id == container_id:
+                    self._isolates[key] = [i for i in entries if i is not isolate]
+                    _announce("isolate.gone", isolate, reason="untracked")
+                    return True
+        return False
+
     def count(self) -> int:
         return sum(len(p) for p in self._isolates.values())
 

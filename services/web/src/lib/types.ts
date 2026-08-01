@@ -310,3 +310,31 @@ export interface FunctionMetrics {
   latency: LatencyPoint[]
   invocations: ChartBar[]
 }
+
+export interface ReconcileFinding {
+  id: string
+  kind: string
+  severity: 'error' | 'warn' | 'info'
+  cluster: string
+  summary: string
+  detail: string
+  /** What applying does. Null means nothing safe exists and it is yours to judge. */
+  fix: string | null
+  /** Applying destroys data that does not come back. */
+  destructive: boolean
+  target: Record<string, string>
+}
+
+export interface ReconcileReport {
+  findings: ReconcileFinding[]
+  errors: number
+  warnings: number
+  fixable: number
+}
+
+export interface ReconcileResult {
+  applied: string[]
+  failed: { id: string; error: string }[]
+  skipped: string[]
+  report: ReconcileReport
+}

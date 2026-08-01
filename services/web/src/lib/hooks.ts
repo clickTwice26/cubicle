@@ -22,6 +22,8 @@ import type {
   ManagedService,
   Metering,
   NodeInfo,
+  ReconcileReport,
+  ReconcileResult,
   Secret,
   SetupStatus,
   TestResult,
@@ -143,6 +145,26 @@ export function useSetClusterQuota(slug: string) {
       max_storage_gb?: number
     }) => api.put<Cluster>(`/api/clusters/${slug}/quota`, body),
     onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.clusters })
+      void client.invalidateQueries({ queryKey: keys.instance })
+    },
+  })
+}
+
+/**
+ * Scanning is a mutation rather than a query on purpose: it walks every Docker
+ * engine, so it happens when the operator asks and never on a refetch.
+ */
+export function useReconcileScan() {
+  return useMutation({ mutationFn: () => api.get<ReconcileReport>('/api/reconcile') })
+}
+
+export function useReconcileApply() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) => api.post<ReconcileResult>('/api/reconcile/apply', { ids }),
+    onSuccess: () => {
+      // Services may have been marked stopped and isolates dropped.
       void client.invalidateQueries({ queryKey: keys.clusters })
       void client.invalidateQueries({ queryKey: keys.instance })
     },

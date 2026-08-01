@@ -10,6 +10,7 @@ from . import (
     invoke,
     live,
     observability,
+    reconcile,
     redis_browser,
     settings,
     setup,
@@ -28,6 +29,7 @@ ROUTERS = [
     data_services.router,
     database.router,
     redis_browser.router,
+    reconcile.router,
     settings.router,
     invoke.router,
 ]

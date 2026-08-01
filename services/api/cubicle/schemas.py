@@ -87,6 +87,40 @@ class ClusterQuotaIn(BaseModel):
     max_storage_gb: int | None = Field(default=None, ge=0, le=1024 * 1024)
 
 
+class ReconcileFinding(BaseModel):
+    """One disagreement between the database, the pool and Docker."""
+
+    id: str
+    kind: str
+    severity: str
+    cluster: str
+    summary: str
+    detail: str
+    fix: str | None = None
+    destructive: bool = False
+    target: dict = Field(default_factory=dict)
+
+
+class ReconcileReport(BaseModel):
+    findings: list[ReconcileFinding] = Field(default_factory=list)
+    errors: int = 0
+    warnings: int = 0
+    #: How many could be fixed without destroying anything — what "fix all" covers.
+    fixable: int = 0
+
+
+class ReconcileApply(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class ReconcileResult(BaseModel):
+    applied: list[str] = Field(default_factory=list)
+    failed: list[dict] = Field(default_factory=list)
+    #: Findings that resolved themselves between the scan and the apply.
+    skipped: list[str] = Field(default_factory=list)
+    report: ReconcileReport
+
+
 class ClusterUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     ingress_domain: str | None = Field(default=None, max_length=255)
