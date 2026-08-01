@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowRight, ChevronLeft, Plus } from '../components/Icons'
+import { ArrowRight, ChevronLeft, Plus, Trash } from '../components/Icons'
 import {
   Badge,
   Button,
@@ -11,6 +11,7 @@ import {
   EmptyState,
   Field,
   MethodBadge,
+  Modal,
   PAGE,
   Skeleton,
   useToast,
@@ -45,6 +46,7 @@ export default function PlaygroundGroup() {
 
   const [session, newSession] = useGroupSession(groupId)
   const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const [fnName, setFnName] = useState('')
   const [fnMethod, setFnMethod] = useState<Method>('POST')
@@ -105,9 +107,14 @@ export default function PlaygroundGroup() {
             <Badge tone="accent">{group.ns}</Badge>
           </div>
         </div>
-        <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-          New function
-        </Button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
+            New function
+          </Button>
+          <Button variant="danger" icon={<Trash size={14} />} onClick={() => setDeleting(true)}>
+            Delete namespace
+          </Button>
+        </div>
       </div>
 
       <Card className="my-4.5 flex items-center gap-2.5 px-3.5 py-3">
@@ -139,49 +146,16 @@ export default function PlaygroundGroup() {
         </button>
       </Card>
 
-      {creating ? (
-        <Card className="mb-5 border-accent p-6">
-          <div className="mb-4 text-[15px] font-semibold">New function in {group.ns}</div>
-          <div className="grid gap-4.5">
-            <Field
-              label="Function name"
-              autoFocus
-              value={fnName}
-              placeholder="create-charge"
-              onChange={(event) => setFnName(event.target.value)}
-            />
-            <ChipGroup
-              label="Method"
-              options={METHODS}
-              value={fnMethod}
-              onChange={setFnMethod}
-            />
-            <ChipGroup
-              label="Runtime"
-              options={RUNTIMES}
-              value={fnRuntime}
-              onChange={setFnRuntime}
-              render={(option) => RUNTIME_LABEL[option]}
-            />
-            <ChipGroup
-              label="Runtime context access"
-              hint="What this function may do with the shared session context."
-              options={CTX_MODES}
-              value={fnCtx}
-              onChange={setFnCtx}
-              render={(option) => CTX_LABEL[option]}
-            />
-          </div>
-          <div className="mt-4 flex items-center gap-2.5 rounded-[9px] border border-line bg-bg px-3.5 py-2.5">
-            <span className="flex-none text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-              Endpoint
-            </span>
-            <span className="overflow-x-auto font-mono text-[12.5px] whitespace-nowrap">
-              {group.base_url}
-              {slugify(fnName) || 'my-function'}
-            </span>
-          </div>
-          <div className="mt-4 flex gap-2.5">
+      <Modal
+        open={creating}
+        onClose={() => setCreating(false)}
+        title={`New function in ${group.ns}`}
+        width={520}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
             <Button
               variant="primary"
               loading={createFunction.isPending}
@@ -190,12 +164,44 @@ export default function PlaygroundGroup() {
             >
               Create function
             </Button>
-            <Button variant="ghost" onClick={() => setCreating(false)}>
-              Cancel
-            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4.5">
+          <Field
+            label="Function name"
+            autoFocus
+            value={fnName}
+            placeholder="create-charge"
+            onChange={(event) => setFnName(event.target.value)}
+          />
+          <ChipGroup label="Method" options={METHODS} value={fnMethod} onChange={setFnMethod} />
+          <ChipGroup
+            label="Runtime"
+            options={RUNTIMES}
+            value={fnRuntime}
+            onChange={setFnRuntime}
+            render={(option) => RUNTIME_LABEL[option]}
+          />
+          <ChipGroup
+            label="Runtime context access"
+            hint="What this function may do with the shared session context."
+            options={CTX_MODES}
+            value={fnCtx}
+            onChange={setFnCtx}
+            render={(option) => CTX_LABEL[option]}
+          />
+          <div className="flex items-center gap-2.5 rounded-[9px] border border-line bg-bg px-3.5 py-2.5">
+            <span className="flex-none text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
+              Endpoint
+            </span>
+            <span className="overflow-x-auto font-mono text-[12.5px] whitespace-nowrap">
+              {group.base_url}
+              {slugify(fnName) || 'my-function'}
+            </span>
           </div>
-        </Card>
-      ) : null}
+        </div>
+      </Modal>
 
       {isLoading ? (
         <Skeleton className="h-32 w-full" />
@@ -326,21 +332,94 @@ export default function PlaygroundGroup() {
         </div>
       </Card>
 
-      <div className="mt-4.5 flex justify-end">
-        <ConfirmButton
-          label="Delete group and its functions"
-          confirmLabel="Click again to delete this namespace"
-          onConfirm={() =>
-            deleteGroup.mutate(group.id, {
-              onSuccess: () => {
-                toast.push(`Namespace ${group.ns} deleted`)
-                navigate('/console/playground')
-              },
-            })
-          }
+      <DeleteGroupModal
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        ns={group.ns}
+        functionCount={functions?.length ?? 0}
+        pending={deleteGroup.isPending}
+        onConfirm={() =>
+          deleteGroup.mutate(group.id, {
+            onSuccess: () => {
+              toast.push(`Namespace ${group.ns} deleted`)
+              navigate('/console/playground')
+            },
+            onError: (error) => toast.push(error.message, 'err'),
+          })
+        }
+      />
+    </div>
+  )
+}
+
+/**
+ * Deleting a namespace takes every function under it, so opening the dialog is
+ * not the confirmation — typing the namespace back is. Same shape as destroying
+ * a data service, which is the other action here that cannot be undone.
+ */
+function DeleteGroupModal({
+  open,
+  onClose,
+  ns,
+  functionCount,
+  pending,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  ns: string
+  functionCount: number
+  pending: boolean
+  onConfirm: () => void
+}) {
+  const [typed, setTyped] = useState('')
+
+  useEffect(() => {
+    if (open) setTyped('')
+  }, [open])
+
+  const armed = typed.trim() === ns
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      width={520}
+      title={`Delete namespace ${ns}?`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            disabled={!armed}
+            loading={pending}
+            icon={<Trash size={13} />}
+            onClick={onConfirm}
+            className={armed ? 'border-err bg-err-bg' : undefined}
+          >
+            Delete namespace
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        <div className="rounded-[10px] border border-err bg-err-bg px-3.5 py-3 text-[13px] leading-relaxed">
+          This deletes {functionCount} function{functionCount === 1 ? '' : 's'} with their code,
+          every deployed version, and the runtime context under{' '}
+          <span className="font-mono">/{ns}/</span>. Requests to those endpoints stop resolving
+          the moment you confirm. It cannot be undone.
+        </div>
+        <Field
+          label={`Type ${ns} to confirm`}
+          value={typed}
+          autoFocus
+          placeholder={ns}
+          onChange={(event) => setTyped(event.target.value)}
         />
       </div>
-    </div>
+    </Modal>
   )
 }
 

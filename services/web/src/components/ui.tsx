@@ -545,19 +545,21 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="animate-rise w-full overflow-hidden rounded-2xl border border-line-strong bg-panel shadow-2xl"
+        className="animate-rise flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-line-strong bg-panel shadow-2xl"
         style={{ maxWidth: width }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+        <div className="flex flex-none items-center justify-between border-b border-line px-5 py-4">
           <div className="text-[15px] font-semibold">{title}</div>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 border-0">
             <X size={15} />
           </IconButton>
         </div>
-        <div className="px-5 py-5">{children}</div>
+        {/* The body scrolls so a tall form never pushes its footer buttons off
+            a short window. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
         {footer ? (
-          <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-4">
+          <div className="flex flex-none items-center justify-end gap-2 border-t border-line px-5 py-4">
             {footer}
           </div>
         ) : null}

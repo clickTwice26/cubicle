@@ -19,6 +19,7 @@ const Logs = lazy(() => import('./pages/Logs'))
 const Cluster = lazy(() => import('./pages/Cluster'))
 const DataService = lazy(() => import('./pages/DataService'))
 const DatabaseBrowser = lazy(() => import('./pages/DatabaseBrowser'))
+const RedisBrowser = lazy(() => import('./pages/RedisBrowser'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 function Loading() {
@@ -131,6 +132,14 @@ export default function App() {
           element={
             <Guarded>
               <DatabaseBrowser />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/services/redis/data"
+          element={
+            <Guarded>
+              <RedisBrowser />
             </Guarded>
           }
         />

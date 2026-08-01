@@ -86,6 +86,12 @@ const PAGES: { label: string; to: string; hint: string; icon: Item['icon'] }[] =
     hint: 'Rows, structure and SQL',
     icon: Database,
   },
+  {
+    label: 'Browse keys',
+    to: '/console/services/redis/data',
+    hint: 'Redis keys, values and commands',
+    icon: Layers,
+  },
 ]
 
 /** Subsequence match, so "crch" finds "create-charge". */
@@ -287,7 +293,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search functions, namespaces, pages, docs…"
-            className="h-[52px] w-full border-0 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-3"
+            // The global :focus-visible ring is suppressed here: this input is
+            // the whole point of the dialog and takes focus on open, so an
+            // accent box around it marks nothing and only adds noise.
+            className="h-[52px] w-full border-0 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-3 focus:outline-none focus-visible:outline-none"
           />
           <kbd className="flex-none rounded-[5px] border border-line px-1.5 py-px font-mono text-[11px] text-ink-3">
             esc

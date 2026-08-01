@@ -9,6 +9,7 @@ from . import (
     invoke,
     live,
     observability,
+    redis_browser,
     settings,
     setup,
 )
@@ -24,6 +25,7 @@ ROUTERS = [
     cluster.router,
     data_services.router,
     database.router,
+    redis_browser.router,
     settings.router,
     invoke.router,
 ]

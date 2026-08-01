@@ -91,10 +91,10 @@ export default function DataService() {
               </div>
             </div>
             <div className="flex flex-none flex-wrap items-center gap-2">
-              {safeKind === 'postgres' && service.status === 'running' ? (
-                <Link to="/console/services/postgres/data">
+              {service.status === 'running' ? (
+                <Link to={`/console/services/${safeKind}/data`}>
                   <Button variant="primary" icon={<Table size={14} />}>
-                    Browse data
+                    {safeKind === 'postgres' ? 'Browse data' : 'Browse keys'}
                   </Button>
                 </Link>
               ) : null}
