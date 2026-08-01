@@ -121,6 +121,30 @@ class ReconcileResult(BaseModel):
     report: ReconcileReport
 
 
+class UpdateStatus(BaseModel):
+    """What is deployed, what is on the branch, and whether they differ."""
+
+    current: str = ""
+    latest: str = ""
+    branch: str = ""
+    repo: str = ""
+    available: bool = False
+    #: Subject line of the newest commit, so the button says what it would apply.
+    message: str = ""
+    author: str = ""
+    date: str = ""
+    #: Why the check could not be made. Empty when it succeeded.
+    error: str = ""
+    cached: bool = False
+
+
+class UpdateProgress(BaseModel):
+    #: idle | running | success | failed
+    state: str = "idle"
+    logs: str = ""
+    exit_code: int | None = None
+
+
 class ClusterUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     ingress_domain: str | None = Field(default=None, max_length=255)

@@ -19,6 +19,7 @@ import {
 import { NewClusterModal } from '../components/ClusterSwitcher'
 import { ClusterQuotaCard } from '../components/ClusterQuota'
 import { ResourceSync } from '../components/ResourceSync'
+import { UpdateCard } from '../components/UpdateCard'
 import { activeCluster } from '../lib/cluster'
 import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
 import {
@@ -49,6 +50,7 @@ export default function Settings() {
       <PageHeader title="Settings" />
       <ClustersCard />
       <ClusterQuotaCard />
+      <UpdateCard />
       <ResourceSync />
       <InstanceCard />
       <AssistantCard />

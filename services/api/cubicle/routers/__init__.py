@@ -14,6 +14,7 @@ from . import (
     redis_browser,
     settings,
     setup,
+    update,
 )
 
 ROUTERS = [
@@ -31,6 +32,7 @@ ROUTERS = [
     redis_browser.router,
     reconcile.router,
     settings.router,
+    update.router,
     invoke.router,
 ]
 

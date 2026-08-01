@@ -311,6 +311,26 @@ export interface FunctionMetrics {
   invocations: ChartBar[]
 }
 
+export interface UpdateStatus {
+  current: string
+  latest: string
+  branch: string
+  repo: string
+  available: boolean
+  message: string
+  author: string
+  date: string
+  /** Why the check failed. Empty when it worked. */
+  error: string
+  cached: boolean
+}
+
+export interface UpdateProgress {
+  state: 'idle' | 'running' | 'success' | 'failed'
+  logs: string
+  exit_code: number | null
+}
+
 export interface ReconcileFinding {
   id: string
   kind: string

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ClusterSwitcher } from './ClusterSwitcher'
 import { CommandPalette } from './CommandPalette'
-import { useInstance, useLogout, useMe, useServices } from '../lib/hooks'
+import { useInstance, useLogout, useMe, useServices, useUpdateStatus } from '../lib/hooks'
 import { useTheme } from '../lib/theme'
 import {
   Bars,
@@ -240,6 +240,7 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
           />
 
           <div className="mt-auto pb-2.5">
+            <UpdateNudge collapsed={collapsed} />
             <a
               href="/docs"
               title={collapsed ? 'Docs' : undefined}
@@ -428,6 +429,37 @@ function AccountMenu({
  * and in the rail it becomes a badge on the corner, where it is the only
  * thing that still fits.
  */
+/**
+ * A quiet pointer to Settings when the instance is behind its branch.
+ *
+ * Only the super admin can act on it, so only they are told. It reads the same
+ * cached answer the Settings card does — this costs no extra request.
+ */
+function UpdateNudge({ collapsed }: { collapsed: boolean }) {
+  const { data: me } = useMe()
+  const { data: update } = useUpdateStatus(me?.role === 'owner')
+
+  if (!update?.available) return null
+
+  return (
+    <Link
+      to="/console/settings"
+      title={collapsed ? 'Update available' : undefined}
+      className={cx(
+        NAV_ITEM,
+        'bg-accent-soft text-ink hover:bg-accent-soft',
+        collapsed && 'justify-center px-0',
+      )}
+    >
+      <span className="relative flex h-[17px] w-[17px] items-center justify-center">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+        <span className="absolute h-1.5 w-1.5 animate-ping rounded-full bg-accent" />
+      </span>
+      <span className={cx('font-semibold', collapsed && 'hidden')}>Update available</span>
+    </Link>
+  )
+}
+
 function ServiceLink({
   to,
   label,

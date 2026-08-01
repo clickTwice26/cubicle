@@ -27,6 +27,8 @@ import type {
   Secret,
   SetupStatus,
   TestResult,
+  UpdateProgress,
+  UpdateStatus,
   User,
   Version,
 } from './types'
@@ -51,6 +53,8 @@ export const keys = {
   instance: ['instance'] as const,
   apiKeys: ['api-keys'] as const,
   users: ['users'] as const,
+  update: ['update'] as const,
+  updateProgress: ['update', 'progress'] as const,
   context: (groupId: string, session: string) => ['context', groupId, session] as const,
 }
 
@@ -148,6 +152,51 @@ export function useSetClusterQuota(slug: string) {
       void client.invalidateQueries({ queryKey: keys.clusters })
       void client.invalidateQueries({ queryKey: keys.instance })
     },
+  })
+}
+
+/**
+ * Whether the checkout is behind the branch. Cached hard on the server, so
+ * asking on every visit to Settings costs nothing.
+ */
+export function useUpdateStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.update,
+    queryFn: () => api.get<UpdateStatus>('/api/update'),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+}
+
+export function useCheckForUpdate() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.get<UpdateStatus>('/api/update?refresh=true'),
+    onSuccess: (next) => client.setQueryData(keys.update, next),
+  })
+}
+
+export function useStartUpdate() {
+  return useMutation({ mutationFn: () => api.post<UpdateProgress>('/api/update/apply', {}) })
+}
+
+/**
+ * Polls the updater while it runs.
+ *
+ * The API is one of the things being replaced, so requests will fail partway
+ * through. A failure here means "still restarting", not "finished" — hence no
+ * retry limit and no error surfaced while an update is in flight.
+ */
+export function useUpdateProgress(active: boolean) {
+  return useQuery({
+    queryKey: keys.updateProgress,
+    queryFn: () => api.get<UpdateProgress>('/api/update/progress'),
+    enabled: active,
+    refetchInterval: active ? 2000 : false,
+    retry: true,
+    retryDelay: 2000,
+    gcTime: 0,
   })
 }
 
