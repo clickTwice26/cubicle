@@ -5,11 +5,11 @@ import { activeCluster } from '../lib/cluster'
 import { formatBytes } from '../lib/format'
 
 /**
- * The ceilings this cluster allocates under.
+ * The ceilings this cluster allocates under — super admin only, card and all.
  *
- * Only the super admin can change them — a quota an admin can raise is not a
- * quota — so everyone else sees the same numbers without the controls. The
- * server enforces that independently; this only decides what to draw.
+ * A quota an admin can raise is not a quota, so the server refuses the write to
+ * anyone below owner and this draws nothing for them. Hiding it is presentation,
+ * not protection: `RequireOwner` on the endpoint is what actually holds.
  */
 
 /** Presets in the units an operator actually thinks in. */
@@ -62,9 +62,10 @@ export function ClusterQuota() {
     setStorage(cluster.max_storage_gb)
   }, [cluster])
 
-  if (!cluster) return null
+  // `me` is undefined for a moment on load; drawing then hiding would be worse
+  // than never drawing, so wait for the answer before deciding.
+  if (!cluster || me?.role !== 'owner') return null
 
-  const owner = me?.role === 'owner'
   const dirty =
     memory !== cluster.max_memory_mb ||
     cpu !== cluster.max_cpu_cores ||
@@ -74,37 +75,29 @@ export function ClusterQuota() {
     <Card className="mb-5 overflow-hidden">
       <CardHeader
         title="Resource ceilings"
-        subtitle={
-          owner
-            ? 'Caps on everything this cluster may allocate. They bound the per-function settings underneath them.'
-            : 'Caps on everything this cluster may allocate. Only the super admin can change them.'
-        }
+        subtitle="Caps on everything this cluster may allocate. They bound the per-function settings underneath them, and only you can change them."
         action={
-          owner ? (
-            <Button
-              variant={dirty ? 'primary' : 'ghost'}
-              size="sm"
-              disabled={!dirty}
-              loading={save.isPending}
-              onClick={() =>
-                save.mutate(
-                  {
-                    max_memory_mb: memory,
-                    max_cpu_cores: cpu,
-                    max_storage_gb: storage,
-                  },
-                  {
-                    onSuccess: () => toast.push('Ceilings updated'),
-                    onError: (error) => toast.push(error.message, 'err'),
-                  },
-                )
-              }
-            >
-              Save ceilings
-            </Button>
-          ) : (
-            <Badge>read only</Badge>
-          )
+          <Button
+            variant={dirty ? 'primary' : 'ghost'}
+            size="sm"
+            disabled={!dirty}
+            loading={save.isPending}
+            onClick={() =>
+              save.mutate(
+                {
+                  max_memory_mb: memory,
+                  max_cpu_cores: cpu,
+                  max_storage_gb: storage,
+                },
+                {
+                  onSuccess: () => toast.push('Ceilings updated'),
+                  onError: (error) => toast.push(error.message, 'err'),
+                },
+              )
+            }
+          >
+            Save ceilings
+          </Button>
         }
       />
 
@@ -116,7 +109,6 @@ export function ClusterQuota() {
           format={(mb) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`)}
           options={MEMORY}
           value={memory}
-          editable={owner}
           onChange={setMemory}
           note="Counts every warm container plus the managed Postgres and Redis."
         />
@@ -127,7 +119,6 @@ export function ClusterQuota() {
           format={(n) => `${n.toFixed(2)} cores`}
           options={CPU}
           value={cpu}
-          editable={owner}
           onChange={setCpu}
           note="A container's share scales with its memory: 512 MB gets half a core."
         />
@@ -137,21 +128,18 @@ export function ClusterQuota() {
           format={(gb) => formatBytes(gb * 1024 ** 3)}
           options={STORAGE}
           value={storage}
-          editable={owner}
           onChange={setStorage}
           note="Set here, but nothing is refused on it yet: volume usage is measured for the whole instance rather than per cluster."
           pending
         />
       </div>
 
-      {owner ? (
-        <div className="border-t border-line bg-panel-2 px-5 py-3 text-[12.5px] leading-relaxed text-ink-2">
-          A request that cannot fit under a ceiling waits for room, then answers{' '}
-          <span className="font-mono">503 cluster_at_capacity</span>. One that could never fit —
-          because the data services alone use the ceiling — is refused straight away rather than
-          made to wait for it.
-        </div>
-      ) : null}
+      <div className="border-t border-line bg-panel-2 px-5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+        A request that cannot fit under a ceiling waits for room, then answers{' '}
+        <span className="font-mono">503 cluster_at_capacity</span>. One that could never fit —
+        because the data services alone use the ceiling — is refused straight away rather than made
+        to wait for it.
+      </div>
     </Card>
   )
 }
@@ -163,7 +151,6 @@ function Row({
   format,
   options,
   value,
-  editable,
   onChange,
   note,
   pending,
@@ -175,7 +162,6 @@ function Row({
   format: (value: number) => string
   options: { label: string; value: number }[]
   value: number
-  editable: boolean
   onChange: (next: number) => void
   note: string
   pending?: boolean
@@ -203,27 +189,21 @@ function Row({
       )}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        {editable ? (
-          options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={cx(
-                'rounded-full border px-2.5 py-1 text-[12px] transition',
-                value === option.value
-                  ? 'border-accent bg-accent-soft font-semibold text-ink'
-                  : 'border-line text-ink-2 hover:border-line-strong hover:text-ink',
-              )}
-            >
-              {option.label}
-            </button>
-          ))
-        ) : (
-          <span className="text-[12.5px] text-ink-3">
-            {cap > 0 ? format(cap) : 'no ceiling set'}
-          </span>
-        )}
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cx(
+              'rounded-full border px-2.5 py-1 text-[12px] transition',
+              value === option.value
+                ? 'border-accent bg-accent-soft font-semibold text-ink'
+                : 'border-line text-ink-2 hover:border-line-strong hover:text-ink',
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
 
       <div className="mt-1.5 text-[12px] text-ink-3">{note}</div>
