@@ -191,11 +191,15 @@ export default function PlaygroundGroup() {
             onChange={setFnCtx}
             render={(option) => CTX_LABEL[option]}
           />
-          <div className="flex items-center gap-2.5 rounded-[9px] border border-line bg-bg px-3.5 py-2.5">
+          {/* The URL is longer than the dialog on any narrow screen. It wraps
+              rather than scrolls, because a preview you have to drag sideways
+              to read is not a preview. min-w-0 keeps it from widening the flex
+              row it sits in — without it the whole modal scrolls. */}
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 rounded-[9px] border border-line bg-bg px-3.5 py-2.5">
             <span className="flex-none text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
               Endpoint
             </span>
-            <span className="overflow-x-auto font-mono text-[12.5px] whitespace-nowrap">
+            <span className="min-w-0 font-mono text-[12.5px] [overflow-wrap:anywhere]">
               {group.base_url}
               {slugify(fnName) || 'my-function'}
             </span>

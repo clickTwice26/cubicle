@@ -538,28 +538,32 @@ export function Modal({
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-3 backdrop-blur-[2px] sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
       onClick={onClose}
     >
       <div
-        className="animate-rise flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-line-strong bg-panel shadow-2xl"
+        className="animate-rise flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-line-strong bg-panel shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
         style={{ maxWidth: width }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex flex-none items-center justify-between border-b border-line px-5 py-4">
-          <div className="text-[15px] font-semibold">{title}</div>
+        <div className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-5">
+          <div className="min-w-0 truncate text-[15px] font-semibold">{title}</div>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 border-0">
             <X size={15} />
           </IconButton>
         </div>
-        {/* The body scrolls so a tall form never pushes its footer buttons off
-            a short window. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        {/* The body scrolls vertically so a tall form never pushes its footer
+            buttons off a short window. It does not scroll horizontally: a child
+            wider than the dialog is a bug in that child, and letting the whole
+            dialog slide sideways hides it instead of showing it. */}
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-5">
+          {children}
+        </div>
         {footer ? (
-          <div className="flex flex-none items-center justify-end gap-2 border-t border-line px-5 py-4">
+          <div className="flex flex-none flex-wrap items-center justify-end gap-2 border-t border-line px-4 py-4 sm:px-5">
             {footer}
           </div>
         ) : null}
