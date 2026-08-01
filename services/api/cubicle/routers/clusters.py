@@ -20,7 +20,14 @@ from ..runtime import services as service_svc
 from ..runtime.engine import EngineError
 from ..runtime.nodes import ensure_local_node
 from ..runtime.pool import pool
-from ..schemas import RESERVED_NAMESPACES, ClusterCreate, ClusterOut, ClusterUpdate, validate_slug
+from ..schemas import (
+    RESERVED_NAMESPACES,
+    ClusterCreate,
+    ClusterOut,
+    ClusterQuotaIn,
+    ClusterUpdate,
+    validate_slug,
+)
 
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 

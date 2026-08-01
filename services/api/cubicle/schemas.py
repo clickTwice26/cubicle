@@ -116,13 +116,14 @@ class ClusterOut(ORMModel):
     node_count: int = 0
     function_count: int = 0
     namespace_count: int = 0
-    #: Ceilings, and what is committed against them right now.
+    #: Ceilings, and what is committed against them right now. Storage has a
+    #: ceiling but no usage figure: volumes are measured instance-wide, so
+    #: there is nothing honest to report per cluster yet.
     max_memory_mb: int = 0
     max_cpu_cores: float = 0.0
     max_storage_gb: int = 0
     used_memory_mb: int = 0
     used_cpu_cores: float = 0.0
-    used_storage_bytes: int = 0
     created_at: datetime
 
 

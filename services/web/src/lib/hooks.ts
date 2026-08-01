@@ -133,6 +133,22 @@ export function useCreateCluster() {
   })
 }
 
+/** Ceilings are owner-only on the server; the UI mirrors that, not enforces it. */
+export function useSetClusterQuota(slug: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      max_memory_mb?: number
+      max_cpu_cores?: number
+      max_storage_gb?: number
+    }) => api.put<Cluster>(`/api/clusters/${slug}/quota`, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.clusters })
+      void client.invalidateQueries({ queryKey: keys.instance })
+    },
+  })
+}
+
 export function useUpdateCluster() {
   const client = useQueryClient()
   return useMutation({

@@ -18,6 +18,13 @@ export interface Cluster {
   node_count: number
   function_count: number
   namespace_count: number
+  /** Ceilings. Zero means unlimited. */
+  max_memory_mb: number
+  max_cpu_cores: number
+  max_storage_gb: number
+  /** Committed against those ceilings right now. */
+  used_memory_mb: number
+  used_cpu_cores: number
   created_at: string
 }
 
