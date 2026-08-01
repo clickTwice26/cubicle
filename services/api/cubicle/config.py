@@ -62,6 +62,19 @@ class Settings(BaseSettings):
     # Session context store shared between functions in a namespace.
     context_ttl: int = 1800
 
+    # ── Cubicle AI ───────────────────────────────────────────────────────
+    # Off until a key is set: the assistant is the one feature here that talks
+    # to something outside the machine, so it is opt-in by configuration.
+    # Any OpenAI-compatible endpoint works — point ai_base_url at a local
+    # server and nothing leaves the network at all.
+    ai_api_key: str = ""
+    ai_base_url: str = "https://api.openai.com/v1"
+    #: Small and strong at short Python — these are single-file handlers, not
+    #: repositories. Override for something cheaper or heavier as you like.
+    ai_model: str = "gpt-4.1-mini"
+    ai_max_output_tokens: int = 4000
+    ai_timeout: float = 90.0
+
     @field_validator("data_dir", mode="before")
     @classmethod
     def _expand(cls, v: str | Path) -> Path:

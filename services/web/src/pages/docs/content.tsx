@@ -332,6 +332,11 @@ export const DOCS: DocPage[] = [
             title: 'Dependencies and limits',
             body: 'What is already in the image, how to add to it, and the box it runs inside.',
           },
+          {
+            to: '/docs/ai',
+            title: 'Cubicle AI',
+            body: 'The assistant in the editor: what it knows about your cluster, and what it is never told.',
+          },
         ])}
 
         {h2('signature', 'The handler')}
@@ -1036,6 +1041,162 @@ export const DOCS: DocPage[] = [
           <>
             {docLink('scaling', 'Scaling and concurrency')} covers how many isolates you get,
             who decides, and when they go away again.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'ai',
+    group: 'Writing functions',
+    label: 'Cubicle AI',
+    title: 'Cubicle AI',
+    lede: 'The assistant in the function editor — it writes handlers against this runtime, knowing what your cluster actually has.',
+    body: () => (
+      <>
+        {h2('what', 'What it is')}
+        {p(
+          <>
+            A prompt box above the editor. Describe what the function should do and it writes{' '}
+            {mono('handler.py')} — not generic Python, but code against this runtime: the{' '}
+            {docLink('functions', 'handler contract')}, {docLink('context', 'the ctx store')}{' '}
+            and the access mode this particular function declares,{' '}
+            {docLink('secrets', 'the env keys')} your cluster actually has, and{' '}
+            {docLink('services', 'Postgres and Redis')} only when they are really running.
+          </>,
+        )}
+        {p(
+          <>
+            What comes back is a draft. It lands in the editor as an unsaved change, exactly
+            like something you typed, and the existing <strong>Save &amp; deploy</strong> is
+            still the only thing that builds a version. The assistant cannot deploy.
+          </>,
+        )}
+        {note(
+          <>
+            This is the one part of Cubicle that talks to something off your machine. It stays
+            off until an admin adds a key, and it is the only feature that behaves this way —
+            everything else works with the network unplugged.
+          </>,
+        )}
+
+        {h2('setup', 'Turning it on')}
+        {p(
+          <>
+            <strong>Settings → Cubicle AI</strong>. Paste a provider key, pick a model, save.
+            There is nothing to put in a file and nothing to restart.
+          </>,
+        )}
+        {table(
+          ['Field', 'What it does'],
+          [
+            [
+              'API key',
+              'Stored envelope-encrypted like every other secret, and never shown again — only a masked hint.',
+            ],
+            [
+              'Model',
+              'Any model id the provider serves. These are single-file handlers, so a small model is both cheaper and quicker.',
+            ],
+            [
+              'Base URL',
+              'Any OpenAI-compatible endpoint. Point it at a local server and nothing leaves your network at all.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            <strong>Test connection</strong> spends one token proving the key and model work, so
+            a typo is caught in Settings rather than halfway through writing a function.
+          </>,
+        )}
+
+        {h2('sees', 'What it is told')}
+        {p(
+          'Every request carries the runtime contract plus the live facts about the function you have open:',
+        )}
+        {table(
+          ['Sent', 'Why'],
+          [
+            [
+              'The runtime contract',
+              'The handler signature, return shapes, ctx, env and data APIs, and the limits.',
+            ],
+            [
+              'This function',
+              'Method, runtime, timeout, memory, concurrency, and its context access mode.',
+            ],
+            [
+              'Env and secret key names',
+              'So it writes env.require("STRIPE_KEY") rather than inventing a name.',
+            ],
+            [
+              'Context keys and shapes',
+              'The keys in the current playground session, their JSON types and a truncated preview.',
+            ],
+            [
+              'Data services',
+              'Whether Postgres and Redis are actually running, and which version.',
+            ],
+            [
+              'Sibling functions',
+              'The other functions in the namespace, since they share the same ctx.',
+            ],
+            ['The open file', 'When you ask it to edit rather than write from scratch.'],
+          ],
+        )}
+        {note(
+          <>
+            <strong>Values are never sent.</strong> Not your secrets, not your global env. A
+            name is all a model needs to write the correct call, and a value would be a
+            credential handed to a third party — so this is enforced in the control plane, which
+            never decrypts anything on the way to the assistant. The panel lists exactly what
+            was sent under <strong>What the model was given</strong>, so you can check rather
+            than trust.
+          </>,
+        )}
+
+        {h2('use', 'Using it')}
+        {table(
+          ['Mode', 'What it does'],
+          [
+            [
+              'edit this file',
+              'Rewrites the handler you have open, keeping what it does not touch.',
+            ],
+            ['write from scratch', 'Ignores the current file and starts over.'],
+          ],
+        )}
+        {p(
+          <>
+            Ask for behaviour, not for Python. &ldquo;Validate that amount is a positive
+            integer, insert the order, put its id on the context and return 201&rdquo; produces
+            better code than &ldquo;write a function&rdquo;, because every noun in it maps to
+            something the assistant already knows about your cluster.
+          </>,
+        )}
+        {p(
+          <>
+            If it proposes a dependency, the pin is merged into {mono('requirements.txt')} when
+            you apply — replacing an existing pin of the same package rather than adding a
+            second one. Review both files, then deploy as usual.
+          </>,
+        )}
+
+        {h2('cost', 'Cost and choosing a model')}
+        {p(
+          <>
+            A generation is one request: a couple of thousand tokens of contract and facts in, a
+            handler out. On a small model that is a fraction of a cent, which is why the default
+            is a small model rather than a frontier one — these are single files, not
+            repositories.
+          </>,
+        )}
+        {p(
+          <>
+            The panel prints the model, the token count and how long it took under every result,
+            so the cost of the feature is visible rather than a surprise on a bill. Every
+            generation is also logged with the model and who asked.
           </>,
         )}
       </>

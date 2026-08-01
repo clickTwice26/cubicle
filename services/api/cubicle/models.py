@@ -59,6 +59,12 @@ class Instance(Base, TimestampMixin):
     setup_complete: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[str] = mapped_column(String(20), default="1.0.0")
 
+    #: Cubicle AI. The key is envelope-encrypted like every other secret here,
+    #: so the database on its own never holds usable credentials.
+    ai_key_ciphertext: Mapped[str | None] = mapped_column(Text)
+    ai_base_url: Mapped[str] = mapped_column(String(200), default="")
+    ai_model: Mapped[str] = mapped_column(String(80), default="")
+
 
 class Cluster(Base, TimestampMixin):
     """One scheduling domain: its own nodes, namespaces, config and data services.

@@ -1,4 +1,5 @@
 from . import (
+    ai,
     auth,
     cluster,
     clusters,
@@ -16,6 +17,7 @@ from . import (
 
 ROUTERS = [
     setup.router,
+    ai.router,
     auth.router,
     clusters.router,
     functions.router,

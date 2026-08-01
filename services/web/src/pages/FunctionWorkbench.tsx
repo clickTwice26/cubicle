@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { AiSidebar } from '../components/AiSidebar'
 import { CodeEditor } from '../components/CodeEditor'
 import { Bars, ChevronLeft, Play } from '../components/Icons'
 import {
@@ -43,6 +44,13 @@ const MAX_INSTANCES = [1, 2, 4, 8]
 const FILES = ['handler.py', 'requirements.txt', 'cubicle.toml', 'README.md'] as const
 
 const TABS = ['code', 'test', 'instances', 'settings'] as const
+
+/** `httpx==0.28.1` and `httpx>=0.27` are the same requirement, differently pinned. */
+const pkgName = (line: string) =>
+  line
+    .split(/[<>=!~[\s]/)[0]
+    .trim()
+    .toLowerCase()
 type Tab = (typeof TABS)[number]
 type FileName = (typeof FILES)[number]
 
@@ -246,7 +254,50 @@ export default function FunctionWorkbench() {
             >
               {dirty ? 'unsaved changes' : 'in sync with cluster'}
             </span>
+            <button
+              type="button"
+              onClick={() => setAiOpen(true)}
+              title="Describe a change and it writes the handler"
+              className={cx(
+                'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold transition',
+                aiOpen
+                  ? 'border-accent bg-accent-soft text-ink'
+                  : 'border-line text-ink-2 hover:border-accent hover:text-ink',
+              )}
+            >
+              <Bolt size={12} className="text-accent" />
+              Cubicle AI
+            </button>
           </div>
+
+          {/* The assistant only ever produces a draft; deploying stays a
+              deliberate second action, exactly as it is for typed changes. */}
+          <AiPanel
+            functionId={functionId}
+            currentCode={drafts['handler.py'] ?? fn.files?.['handler.py'] ?? ''}
+            requirements={drafts['requirements.txt'] ?? fn.files?.['requirements.txt'] ?? ''}
+            sessionId={session}
+            onApply={(code, packages) =>
+              setDrafts((current) => {
+                const next: Record<string, string> = { ...current, 'handler.py': code }
+                if (packages.length) {
+                  const existing = (
+                    current['requirements.txt'] ??
+                    fn.files?.['requirements.txt'] ??
+                    ''
+                  )
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                  // Merge by package name so a re-pin replaces rather than doubles.
+                  const byName = new Map(existing.map((line) => [pkgName(line), line]))
+                  for (const line of packages) byName.set(pkgName(line), line)
+                  next['requirements.txt'] = [...byName.values()].join('\n') + '\n'
+                }
+                return next
+              })
+            }
+          />
 
           <div className="border-b border-line">
             <CodeEditor

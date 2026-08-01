@@ -16,6 +16,7 @@ import {
 } from '../components/ui'
 import { NewClusterModal } from '../components/ClusterSwitcher'
 import { activeCluster } from '../lib/cluster'
+import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
 import {
   useApiKeys,
   useClusters,
@@ -44,6 +45,7 @@ export default function Settings() {
       <PageHeader title="Settings" />
       <ClustersCard />
       <InstanceCard />
+      <AssistantCard />
       <PasswordCard />
       <ApiKeysCard />
       <UsersCard />
@@ -142,6 +144,140 @@ function ClustersCard() {
         )
       })}
       <NewClusterModal open={creating} onClose={() => setCreating(false)} />
+    </Card>
+  )
+}
+
+/**
+ * Cubicle AI — the one place a provider key is entered.
+ *
+ * The key is write-only from here on: it is stored envelope-encrypted like every
+ * other secret and only ever comes back as a masked hint, so this card can show
+ * that a key exists without being able to show what it is.
+ */
+function AssistantCard() {
+  const toast = useToast()
+  const { data: status } = useAiStatus()
+  const update = useUpdateAiSettings()
+  const test = useTestAi()
+
+  const [key, setKey] = useState('')
+  const [model, setModel] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+
+  useEffect(() => {
+    if (!status) return
+    setModel(status.model)
+    setBaseUrl(status.base_url)
+  }, [status])
+
+  if (!status) return <Skeleton className="mb-5 h-40 w-full" />
+
+  const dirty = key.trim().length > 0 || model !== status.model || baseUrl !== status.base_url
+
+  const save = () =>
+    update.mutate(
+      {
+        ...(key.trim() ? { api_key: key.trim() } : {}),
+        model: model.trim(),
+        base_url: baseUrl.trim(),
+      },
+      {
+        onSuccess: () => {
+          setKey('')
+          toast.push('Cubicle AI updated')
+        },
+        onError: (error) => toast.push(error.message, 'err'),
+      },
+    )
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <CardHeader
+        title="Cubicle AI"
+        subtitle="The code assistant in the function editor — the only part of Cubicle that talks to anything off this machine"
+        action={
+          status.enabled ? <Badge tone="accent">on</Badge> : <Badge tone="warn">off</Badge>
+        }
+      />
+
+      <div className="grid gap-4 px-5 py-5">
+        <Field
+          label="API key"
+          type="password"
+          autoComplete="off"
+          value={key}
+          placeholder={
+            status.key_hint
+              ? `stored · ${status.key_hint}${
+                  status.key_source === 'environment' ? ' (from the environment)' : ''
+                }`
+              : 'sk-…'
+          }
+          onChange={(event) => setKey(event.target.value)}
+          hint="Stored envelope-encrypted, like every other secret here. It is never shown again."
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Model"
+            value={model}
+            placeholder="gpt-4.1-mini"
+            onChange={(event) => setModel(event.target.value)}
+            hint="These are single-file handlers — a small model is cheaper and quicker."
+          />
+          <Field
+            label="Base URL"
+            value={baseUrl}
+            placeholder="https://api.openai.com/v1"
+            onChange={(event) => setBaseUrl(event.target.value)}
+            hint="Any OpenAI-compatible endpoint. Point it at a local server and nothing leaves your network."
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant="primary"
+            size="sm"
+            loading={update.isPending}
+            disabled={!dirty}
+            onClick={save}
+          >
+            Save
+          </Button>
+          <Button
+            size="sm"
+            loading={test.isPending}
+            disabled={!status.enabled}
+            onClick={() =>
+              test.mutate(undefined, {
+                onSuccess: (result) =>
+                  toast.push(`${result.model} answered`, 'ok', `${result.duration_ms}ms`),
+                onError: (error) => toast.push(error.message, 'err'),
+              })
+            }
+          >
+            Test connection
+          </Button>
+          {status.key_source === 'console' ? (
+            <ConfirmButton
+              label="Remove key"
+              confirmLabel="Click again to remove"
+              onConfirm={() =>
+                update.mutate(
+                  { api_key: '' },
+                  {
+                    onSuccess: () => toast.push('Key removed — the assistant is off'),
+                    onError: (error) => toast.push(error.message, 'err'),
+                  },
+                )
+              }
+            />
+          ) : null}
+          <span className="ml-auto text-[12.5px] text-ink-3">
+            Secret and env <strong>values</strong> are never sent — only their names.
+          </span>
+        </div>
+      </div>
     </Card>
   )
 }

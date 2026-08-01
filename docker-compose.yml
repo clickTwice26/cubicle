@@ -75,6 +75,10 @@ services:
       CUBICLE_ISOLATE_IDLE_TTL: ${CUBICLE_ISOLATE_IDLE_TTL:-900}
       CUBICLE_LOG_LEVEL: ${CUBICLE_LOG_LEVEL:-info}
       CUBICLE_TRUST_PROXY: "1"
+      # Cubicle AI. Empty key = the assistant stays off and the console says so.
+      CUBICLE_AI_API_KEY: ${CUBICLE_AI_API_KEY:-}
+      CUBICLE_AI_BASE_URL: ${CUBICLE_AI_BASE_URL:-https://api.openai.com/v1}
+      CUBICLE_AI_MODEL: ${CUBICLE_AI_MODEL:-gpt-4.1-mini}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cubicle_data:/var/lib/cubicle
