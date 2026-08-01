@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { CodeBlock } from './CodeBlock'
 
 export interface DocPage {
@@ -63,6 +64,32 @@ const note = (children: ReactNode) => (
 )
 
 const mono = (text: string) => <span className="font-mono text-[13.5px] text-ink">{text}</span>
+
+/** A cross-reference to another page, so "see X" is something you can click. */
+const docLink = (id: string, text: string) => (
+  <Link
+    to={`/docs/${id}`}
+    className="font-semibold text-ink underline decoration-line-strong underline-offset-2 transition hover:decoration-accent"
+  >
+    {text}
+  </Link>
+)
+
+/** The card grid a section page opens with — what is in here, and where each part lives. */
+const index = (items: { to: string; title: string; body: string }[]) => (
+  <div className="mb-6 grid gap-2.5 sm:grid-cols-2">
+    {items.map((item) => (
+      <Link
+        key={item.to}
+        to={item.to}
+        className="rounded-xl border border-line bg-panel px-4 py-3.5 transition hover:border-line-strong"
+      >
+        <div className="text-[14px] font-semibold">{item.title}</div>
+        <div className="mt-1 text-[13px] leading-relaxed text-ink-2">{item.body}</div>
+      </Link>
+    ))}
+  </div>
+)
 
 export const DOCS: DocPage[] = [
   {
@@ -274,12 +301,39 @@ export const DOCS: DocPage[] = [
   },
   {
     id: 'functions',
-    group: 'Guides',
-    label: 'Writing functions',
-    title: 'Writing functions',
-    lede: 'Everything the handler receives, every shape it may return, and the rules it runs under.',
+    group: 'Writing functions',
+    label: 'The handler',
+    title: 'The handler',
+    lede: 'One callable, a request in, a response out. This page is the whole contract — the four after it cover everything the handler can reach.',
     body: () => (
       <>
+        {h2('section', 'This section')}
+        {p(
+          'A function is a Python file with one exported callable. Nothing else is required: no framework, no server, no decorator. What follows is the handler contract, and then one page for each thing the handler can reach.',
+        )}
+        {index([
+          {
+            to: '/docs/context',
+            title: 'Runtime context',
+            body: 'The JSON store every function in a namespace shares for the length of a session.',
+          },
+          {
+            to: '/docs/secrets',
+            title: 'Global env and secrets',
+            body: 'Cluster-wide configuration and per-function secrets, read with one API.',
+          },
+          {
+            to: '/docs/services',
+            title: 'Data services',
+            body: 'PostgreSQL and Redis, handed to the isolate with the invocation.',
+          },
+          {
+            to: '/docs/runtime',
+            title: 'Dependencies and limits',
+            body: 'What is already in the image, how to add to it, and the box it runs inside.',
+          },
+        ])}
+
         {h2('signature', 'The handler')}
         {p(
           <>
@@ -390,23 +444,82 @@ export const DOCS: DocPage[] = [
             {'    '}
             {'}'}
           </>,
+          'python',
+        )}
+
+        {h2('failing', 'When it fails')}
+        {table(
+          ['What happened', 'What the caller gets'],
+          [
+            ['An unhandled exception', '502, with the traceback in the logs.'],
+            ['The timeout was reached', '504. The isolate is killed mid-request.'],
+            ['A method the function does not accept', '405, with an Allow header.'],
+          ],
         )}
         {note(
           <>
-            An unhandled exception is a {mono('502')} with the traceback in the logs, and the
-            isolate is destroyed rather than reused — a handler that died halfway may have left
-            module state you would not want the next request to inherit.
+            An isolate that raised is destroyed rather than reused — a handler that died halfway
+            may have left module state you would not want the next request to inherit. That is
+            also why a burst of failures costs you cold starts.
           </>,
         )}
 
-        {h2('context', 'The session context')}
+        {h2('logging', 'Logging')}
         {p(
           <>
-            {mono('ctx')} is a small JSON store shared by every function in the namespace, keyed
-            by the {mono('X-Cubicle-Session')} header and expiring after 30 minutes. It is how
-            two functions in a flow pass state without a database round trip.
+            Anything the handler prints is captured per invocation and attributed to it —{' '}
+            {mono('print()')} goes to INFO, {mono('sys.stderr')} to ERROR. It appears in the
+            test panel, in <strong>Logs &amp; monitoring</strong>, and in{' '}
+            {mono('cubicle logs --follow')}.
           </>,
         )}
+        {p(
+          <>
+            Up to 200 lines are kept per invocation and each is truncated at 4000 characters, so
+            a runaway loop cannot fill the database.
+          </>,
+        )}
+
+        {h2('next', 'Next')}
+        {p(
+          <>
+            {docLink('context', 'The runtime context')} is the usual next stop — it is what lets
+            two functions in a namespace cooperate without a database. If your function needs
+            configuration or a credential, go to {docLink('secrets', 'global env and secrets')}{' '}
+            instead.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'context',
+    group: 'Writing functions',
+    label: 'Runtime context',
+    title: 'The runtime context',
+    lede: 'The JSON store every function in a namespace shares for the length of a session — what it holds, who may touch it, and when the writes land.',
+    body: () => (
+      <>
+        {h2('what', 'What it is')}
+        {p(
+          <>
+            {mono('ctx')} is a small JSON store, keyed by the {mono('X-Cubicle-Session')} header
+            and expiring 30 minutes after its last write. Every function in the same namespace
+            reads and writes the same store, so a flow spread across several functions can pass
+            state without a database round trip and without threading it through the caller.
+          </>,
+        )}
+        {table(
+          ['Property', 'Value'],
+          [
+            ['Scope', 'One namespace. Nothing crosses between namespaces or clusters.'],
+            ['Key', 'The X-Cubicle-Session header, generated when the caller omits it.'],
+            ['Lifetime', '30 minutes, extended by each write.'],
+            ['Contents', 'JSON-serialisable values only.'],
+          ],
+        )}
+
+        {h2('api', 'The API')}
         {code(
           <>
             actor = ctx.get(<span className="text-ok">&quot;actor&quot;</span>){' '}
@@ -422,6 +535,27 @@ export const DOCS: DocPage[] = [
             <span className="text-ok">&quot;cart&quot;</span>{' '}
             <span className="text-info">in</span> ctx: ...
           </>,
+          'python',
+        )}
+        {table(
+          ['Call', 'Does'],
+          [
+            ['ctx.get(key, default=None)', 'One value, or the default when it is not there.'],
+            ['ctx.set(key, value)', 'Write one value. Checked as JSON straight away.'],
+            ['ctx.delete(key)', 'Remove one key.'],
+            ['ctx.all()', 'The whole store as a dict.'],
+            ['key in ctx', 'Membership, without reading the value.'],
+          ],
+        )}
+
+        {h2('access', 'Access modes')}
+        {p(
+          <>
+            Each function declares what it may do with the shared store — the{' '}
+            <strong>Runtime context access</strong> control when you create it, changeable
+            afterwards. A function that only reads cannot corrupt a flow, and one with no access
+            cannot see what the others put there.
+          </>,
         )}
         {table(
           ['Access mode', 'get / all', 'set / delete'],
@@ -434,14 +568,116 @@ export const DOCS: DocPage[] = [
         )}
         {p(
           <>
-            Values must be JSON-serialisable, and {mono('ctx.set()')} checks that immediately
-            rather than failing later at the edge. Writes are collected during the invocation
-            and applied once at the end, so a handler that raises leaves the context as it found
-            it.
+            Note the asymmetry: a denied read is quiet and gives you the default, while a denied
+            write raises. Reading nothing is a state your code can reasonably handle; a write
+            that silently vanished is not.
           </>,
         )}
 
-        {h2('config', 'Configuration and secrets')}
+        {h2('writes', 'When writes land')}
+        {p(
+          <>
+            Writes are collected during the invocation and applied once at the end, so a handler
+            that raises leaves the context exactly as it found it. Within one invocation your
+            own reads see your own writes; other functions see them only after you return.
+          </>,
+        )}
+        {p(
+          <>
+            {mono('ctx.set()')} checks that the value is JSON-serialisable immediately rather
+            than failing later at the edge, so the traceback points at the line that put the
+            wrong thing in.
+          </>,
+        )}
+
+        {h2('session', 'Sessions')}
+        {p(
+          <>
+            The caller decides the session by sending {mono('X-Cubicle-Session')}. Omit it and
+            the runtime generates one, returns it on the response, and {mono('req.session_id')}{' '}
+            carries it inside the handler — so a first request can start a flow the next request
+            continues.
+          </>,
+        )}
+        {code(
+          <>
+            curl -X POST https://cubicle.example.com/checkout/authenticate \{'\n'}
+            {'  '}-H{' '}
+            <span className="text-ok">&quot;X-Cubicle-Session: sess_5ac32b23adaf&quot;</span> \
+            {'\n'}
+            {'  '}-d <span className="text-ok">&#39;{'{"user": "usr_9f2c"}'}&#39;</span>
+          </>,
+          'shell',
+        )}
+        {p(
+          <>
+            In the console, a namespace page shows the session it is testing with, how many keys
+            it holds, the parsed {mono('context.json')} and a write log of which function
+            touched what. <strong>New session</strong> starts a clean one;{' '}
+            <strong>Clear</strong> empties the current one.
+          </>,
+        )}
+
+        {h2('flow', 'A two-function flow')}
+        {p(
+          'One function authenticates and records who the caller is; the next one charges them and never sees a token.',
+        )}
+        {code(
+          <>
+            <span className="text-ink-3"># checkout/authenticate — read+write</span>
+            {'\n'}
+            <span className="text-info">def</span> handler(req, ctx):{'\n'}
+            {'    '}user = verify(req.json()[<span className="text-ok">&quot;token&quot;</span>
+            ])
+            {'\n'}
+            {'    '}ctx.set(<span className="text-ok">&quot;actor&quot;</span>, {'{'}
+            <span className="text-ok">&quot;id&quot;</span>: user.id{'}'}){'\n'}
+            {'    '}
+            <span className="text-info">return</span> {'{'}
+            <span className="text-ok">&quot;session&quot;</span>: req.session_id{'}'}
+            {'\n\n'}
+            <span className="text-ink-3"># checkout/charge — read only</span>
+            {'\n'}
+            <span className="text-info">def</span> handler(req, ctx):{'\n'}
+            {'    '}actor = ctx.get(<span className="text-ok">&quot;actor&quot;</span>){'\n'}
+            {'    '}
+            <span className="text-info">if</span> <span className="text-info">not</span> actor:
+            {'\n'}
+            {'        '}
+            <span className="text-info">return</span> {'{'}
+            <span className="text-ok">&quot;error&quot;</span>:{' '}
+            <span className="text-ok">&quot;not authenticated&quot;</span>
+            {'}'}, <span className="text-warn">401</span>
+            {'\n'}
+            {'    '}
+            <span className="text-info">return</span> charge(actor[
+            <span className="text-ok">&quot;id&quot;</span>], req.json())
+          </>,
+          'python',
+        )}
+
+        {h2('wrong', 'When it is the wrong tool')}
+        {p(
+          <>
+            The context is a scratchpad for one flow, not storage. It expires, it holds only
+            what fits comfortably in JSON, and the last write wins if two requests on the same
+            session overlap. Anything that must survive — orders, users, audit trails — belongs
+            in {docLink('services', 'Postgres or Redis')}. Anything that is configuration rather
+            than per-session state belongs in {docLink('secrets', 'global env')}.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'secrets',
+    group: 'Writing functions',
+    label: 'Global env & secrets',
+    title: 'Global env and secrets',
+    lede: 'Cluster-wide configuration and per-function secrets — one API to read them, resolved at invocation, encrypted at rest.',
+    body: () => (
+      <>
+        {h2('read', 'Reading it in a handler')}
         {p(
           <>
             {mono('env')} reads the cluster-wide store merged with this function&apos;s own
@@ -465,20 +701,105 @@ export const DOCS: DocPage[] = [
             rules = env.get_json(<span className="text-ok">&quot;RULES&quot;</span>,{' '}
             <span className="text-warn">[]</span>)
           </>,
+          'python',
+        )}
+        {table(
+          ['Call', 'Does'],
+          [
+            ['env.get(name, default=None)', 'The value as a string, or the default.'],
+            [
+              'env.require(name)',
+              'The value, or raises — for things there is no sane default for.',
+            ],
+            ['env.get_int / get_bool', 'Parsed, falling back to the default when unparseable.'],
+            ['env.get_json(name, default)', 'Parsed JSON, for structured configuration.'],
+          ],
+        )}
+
+        {h2('global', 'The global env store')}
+        {p(
+          <>
+            One store per cluster, readable from every namespace, edited under{' '}
+            <strong>Global env</strong> in the console. It is the right home for anything that
+            is configuration rather than a credential: endpoints, feature flags, pool sizes,
+            timeouts.
+          </>,
         )}
         {p(
           <>
-            Secrets shadow global values of the same name, so a function can override a
-            cluster-wide default without touching it. See <strong>Env and secrets</strong> for
-            how they are stored.
+            Because values are fetched per invocation, flipping one is a live change — useful
+            for a feature flag, and worth remembering when you are debugging why behaviour
+            changed without a deploy.
           </>,
         )}
 
-        {h2('data', 'Talking to Postgres and Redis')}
+        {h2('function', 'Per-function secrets')}
         {p(
           <>
-            If the cluster has managed data services, the connection details arrive with the
-            invocation — there is no URL to copy and no secret to rotate into your code.
+            A function&apos;s own secrets live on its <strong>Secrets</strong> tab and are
+            merged over the global env for that function only. A secret shadows a global value
+            of the same name, so one function can override a cluster-wide default without
+            touching it.
+          </>,
+        )}
+        {p(
+          <>
+            Both arrive in the isolate&apos;s memory with the invocation. Neither is written to
+            its filesystem, baked into the version image, or sent to the log pipeline.
+          </>,
+        )}
+
+        {h2('crypto', 'How secrets are stored')}
+        {p(
+          'Every secret gets its own random 256-bit data key. That key encrypts the value with AES-256-GCM and is itself wrapped with a key derived from the cluster root key. The database only ever holds wrapped material, so a database dump on its own reveals nothing.',
+        )}
+        {note(
+          <>
+            <strong>Back up CUBICLE_MASTER_KEY.</strong> It lives in your {mono('.env')} and
+            never leaves the machine. Lose it and every stored secret is unrecoverable — that is
+            the intended property, not a bug.
+          </>,
+        )}
+
+        {h2('where', 'What belongs where')}
+        {table(
+          ['The thing', 'Where it goes'],
+          [
+            [
+              'An API endpoint, a flag, a pool size',
+              'Global env — one place, every namespace.',
+            ],
+            [
+              'A key, a token, a password',
+              'Per-function secrets — encrypted, scoped to one function.',
+            ],
+            ['Per-session state in a flow', 'The runtime context.'],
+            ['Anything that must outlive the request', 'Postgres or Redis.'],
+          ],
+        )}
+        {p(
+          <>
+            The last two rows have their own pages: {docLink('context', 'the runtime context')}{' '}
+            and {docLink('services', 'data services')}.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'services',
+    group: 'Writing functions',
+    label: 'Data services',
+    title: 'Data services',
+    lede: 'PostgreSQL and Redis provisioned on the same cluster and handed to every invocation — plus the browsers for reading and changing what is in them.',
+    body: () => (
+      <>
+        {h2('use', 'Using them from a handler')}
+        {p(
+          <>
+            Connection details are handed to the isolate per invocation, so there is no URL to
+            copy and no secret to rotate into your code. {mono('available')} is False when the
+            operator has not created the service or has stopped it.
           </>,
         )}
         {code(
@@ -505,6 +826,7 @@ export const DOCS: DocPage[] = [
             <span className="text-warn">300</span>,{' '}
             <span className="text-ok">&quot;1&quot;</span>)
           </>,
+          'python',
         )}
         {table(
           ['Call', 'Does'],
@@ -532,22 +854,92 @@ export const DOCS: DocPage[] = [
           </>,
         )}
 
-        {h2('logging', 'Logging')}
+        {h2('create', 'Create an instance')}
         {p(
           <>
-            Anything the handler prints is captured per invocation and attributed to it —{' '}
-            {mono('print()')} goes to INFO, {mono('sys.stderr')} to ERROR. It appears in the
-            test panel, in <strong>Logs &amp; monitoring</strong>, and in{' '}
-            {mono('cubicle logs --follow')}.
-          </>,
-        )}
-        {p(
-          <>
-            Up to 200 lines are kept per invocation and each is truncated at 4000 characters, so
-            a runaway loop cannot fill the database.
+            Nothing runs until you create it. Pick a version and a size under{' '}
+            <strong>Data services</strong>, and the control plane starts a container on the
+            function network with a generated password stored envelope-encrypted.
           </>,
         )}
 
+        {h2('browse', 'Browsing and editing the data')}
+        {p(
+          <>
+            <strong>Browse data</strong> on the PostgreSQL page opens a database manager: tables
+            with their sizes, paginated rows with sorting and a search across every column, an
+            editor for inserting, changing and deleting rows, the structure of each table, and a
+            SQL console.
+          </>,
+        )}
+        {note(
+          <>
+            Row editing needs a primary key — without one a single row cannot be identified, so
+            those tables are read-only in the grid and you use the console instead. The console
+            itself is unrestricted, including DDL: it is your database. What bounds it is the
+            admin role, a 15 second statement timeout and a 500 row cap on results.
+          </>,
+        )}
+        {p(
+          <>
+            <strong>Browse keys</strong> on the Redis page is the same idea for the cache: a
+            SCAN over the keyspace filtered by pattern and type, each key with its type, TTL and
+            memory footprint, and a value panel that follows the type — a string editor, or a
+            table of fields, elements, members or stream entries. TTLs are set and cleared from
+            the same panel.
+          </>,
+        )}
+        {table(
+          ['Type', 'How it pages', 'What you can change'],
+          [
+            ['string', 'Whole value, capped at 64 KB', 'The value.'],
+            ['hash / set', 'SCAN cursor', 'Add, edit and remove members.'],
+            ['list / zset', 'By position', 'Append, replace by index, remove.'],
+            ['stream', 'By id', 'Delete entries only.'],
+          ],
+        )}
+        {p(
+          <>
+            The <strong>Command</strong> tab is a {mono('redis-cli')} in the browser. It refuses
+            the handful of commands that would block the connection or stop the server —{' '}
+            {mono('SUBSCRIBE')}, {mono('BLPOP')}, {mono('MONITOR')}, {mono('SHUTDOWN')} and
+            friends — and runs everything else, writes included.
+          </>,
+        )}
+
+        {h2('lifecycle', 'Stop, recreate, destroy')}
+        {table(
+          ['Action', 'Effect'],
+          [
+            ['Stop', 'Stops the container. The volume, the password and the data all stay.'],
+            [
+              'Recreate',
+              'Rebuilds the container from the current spec, reusing the same volume and password. A restart, not a reset — use it when a running container predates a change to how they are created.',
+            ],
+            [
+              'Destroy',
+              'Removes the container and, unless you keep the volume, the data with it. It asks you to type the service name first.',
+            ],
+          ],
+        )}
+        {note(
+          <>
+            Both browsers reach only the managed instance belonging to the active cluster. The
+            control plane&apos;s own database and Redis — sessions, rate limits, function
+            metadata — are not addressable from them at all.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'runtime',
+    group: 'Writing functions',
+    label: 'Dependencies & limits',
+    title: 'Dependencies and limits',
+    lede: 'What is already in the image, how to add to it, and the box the isolate runs your handler inside.',
+    body: () => (
+      <>
         {h2('deps', 'Dependencies')}
         {p(
           <>
@@ -598,23 +990,13 @@ export const DOCS: DocPage[] = [
             ],
           ],
         )}
-        {p(
-          <>
-            One request per isolate means your handler never runs concurrently with itself, so
-            module-level state is safe from races — but it is also not shared with anything, and
-            it disappears when the isolate is reclaimed. Anything durable belongs in Postgres,
-            Redis or an object store. <strong>Scaling and concurrency</strong> covers how many
-            isolates you get and for how long.
-          </>,
-        )}
 
-        {h2('patterns', 'Two things worth knowing')}
+        {h2('module', 'Module scope runs once per isolate')}
         {p(
           <>
-            <strong>Module scope runs once per isolate, not once per request.</strong> A client
-            or a compiled regex created at import is reused by every request that isolate serves
-            — which is the cheapest caching available to you, and the reason a cold start costs
-            more than a warm one.
+            Not once per request. A client or a compiled regex created at import is reused by
+            every request that isolate serves — the cheapest caching available to you, and the
+            reason a cold start costs more than a warm one.
           </>,
         )}
         {code(
@@ -630,155 +1012,30 @@ export const DOCS: DocPage[] = [
             <span className="text-info">return</span> client.get(
             <span className="text-ok">&quot;https://api.example.test/ping&quot;</span>).json()
           </>,
+          'python',
         )}
         {p(
           <>
-            <strong>A function accepts one method.</strong> It is set per function, and anything
-            else gets a {mono('405')} with an {mono('Allow')} header. If you want a resource
-            with several verbs, that is several functions in one namespace.
-          </>,
-        )}
-      </>
-    ),
-  },
-  {
-    id: 'secrets',
-    group: 'Guides',
-    label: 'Env & secrets',
-    title: 'Env and secrets',
-    lede: 'Cluster-wide configuration and per-function secrets, encrypted at rest and resolved at invocation.',
-    body: () => (
-      <>
-        {h2('env', 'Global env')}
-        {p(
-          <>
-            One store per cluster, readable from any namespace. Values are fetched at invocation
-            time, so changing one in the console applies on the next request with no redeploy.
-          </>,
-        )}
-        {code(
-          <>
-            <span className="text-info">from</span> cubicle_context{' '}
-            <span className="text-info">import</span> env{'\n\n'}
-            base = env.get(<span className="text-ok">&quot;PAYMENTS_API_BASE&quot;</span>){'\n'}
-            pool = env.get_int(<span className="text-ok">&quot;DB_POOL_SIZE&quot;</span>,{' '}
-            <span className="text-warn">10</span>){'\n'}
-            key{'  '}= env.require(
-            <span className="text-ok">&quot;STRIPE_SECRET_KEY&quot;</span>)
+            One request per isolate means your handler never runs concurrently with itself, so
+            module-level state is safe from races — but it is also not shared with anything, and
+            it disappears when the isolate is reclaimed. Anything durable belongs in{' '}
+            {docLink('services', 'Postgres or Redis')}.
           </>,
         )}
 
-        {h2('crypto', 'How secrets are stored')}
-        {p(
-          'Every secret gets its own random 256-bit data key. That key encrypts the value with AES-256-GCM and is itself wrapped with a key derived from the cluster root key. The database only ever holds wrapped material, so a database dump on its own reveals nothing.',
-        )}
-        {note(
-          <>
-            <strong>Back up CUBICLE_MASTER_KEY.</strong> It lives in your {mono('.env')} and
-            never leaves the machine. Lose it and every stored secret is unrecoverable — that is
-            the intended property, not a bug.
-          </>,
-        )}
-
-        {h2('function', 'Per-function secrets')}
+        {h2('method', 'One method per function')}
         {p(
           <>
-            A function&apos;s own secrets live on its <strong>Secrets</strong> tab and are
-            merged over the global env for that function only. Both arrive in the isolate&apos;s
-            memory with the invocation and are never written to its filesystem or to the log
-            pipeline.
-          </>,
-        )}
-      </>
-    ),
-  },
-  {
-    id: 'services',
-    group: 'Guides',
-    label: 'Data services',
-    title: 'Data services',
-    lede: 'PostgreSQL and Redis provisioned on the same cluster, wired into every function.',
-    body: () => (
-      <>
-        {h2('create', 'Create an instance')}
-        {p(
-          <>
-            Nothing runs until you create it. Pick a version and a size under{' '}
-            <strong>Data services</strong>, and the control plane starts a container on the
-            function network with a generated password stored envelope-encrypted.
-          </>,
-        )}
-
-        {h2('browse', 'Browsing and editing the data')}
-        {p(
-          <>
-            <strong>Browse data</strong> on the PostgreSQL page opens a database manager: tables
-            with their sizes, paginated rows with sorting and a search across every column, an
-            editor for inserting, changing and deleting rows, the structure of each table, and a
-            SQL console.
-          </>,
-        )}
-        {note(
-          <>
-            Row editing needs a primary key — without one a single row cannot be identified, so
-            those tables are read-only in the grid and you use the console instead. The console
-            itself is unrestricted, including DDL: it is your database. What bounds it is the
-            admin role, a 15 second statement timeout and a 500 row cap on results.
-          </>,
-        )}
-
-        {h2('lifecycle', 'Stop, recreate, destroy')}
-        {table(
-          ['Action', 'Effect'],
-          [
-            ['Stop', 'Stops the container. The volume, the password and the data all stay.'],
-            [
-              'Recreate',
-              'Rebuilds the container from the current spec, reusing the same volume and password. A restart, not a reset — use it when a running container predates a change to how they are created.',
-            ],
-            [
-              'Destroy',
-              'Removes the container and, unless you keep the volume, the data with it. It asks you to type the service name first.',
-            ],
-          ],
-        )}
-
-        {h2('use', 'Using them from a function')}
-        {p(
-          <>
-            Connection details are handed to the isolate per invocation, so there is no secret
-            to copy and nothing to configure. {mono('available')} is False when the operator has
-            not created the service or has stopped it.
-          </>,
-        )}
-        {code(
-          <>
-            <span className="text-info">from</span> cubicle_db{' '}
-            <span className="text-info">import</span> postgres, redis{'\n\n'}
-            <span className="text-info">with</span> postgres.session(){' '}
-            <span className="text-info">as</span> db:{'\n'}
-            {'    '}db.execute({'\n'}
-            {'        '}
-            <span className="text-ok">
-              &quot;insert into orders (ref, amount) values (:ref, :amount)&quot;
-            </span>
-            ,{'\n'}
-            {'        '}ref=<span className="text-ok">&quot;ord_8fk2&quot;</span>, amount=
-            <span className="text-warn">4200</span>,{'\n'}
-            {'    '}){'\n'}
-            {'    '}rows = db.execute(
-            <span className="text-ok">&quot;select * from orders limit 10&quot;</span>
-            ).fetchall(){'\n\n'}
-            redis.setex(<span className="text-ok">&quot;seen&quot;</span>,{' '}
-            <span className="text-warn">300</span>,{' '}
-            <span className="text-ok">&quot;1&quot;</span>)
+            A function accepts a single HTTP method, set when you create it. Anything else gets
+            a {mono('405')} with an {mono('Allow')} header. A resource with several verbs is
+            several functions in one namespace — which is also how you keep their runtime
+            context access, timeouts and concurrency separate.
           </>,
         )}
         {p(
           <>
-            Named parameters are rewritten for the driver, so {mono(':name')} is the portable
-            way to bind values. Anything not wrapped is reachable through {mono('redis.client')}
-            .
+            {docLink('scaling', 'Scaling and concurrency')} covers how many isolates you get,
+            who decides, and when they go away again.
           </>,
         )}
       </>

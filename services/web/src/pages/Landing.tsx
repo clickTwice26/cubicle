@@ -90,7 +90,7 @@ const CONSOLE = [
   {
     icon: Table,
     title: 'Data browser',
-    body: 'Rows, structure and SQL against managed Postgres.',
+    body: 'Rows and SQL for Postgres, keys and values for Redis.',
   },
 ]
 
@@ -188,7 +188,6 @@ export default function Landing() {
         />
 
         <Reveal>
-
           <h1 className="mx-auto max-w-[840px] text-[clamp(2.05rem,7vw,3.9rem)] leading-[1.03] font-bold tracking-[-0.035em] text-balance">
             Serverless.
             <br />
@@ -485,6 +484,9 @@ export default function Landing() {
               ['Installation', '/docs/install'],
               ['Quickstart', '/docs/quickstart'],
               ['Writing functions', '/docs/functions'],
+              ['Runtime context', '/docs/context'],
+              ['Global env & secrets', '/docs/secrets'],
+              ['Data services', '/docs/services'],
             ]}
           />
           <FooterColumn
@@ -502,7 +504,7 @@ export default function Landing() {
               ['CLI', '/docs/cli'],
               ['cubicle.toml', '/docs/config'],
               ['Access & API keys', '/docs/access'],
-              ['Env & secrets', '/docs/secrets'],
+              ['Dependencies & limits', '/docs/runtime'],
             ]}
           />
         </div>
@@ -621,7 +623,6 @@ function Comparison() {
     </Card>
   )
 }
-
 
 function FooterColumn({ title, links }: { title: string; links: [string, string][] }) {
   return (
