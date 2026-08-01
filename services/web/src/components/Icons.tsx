@@ -215,6 +215,13 @@ export const Info = (p: Props) => (
   </Svg>
 )
 
+export const Help = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.5 9.5a2.5 2.5 0 113.2 2.4c-.5.2-.7.6-.7 1.1v.5M12 16.5h.01" />
+  </Svg>
+)
+
 export const Copy = (p: Props) => (
   <Svg strokeWidth={1.7} {...p}>
     <rect x="9" y="9" width="12" height="12" rx="2" />

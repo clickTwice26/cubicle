@@ -14,6 +14,7 @@ import {
   Database,
   Globe,
   Grid,
+  Help,
   Layers,
   Lines,
   Moon,
@@ -36,6 +37,23 @@ export function Logo({ size = 26, label = true }: { size?: number; label?: boole
       </span>
       {label ? <span className="text-[17px] font-bold tracking-[-0.02em]">Cubicle</span> : null}
     </span>
+  )
+}
+
+/** Placeholder — matches the theme toggle beside it, and does nothing yet. */
+export function HelpButton({ className }: { className?: string }) {
+  return (
+    <button
+      type="button"
+      title="Help"
+      aria-label="Help"
+      className={cx(
+        'grid h-8 w-8 place-items-center rounded-lg border border-line bg-transparent text-ink-2 transition hover:bg-panel-2 hover:text-ink',
+        className,
+      )}
+    >
+      <Help size={14} />
+    </button>
   )
 }
 
@@ -302,6 +320,7 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="ml-auto flex flex-none items-center gap-2">
+            <HelpButton />
             <ThemeToggle />
             <AccountMenu
               me={me}
