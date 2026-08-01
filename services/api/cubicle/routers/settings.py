@@ -153,7 +153,7 @@ async def _set_grants(db, user: User, wanted: list[uuid.UUID], principal) -> Non
     """
     unique = list(dict.fromkeys(wanted))
     existing = (
-        {c for c in (await db.execute(select(Cluster.id).where(Cluster.id.in_(unique)))).scalars()}
+        set((await db.execute(select(Cluster.id).where(Cluster.id.in_(unique)))).scalars())
         if unique
         else set()
     )

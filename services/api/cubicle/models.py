@@ -94,6 +94,15 @@ class Cluster(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="active")
     description: Mapped[str] = mapped_column(String(255), default="")
 
+    #: Hard ceilings for everything this cluster may allocate, set by the super
+    #: admin. Zero means no ceiling. They bound the per-function settings
+    #: rather than replacing them: a function may ask for 1 GB and eight
+    #: instances, and still be refused the ninth gigabyte because the cluster
+    #: has none left.
+    max_memory_mb: Mapped[int] = mapped_column(Integer, default=0)
+    max_cpu_cores: Mapped[float] = mapped_column(Float, default=0.0)
+    max_storage_gb: Mapped[int] = mapped_column(Integer, default=0)
+
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"

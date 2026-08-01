@@ -32,8 +32,16 @@ from ..models import (
     FunctionVersion,
     Invocation,
     LogEntry,
+    ManagedService,
 )
-from .pool import FunctionSpec, Isolate, IsolateError, pool
+from .pool import (
+    ClusterFullError,
+    FunctionSpec,
+    Isolate,
+    IsolateError,
+    cpu_quota_for,
+    pool,
+)
 
 CTX_PREFIX = "cubicle:ctx:"
 CTX_LOG_PREFIX = "cubicle:ctxlog:"
@@ -169,7 +177,14 @@ async def clear_context(scope: str, session_id: str) -> None:
 # ── invocation ───────────────────────────────────────────────────────────────
 
 
-def spec_for(function: Function, version: FunctionVersion, node, cluster: str = "") -> FunctionSpec:
+def spec_for(
+    function: Function,
+    version: FunctionVersion,
+    node,
+    cluster: str = "",
+    *,
+    quota: ClusterQuota | None = None,
+) -> FunctionSpec:
     return FunctionSpec(
         id=str(function.id),
         name=function.name,
@@ -185,7 +200,75 @@ def spec_for(function: Function, version: FunctionVersion, node, cluster: str = 
         node_name=node.name,
         docker_host=node.docker_host,
         node_is_local=node.is_local,
+        cluster_memory_cap_mb=quota.memory_cap_mb if quota else 0,
+        cluster_cpu_cap=quota.cpu_cap if quota else 0.0,
+        cluster_reserved_mb=quota.reserved_mb if quota else 0,
+        cluster_reserved_cpu=quota.reserved_cpu if quota else 0.0,
     )
+
+
+@dataclass(slots=True)
+class ClusterQuota:
+    """A cluster's ceilings, and what its data services already hold."""
+
+    memory_cap_mb: int
+    cpu_cap: float
+    reserved_mb: int
+    reserved_cpu: float
+
+
+#: Memory a managed service is assumed to hold when its config does not say.
+DEFAULT_SERVICE_MB = 512
+
+
+async def quota_for(db: AsyncSession, cluster: Cluster) -> ClusterQuota | None:
+    """What is left for isolates after the cluster's own services.
+
+    Returns None when the cluster has no ceilings, so the common case costs no
+    query at all.
+    """
+    if not cluster.max_memory_mb and not cluster.max_cpu_cores:
+        return None
+
+    services = (
+        (
+            await db.execute(
+                select(ManagedService).where(
+                    ManagedService.cluster_id == cluster.id,
+                    ManagedService.status == "running",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    reserved_mb = 0
+    for service in services:
+        reserved_mb += _memory_mb((service.config or {}).get("memory"))
+    # Services are not CPU-capped by the platform, so they are charged the same
+    # share an isolate of that size would get. Better to over-count a running
+    # database than to let it push isolates past the ceiling unseen.
+    reserved_cpu = sum(
+        cpu_quota_for(_memory_mb((s.config or {}).get("memory"))) / 1_000_000_000 for s in services
+    )
+    return ClusterQuota(
+        memory_cap_mb=cluster.max_memory_mb,
+        cpu_cap=cluster.max_cpu_cores,
+        reserved_mb=reserved_mb,
+        reserved_cpu=reserved_cpu,
+    )
+
+
+def _memory_mb(label: str | None) -> int:
+    """ "2 GB" or "512 MB" as megabytes."""
+    if not label:
+        return DEFAULT_SERVICE_MB
+    text = str(label).strip().upper()
+    try:
+        value = float(text.split()[0])
+    except (ValueError, IndexError):
+        return DEFAULT_SERVICE_MB
+    return int(value * 1024) if "GB" in text else int(value)
 
 
 async def invoke(
@@ -231,7 +314,7 @@ async def invoke(
         "services": await _service_urls(db, cluster.id),
     }
 
-    spec = spec_for(function, version, node, cluster.slug)
+    spec = spec_for(function, version, node, cluster.slug, quota=await quota_for(db, cluster))
     live.publish(
         "invocation.start",
         cluster.slug,
@@ -280,6 +363,13 @@ async def invoke(
             )
             await append_context_log(scope, session_id, function.name, detail)
 
+    except ClusterFullError as exc:
+        # A ceiling the operator set, not a fault: say which one, so the answer
+        # is "raise the quota" rather than "read the logs".
+        healthy = False
+        error = str(exc)
+        status_code = 503
+        response_body = {"error": "cluster_at_capacity", "message": str(exc)}
     except IsolateError as exc:
         healthy = False
         error = str(exc)

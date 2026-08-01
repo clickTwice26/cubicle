@@ -79,6 +79,14 @@ class ClusterCreate(BaseModel):
         return v.strip().lower().removeprefix("*.")
 
 
+class ClusterQuotaIn(BaseModel):
+    """Ceilings, in whole units. Zero means no ceiling."""
+
+    max_memory_mb: int | None = Field(default=None, ge=0, le=1024 * 1024)
+    max_cpu_cores: float | None = Field(default=None, ge=0, le=1024)
+    max_storage_gb: int | None = Field(default=None, ge=0, le=1024 * 1024)
+
+
 class ClusterUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     ingress_domain: str | None = Field(default=None, max_length=255)
@@ -108,6 +116,13 @@ class ClusterOut(ORMModel):
     node_count: int = 0
     function_count: int = 0
     namespace_count: int = 0
+    #: Ceilings, and what is committed against them right now.
+    max_memory_mb: int = 0
+    max_cpu_cores: float = 0.0
+    max_storage_gb: int = 0
+    used_memory_mb: int = 0
+    used_cpu_cores: float = 0.0
+    used_storage_bytes: int = 0
     created_at: datetime
 
 

@@ -48,6 +48,12 @@ class FunctionSpec:
     node_name: str = "node-01"
     docker_host: str = LOCAL_HOST
     cluster: str = ""
+    #: The cluster's ceilings, and what its data services already hold. Zero
+    #: means no ceiling. Carried on the spec because the pool has no database.
+    cluster_memory_cap_mb: int = 0
+    cluster_cpu_cap: float = 0.0
+    cluster_reserved_mb: int = 0
+    cluster_reserved_cpu: float = 0.0
     node_is_local: bool = True
 
     @property
@@ -109,6 +115,10 @@ class IsolateError(RuntimeError):
     """The isolate could not be started or never became ready."""
 
 
+class ClusterFullError(IsolateError):
+    """The cluster has no room left under its own ceiling."""
+
+
 class IsolatePool:
     def __init__(self) -> None:
         self._isolates: dict[str, list[Isolate]] = {}
@@ -116,6 +126,11 @@ class IsolatePool:
         self._starting: dict[str, int] = {}
         #: spec key -> (highest concurrent busy count, when it was seen)
         self._peaks: dict[str, tuple[int, float]] = {}
+        #: cluster -> memory_mb of isolates being started right now. A pending
+        #: start holds its memory as surely as a running one; counting only
+        #: what is already in `_isolates` let a burst of concurrent requests
+        #: each see an empty pool and all pass the ceiling together.
+        self._pending: dict[str, list[int]] = {}
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(5.0, read=920.0))
         self._closed = False
 
@@ -123,6 +138,13 @@ class IsolatePool:
 
     async def acquire(self, spec: FunctionSpec) -> tuple[Isolate, bool]:
         """Return a warm isolate, starting one if the pool has room."""
+        # A ceiling this function can never fit under, even with the cluster
+        # completely idle, is not worth waiting on. Queueing for a minute to
+        # deliver the same refusal helps nobody.
+        impossible = self._never_fits(spec)
+        if impossible is not None:
+            raise ClusterFullError(impossible)
+
         deadline = time.monotonic() + settings.isolate_start_timeout + spec.timeout_s
         while True:
             async with self._cond:
@@ -146,8 +168,21 @@ class IsolatePool:
                 ceiling = max(1, min(spec.max_instances, settings.isolate_max_per_function))
                 in_flight = self._starting.get(spec.key, 0)
                 if len(pool) + in_flight < ceiling:
-                    self._starting[spec.key] = in_flight + 1
-                    break
+                    # The cluster's ceiling is checked here, inside the same
+                    # lock that decides to start one. Checking it outside would
+                    # let two concurrent requests both read "room for one" and
+                    # both spawn.
+                    full = self._cluster_full(spec)
+                    if full is None:
+                        self._starting[spec.key] = in_flight + 1
+                        if spec.cluster:
+                            self._pending.setdefault(spec.cluster, []).append(spec.memory_mb)
+                        break
+                    if time.monotonic() > deadline:
+                        raise ClusterFullError(full)
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(self._cond.wait(), timeout=1.0)
+                    continue
 
                 if time.monotonic() > deadline:
                     raise IsolateError(
@@ -162,6 +197,14 @@ class IsolatePool:
         finally:
             async with self._cond:
                 self._starting[spec.key] = max(0, self._starting.get(spec.key, 1) - 1)
+                # Released whether the start succeeded or failed. On success the
+                # isolate is appended below and counted from `_isolates`
+                # instead; on failure nothing holds the memory and the next
+                # request should be able to have it.
+                pending = self._pending.get(spec.cluster or "")
+                if pending:
+                    with contextlib.suppress(ValueError):
+                        pending.remove(spec.memory_mb)
                 self._cond.notify_all()
 
         async with self._cond:
@@ -195,6 +238,84 @@ class IsolatePool:
         return response.json()
 
     # ── container management ─────────────────────────────────────────────
+
+    def _never_fits(self, spec: FunctionSpec) -> str | None:
+        """Whether this function cannot fit under its cluster's ceiling at all.
+
+        Compares the request against the ceiling minus only what the data
+        services permanently hold — no isolate freeing up will change it.
+        """
+        if not spec.cluster:
+            return None
+
+        cap = spec.cluster_memory_cap_mb
+        if cap > 0 and spec.cluster_reserved_mb + spec.memory_mb > cap:
+            return (
+                f"cluster '{spec.cluster}' has a {cap} MB memory ceiling and its data "
+                f"services already hold {spec.cluster_reserved_mb} MB, leaving no room for "
+                f"a {spec.memory_mb} MB function — raise the quota or shrink the services"
+            )
+
+        cpu_cap = spec.cluster_cpu_cap
+        wanted = cpu_quota_for(spec.memory_mb) / 1_000_000_000
+        if cpu_cap > 0 and spec.cluster_reserved_cpu + wanted > cpu_cap:
+            return (
+                f"cluster '{spec.cluster}' has a {cpu_cap:.2f} core ceiling and its data "
+                f"services already hold {spec.cluster_reserved_cpu:.2f}, leaving no room for "
+                f"a function needing {wanted:.2f} — raise the quota"
+            )
+        return None
+
+    def _cluster_full(self, spec: FunctionSpec) -> str | None:
+        """Why this cluster cannot take another isolate, or None if it can.
+
+        Counts every isolate the cluster already has, plus what its managed
+        data services hold, plus the one being asked for. Must be called with
+        the pool condition held.
+        """
+        if not spec.cluster:
+            return None
+
+        starting = self._pending.get(spec.cluster, [])
+
+        if spec.cluster_memory_cap_mb > 0:
+            used = (
+                spec.cluster_reserved_mb
+                + sum(starting)
+                + sum(
+                    i.memory_mb
+                    for pool in self._isolates.values()
+                    for i in pool
+                    if i.cluster == spec.cluster
+                )
+            )
+            if used + spec.memory_mb > spec.cluster_memory_cap_mb:
+                return (
+                    f"cluster '{spec.cluster}' is at its memory ceiling "
+                    f"({used} MB of {spec.cluster_memory_cap_mb} MB used, "
+                    f"{spec.memory_mb} MB needed)"
+                )
+
+        if spec.cluster_cpu_cap > 0:
+            wanted = cpu_quota_for(spec.memory_mb) / 1_000_000_000
+            used = (
+                spec.cluster_reserved_cpu
+                + sum(cpu_quota_for(mb) / 1_000_000_000 for mb in starting)
+                + sum(
+                    cpu_quota_for(i.memory_mb) / 1_000_000_000
+                    for pool in self._isolates.values()
+                    for i in pool
+                    if i.cluster == spec.cluster
+                )
+            )
+            if used + wanted > spec.cluster_cpu_cap:
+                return (
+                    f"cluster '{spec.cluster}' is at its CPU ceiling "
+                    f"({used:.2f} of {spec.cluster_cpu_cap:.2f} cores used, "
+                    f"{wanted:.2f} needed)"
+                )
+
+        return None
 
     def _peak(self, key: str, pool: list[Isolate]) -> None:
         """Record how many isolates of this spec are busy at once."""

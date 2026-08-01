@@ -25,6 +25,19 @@ from ..schemas import RESERVED_NAMESPACES, ClusterCreate, ClusterOut, ClusterUpd
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 
 
+def _committed(slug: str) -> dict:
+    """What this cluster's isolates hold right now, against its ceilings.
+
+    Read from the pool rather than the database: the pool is the thing that
+    actually allocated the containers, so it is the only honest source.
+    """
+    isolates = pool.snapshot(cluster=slug)
+    return {
+        "used_memory_mb": sum(i["memory_mb"] for i in isolates),
+        "used_cpu_cores": round(sum(i["cpus"] for i in isolates), 2),
+    }
+
+
 async def _serialize(db, cluster: Cluster) -> ClusterOut:
     nodes = (
         await db.execute(select(func.count(Node.id)).where(Node.cluster_id == cluster.id))
@@ -47,6 +60,7 @@ async def _serialize(db, cluster: Cluster) -> ClusterOut:
             if column.name in ClusterOut.model_fields
         },
         base_url=cluster_svc.function_url(cluster),
+        **_committed(cluster.slug),
         node_count=nodes,
         namespace_count=namespaces,
         function_count=functions,
@@ -142,6 +156,32 @@ async def create_cluster(payload: ClusterCreate, db: DbSession, principal: Requi
 @router.get("/{cluster_ref}", response_model=ClusterOut)
 async def get_cluster(cluster_ref: str, db: DbSession, principal: CurrentPrincipal):
     cluster = await _load(db, principal, cluster_ref)
+    return await _serialize(db, cluster)
+
+
+@router.put("/{cluster_ref}/quota", response_model=ClusterOut)
+async def set_quota(
+    cluster_ref: str, payload: ClusterQuotaIn, db: DbSession, principal: RequireOwner
+):
+    """Set a cluster's ceilings. Super admin only.
+
+    Deliberately not open to admins: a quota an admin can raise is not a quota,
+    and the whole point is that it bounds what everyone below can allocate.
+    """
+    cluster = await _load(db, principal, cluster_ref)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(cluster, key, value)
+    await db.commit()
+    await db.refresh(cluster)
+    log.info(
+        "cluster quota set",
+        slug=cluster.slug,
+        memory_mb=cluster.max_memory_mb,
+        cpu=cluster.max_cpu_cores,
+        storage_gb=cluster.max_storage_gb,
+        by=principal.user.email,
+    )
     return await _serialize(db, cluster)
 
 
