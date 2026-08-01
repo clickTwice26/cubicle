@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bolt, Check, ChevronDown, X } from './Icons'
 import { Badge, Button, Chip, Spinner, cx, useToast } from './ui'
 import { useAiStatus, useGenerate, type ContextSent, type Generation } from '../lib/ai'
+import { collapse, diffLines, diffStats } from '../lib/diff'
 
 /**
  * Cubicle AI, as a conversation beside the editor.
@@ -25,6 +26,8 @@ export interface Turn {
   result?: Generation
   applied?: boolean
   failed?: boolean
+  /** The editor buffer at the moment Apply ran, so the diff is what changed. */
+  appliedFrom?: string
 }
 
 let seq = 0
@@ -111,8 +114,13 @@ export function AiSidebar({
 
   const apply = (turn: Turn) => {
     if (!turn.result) return
+    // Captured before onApply, because after it the buffer is the new file and
+    // there is nothing left to compare against.
+    const from = currentCode
     onApply(turn.result.code, turn.result.requirements)
-    setTurns((current) => current.map((t) => (t.id === turn.id ? { ...t, applied: true } : t)))
+    setTurns((current) =>
+      current.map((t) => (t.id === turn.id ? { ...t, applied: true, appliedFrom: from } : t)),
+    )
     toast.push('Applied to the editor — deploy when you are ready')
   }
 
@@ -303,8 +311,90 @@ function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
             </span>
           </div>
 
+          {turn.applied && turn.appliedFrom !== undefined ? (
+            <Diff before={turn.appliedFrom} after={turn.result.code} />
+          ) : null}
+
           <Sent context={turn.result.context_sent} />
         </>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * What the apply actually changed, as a unified diff.
+ *
+ * Shown after applying rather than before: until you apply, the interesting
+ * question is what the assistant proposes, and afterwards it is what moved in
+ * your file. Long runs of untouched lines are collapsed, because a one-function
+ * rewrite in a long file should read as one change.
+ */
+function Diff({ before, after }: { before: string; after: string }) {
+  const [open, setOpen] = useState(true)
+  const lines = diffLines(before, after)
+  const { added, removed } = diffStats(lines)
+
+  if (added === 0 && removed === 0) {
+    return (
+      <div className="mt-2 border-t border-line pt-2 text-[11.5px] text-ink-3">
+        Identical to what was already in the editor — nothing changed.
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2 border-t border-line pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-1.5 text-[11.5px] text-ink-3 transition hover:text-ink"
+      >
+        <ChevronDown size={12} className={cx('transition', open && 'rotate-180')} />
+        Changes
+        <span className="ml-1 font-mono text-ok">+{added}</span>
+        <span className="font-mono text-err">−{removed}</span>
+      </button>
+
+      {open ? (
+        <div className="mt-2 overflow-x-auto rounded-[8px] border border-line bg-bg">
+          {collapse(lines).map((hunk, index) => (
+            <div key={index}>
+              {hunk.skipped > 0 ? (
+                <div className="border-y border-line bg-panel-2 px-2 py-1 font-mono text-[10.5px] text-ink-3">
+                  ⋯ {hunk.skipped} unchanged line{hunk.skipped === 1 ? '' : 's'}
+                </div>
+              ) : null}
+              {hunk.lines.map((line, n) => (
+                <div
+                  key={n}
+                  className={cx(
+                    'flex gap-2 px-2 font-mono text-[11px] leading-[1.65] whitespace-pre',
+                    line.kind === 'add' && 'bg-ok-bg',
+                    line.kind === 'del' && 'bg-err-bg',
+                  )}
+                >
+                  <span
+                    className="w-[9px] flex-none select-none"
+                    style={{
+                      color:
+                        line.kind === 'add'
+                          ? 'var(--ok)'
+                          : line.kind === 'del'
+                            ? 'var(--err)'
+                            : 'var(--text-3)',
+                    }}
+                  >
+                    {line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : ' '}
+                  </span>
+                  <span className={line.kind === 'same' ? 'text-ink-3' : 'text-ink'}>
+                    {line.text || ' '}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       ) : null}
     </div>
   )

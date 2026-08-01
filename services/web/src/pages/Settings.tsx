@@ -155,6 +155,36 @@ function ClustersCard() {
  * other secret and only ever comes back as a masked hint, so this card can show
  * that a key exists without being able to show what it is.
  */
+/**
+ * Suggestions only — the field takes any string.
+ *
+ * The base URL can point at OpenAI, a gateway, or something running on this
+ * machine, so a closed dropdown would be wrong: whatever ids that endpoint
+ * serves are the valid ones, and this list cannot know them. A datalist gives
+ * the common cases one click and leaves the field free.
+ */
+const MODEL_LIST_ID = 'cubicle-ai-models'
+
+const MODEL_SUGGESTIONS: { value: string; label: string }[] = [
+  { value: 'gpt-4.1-mini', label: 'OpenAI · small and quick' },
+  { value: 'gpt-4.1', label: 'OpenAI · stronger, slower' },
+  { value: 'gpt-4o-mini', label: 'OpenAI · small' },
+  { value: 'gpt-4o', label: 'OpenAI' },
+  { value: 'o4-mini', label: 'OpenAI · reasoning' },
+  { value: 'qwen2.5-coder', label: 'Local · Ollama or LM Studio' },
+  { value: 'llama3.1', label: 'Local · Ollama' },
+]
+
+function ModelSuggestions() {
+  return (
+    <datalist id={MODEL_LIST_ID}>
+      {MODEL_SUGGESTIONS.map((model) => (
+        <option key={model.value} value={model.value} label={model.label} />
+      ))}
+    </datalist>
+  )
+}
+
 function AssistantCard() {
   const toast = useToast()
   const { data: status } = useAiStatus()
@@ -217,13 +247,15 @@ function AssistantCard() {
           onChange={(event) => setKey(event.target.value)}
           hint="Stored envelope-encrypted, like every other secret here. It is never shown again."
         />
+        <ModelSuggestions />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label="Model"
             value={model}
             placeholder="gpt-4.1-mini"
+            list={MODEL_LIST_ID}
             onChange={(event) => setModel(event.target.value)}
-            hint="These are single-file handlers — a small model is cheaper and quicker."
+            hint="Pick one or type any id your endpoint serves. These are single-file handlers — a small model is cheaper and quicker."
           />
           <Field
             label="Base URL"
