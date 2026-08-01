@@ -281,14 +281,21 @@ async def cluster_kpis(
         if p50 is not None and prev_p50 is not None
         else None
     )
+    # `polarity` is what a rise *means*, which is not the same for every metric.
+    # Without it the console has to guess from the label, and painted a busy
+    # traffic day the same colour as a spike in failures.
     return [
         {
-            "label": f"Invocations ({hours}h)",
+            "key": "invocations",
+            "label": "Invocations",
             "value": fmt_count(total),
             "delta": inv_delta,
             "direction": inv_dir,
+            "polarity": "neutral",
+            "hint": f"served in the last {hours}h",
         },
         {
+            "key": "latency",
             "label": "Median latency",
             "value": fmt_ms(p50),
             "delta": p50_delta,
@@ -297,8 +304,11 @@ async def cluster_kpis(
             else "up"
             if p50_delta
             else "flat",
+            "polarity": "lower_better",
+            "hint": "half of requests finish faster",
         },
         {
+            "key": "errors",
             "label": "Error rate",
             "value": f"{err_rate:.2f}%" if total else DASH,
             "delta": f"{err_rate - prev_err_rate:+.2f}%" if prev_total else None,
@@ -307,8 +317,13 @@ async def cluster_kpis(
             else "down"
             if err_rate < prev_err_rate
             else "flat",
+            "polarity": "lower_better",
+            "hint": f"{fmt_count(errors)} of {fmt_count(total)} answered 4xx or 5xx"
+            if total
+            else "nothing to measure yet",
         },
         {
+            "key": "cold",
             "label": "Cold starts",
             "value": f"{cold_rate:.1f}%" if total else DASH,
             "delta": f"{cold_rate - prev_cold_rate:+.1f}%" if prev_total else None,
@@ -317,6 +332,8 @@ async def cluster_kpis(
             else "down"
             if cold_rate < prev_cold_rate
             else "flat",
+            "polarity": "lower_better",
+            "hint": "waited for a container to start",
         },
     ]
 

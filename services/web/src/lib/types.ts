@@ -132,10 +132,14 @@ export interface Version {
 }
 
 export interface Kpi {
+  key?: string
   label: string
   value: string
   delta: string | null
   direction: 'up' | 'down' | 'flat'
+  /** What a rise means. Traffic going up is not the same news as errors going up. */
+  polarity?: 'lower_better' | 'neutral'
+  hint?: string
 }
 
 export interface ChartBar {
