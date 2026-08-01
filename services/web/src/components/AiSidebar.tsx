@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bolt, Check, ChevronDown, X } from './Icons'
-import { Badge, Button, Chip, Spinner, cx, useToast } from './ui'
+import { Badge, Button, Chip, cx, useToast } from './ui'
 import { useAiStatus, useGenerate, type ContextSent, type Generation } from '../lib/ai'
 import { collapse, diffLines, diffStats } from '../lib/diff'
 
@@ -33,6 +33,82 @@ export interface Turn {
 let seq = 0
 const nextId = () => `t${(seq += 1)}`
 
+const WIDTH_KEY = 'cubicle-ai-width'
+const MIN_WIDTH = 340
+const DEFAULT_WIDTH = 520
+
+/** Never so wide that the editor it is discussing has nowhere left to go. */
+function clampWidth(px: number): number {
+  const room = typeof window === 'undefined' ? 1280 : window.innerWidth
+  return Math.max(MIN_WIDTH, Math.min(px, Math.max(MIN_WIDTH, room - 320)))
+}
+
+/**
+ * Width as a dragged, remembered preference.
+ *
+ * A diff needs horizontal room and a chat does not, so the right width depends
+ * on what you are doing with it — which makes it yours to set rather than ours
+ * to guess.
+ */
+function useResizable() {
+  const [width, setWidth] = useState(() => {
+    try {
+      const stored = Number(localStorage.getItem(WIDTH_KEY))
+      return stored ? clampWidth(stored) : DEFAULT_WIDTH
+    } catch {
+      return DEFAULT_WIDTH
+    }
+  })
+  const [dragging, setDragging] = useState(false)
+
+  useEffect(() => {
+    if (!dragging) return
+    // Pointer events on the window, not the handle: the cursor routinely
+    // outruns a 6px target during a fast drag.
+    const move = (event: PointerEvent) =>
+      setWidth(clampWidth(window.innerWidth - event.clientX))
+    const stop = () => setDragging(false)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    // Stops the editor selecting text while the drag crosses it.
+    const previous = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      document.body.style.userSelect = previous
+      document.body.style.cursor = ''
+    }
+  }, [dragging])
+
+  useEffect(() => {
+    if (dragging) return
+    try {
+      localStorage.setItem(WIDTH_KEY, String(width))
+    } catch {
+      /* private browsing — the width just will not persist */
+    }
+  }, [width, dragging])
+
+  // A window that shrinks below the stored width should not push the editor
+  // off the screen.
+  useEffect(() => {
+    const onResize = () => setWidth((current) => clampWidth(current))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  return {
+    width,
+    dragging,
+    startDrag: () => setDragging(true),
+    reset: () => setWidth(DEFAULT_WIDTH),
+  }
+}
+
 export function AiSidebar({
   open,
   onClose,
@@ -58,6 +134,7 @@ export function AiSidebar({
   const [prompt, setPrompt] = useState('')
   const [mode, setMode] = useState<'edit' | 'write'>('edit')
   const transcript = useRef<HTMLDivElement>(null)
+  const { width, dragging, startDrag, reset } = useResizable()
 
   // A new turn should be visible without scrolling for it.
   useEffect(() => {
@@ -131,19 +208,52 @@ export function AiSidebar({
         aria-hidden
         onClick={onClose}
         className={cx(
-          'fixed inset-0 z-40 bg-black/35 transition-opacity duration-200 lg:hidden',
+          'fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] transition-opacity duration-300',
           open ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       />
 
       <aside
         aria-label="Cubicle AI"
+        style={{ ['--ai-width' as string]: `${width}px` }}
         className={cx(
-          'fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col border-l border-line bg-panel shadow-2xl transition-transform duration-250 ease-out',
+          // Full width on a phone; from sm up it is whatever you dragged it to.
+          'fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-line bg-panel shadow-2xl',
+          'sm:w-(--ai-width)',
+          dragging ? '' : 'transition-transform duration-300 ease-out',
           open ? 'translate-x-0' : 'pointer-events-none translate-x-full',
         )}
       >
-        <header className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3.5">
+        {/* The grab handle. Hidden on a phone, where the panel is full width
+            and there is nothing to trade against. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            startDrag()
+          }}
+          onDoubleClick={reset}
+          className={cx(
+            'group absolute inset-y-0 left-0 z-10 hidden w-2 -translate-x-1/2 cursor-col-resize sm:block',
+          )}
+        >
+          <span
+            className={cx(
+              'absolute inset-y-0 left-1/2 w-[3px] -translate-x-1/2 rounded-full transition-colors duration-150',
+              dragging ? 'bg-accent' : 'bg-transparent group-hover:bg-accent-soft',
+            )}
+          />
+          <span
+            className={cx(
+              'absolute top-1/2 left-1/2 h-9 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors duration-150',
+              dragging ? 'bg-accent' : 'bg-line-strong group-hover:bg-accent',
+            )}
+          />
+        </div>
+        <header className="flex flex-none flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
           <Bolt size={15} className="text-accent" />
           <span className="text-[13.5px] font-semibold">Cubicle AI</span>
           {status?.enabled ? (
@@ -172,22 +282,20 @@ export function AiSidebar({
           </div>
         ) : (
           <>
-            <div ref={transcript} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div
+              ref={transcript}
+              className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4"
+            >
               {turns.length === 0 ? (
                 <Empty mode={mode} />
               ) : (
-                <div className="grid gap-3">
+                <div className="grid min-w-0 gap-3">
                   {turns.map((turn) => (
                     <Message key={turn.id} turn={turn} onApply={() => apply(turn)} />
                   ))}
                 </div>
               )}
-              {generate.isPending ? (
-                <div className="mt-3 flex items-center gap-2 text-[12.5px] text-ink-3">
-                  <Spinner size={13} />
-                  writing…
-                </div>
-              ) : null}
+              {generate.isPending ? <Working /> : null}
             </div>
 
             <div className="flex-none border-t border-line px-4 py-3">
@@ -246,6 +354,60 @@ export function AiSidebar({
   )
 }
 
+/**
+ * The wait, with something to read.
+ *
+ * A single frozen "writing…" makes a six-second round trip feel like a hang.
+ * These are moods rather than a progress bar — the client cannot see the
+ * provider's internal stages, so nothing here claims a step has finished. It
+ * only says the request is still out.
+ */
+const WAITING = [
+  'Reading your handler',
+  'Thinking it through',
+  'Weighing the edge cases',
+  'Consulting the runtime brief',
+  'Choosing the shape',
+  'Writing the handler',
+  'Checking the imports',
+  'Pinning what it needs',
+  'Reading it back',
+  'Tidying the edges',
+  'Nearly there',
+]
+
+function Working() {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    // Walks forward and then holds on the last one: cycling back to "Reading
+    // your handler" after twenty seconds would read as a stall.
+    const timer = window.setInterval(
+      () => setIndex((n) => Math.min(n + 1, WAITING.length - 1)),
+      2100,
+    )
+    return () => window.clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="animate-turn-in mt-3 mr-4 flex items-center gap-2.5 rounded-xl rounded-bl-[4px] border border-line bg-panel-2 px-3.5 py-2.5">
+      <span className="flex flex-none items-end gap-[3px] pb-[3px]">
+        {[0, 1, 2].map((dot) => (
+          <span
+            key={dot}
+            className="animate-dot h-[5px] w-[5px] rounded-full bg-accent"
+            style={{ animationDelay: `${dot * 140}ms` }}
+          />
+        ))}
+      </span>
+      {/* Keyed so each word replays the fade rather than swapping in place. */}
+      <span key={index} className="animate-word text-[12.5px] text-ink-2">
+        {WAITING[index]}…
+      </span>
+    </div>
+  )
+}
+
 function Empty({ mode }: { mode: 'edit' | 'write' }) {
   return (
     <div className="rounded-xl border border-dashed border-line px-4 py-6 text-[12.5px] leading-relaxed text-ink-3">
@@ -266,7 +428,7 @@ function Empty({ mode }: { mode: 'edit' | 'write' }) {
 function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
   if (turn.role === 'user') {
     return (
-      <div className="ml-6 rounded-xl rounded-br-[4px] border border-accent bg-accent-soft px-3.5 py-2.5 text-[13px] leading-relaxed">
+      <div className="animate-turn-in ml-4 min-w-0 rounded-xl rounded-br-[4px] border border-accent bg-accent-soft px-3.5 py-2.5 text-[13px] leading-relaxed break-words">
         {turn.text}
       </div>
     )
@@ -275,11 +437,13 @@ function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
   return (
     <div
       className={cx(
-        'mr-6 rounded-xl rounded-bl-[4px] border px-3.5 py-2.5 text-[13px] leading-relaxed',
+        'animate-turn-in mr-4 min-w-0 rounded-xl rounded-bl-[4px] border px-3.5 py-2.5 text-[13px] leading-relaxed',
         turn.failed ? 'border-err bg-err-bg' : 'border-line bg-panel-2',
       )}
     >
-      <div className={turn.failed ? 'text-ink' : 'text-ink-2'}>{turn.text}</div>
+      <div className={cx('break-words', turn.failed ? 'text-ink' : 'text-ink-2')}>
+        {turn.text}
+      </div>
 
       {turn.result ? (
         <>
@@ -357,7 +521,7 @@ function Diff({ before, after }: { before: string; after: string }) {
       </button>
 
       {open ? (
-        <div className="mt-2 overflow-x-auto rounded-[8px] border border-line bg-bg">
+        <div className="mt-2 max-w-full overflow-x-auto rounded-[8px] border border-line bg-bg">
           {collapse(lines).map((hunk, index) => (
             <div key={index}>
               {hunk.skipped > 0 ? (
@@ -368,8 +532,9 @@ function Diff({ before, after }: { before: string; after: string }) {
               {hunk.lines.map((line, n) => (
                 <div
                   key={n}
+                  style={{ animationDelay: `${Math.min(n, 12) * 18}ms` }}
                   className={cx(
-                    'flex gap-2 px-2 font-mono text-[11px] leading-[1.65] whitespace-pre',
+                    'animate-line-in flex w-max min-w-full gap-2 px-2 font-mono text-[11px] leading-[1.65] whitespace-pre',
                     line.kind === 'add' && 'bg-ok-bg',
                     line.kind === 'del' && 'bg-err-bg',
                   )}

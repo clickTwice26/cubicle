@@ -156,34 +156,22 @@ function ClustersCard() {
  * that a key exists without being able to show what it is.
  */
 /**
- * Suggestions only — the field takes any string.
+ * The models this assistant is expected to run against.
  *
- * The base URL can point at OpenAI, a gateway, or something running on this
- * machine, so a closed dropdown would be wrong: whatever ids that endpoint
- * serves are the valid ones, and this list cannot know them. A datalist gives
- * the common cases one click and leaves the field free.
+ * A closed list rather than a free field: the browser turns an open input into
+ * an autocomplete over whatever you have typed into inputs before, which
+ * offered nonsense. Anything genuinely different goes in the Base URL, and a
+ * value already stored is kept as an option so saving never silently changes
+ * the model out from under you.
  */
-const MODEL_LIST_ID = 'cubicle-ai-models'
-
-const MODEL_SUGGESTIONS: { value: string; label: string }[] = [
-  { value: 'gpt-4.1-mini', label: 'OpenAI · small and quick' },
-  { value: 'gpt-4.1', label: 'OpenAI · stronger, slower' },
-  { value: 'gpt-4o-mini', label: 'OpenAI · small' },
-  { value: 'gpt-4o', label: 'OpenAI' },
-  { value: 'o4-mini', label: 'OpenAI · reasoning' },
-  { value: 'qwen2.5-coder', label: 'Local · Ollama or LM Studio' },
-  { value: 'llama3.1', label: 'Local · Ollama' },
+const MODELS = [
+  { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini — small and quick' },
+  { value: 'gpt-4.1', label: 'gpt-4.1 — stronger, slower' },
+  { value: 'gpt-4.1-nano', label: 'gpt-4.1-nano — cheapest' },
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+  { value: 'gpt-4o', label: 'gpt-4o' },
+  { value: 'o4-mini', label: 'o4-mini — reasoning' },
 ]
-
-function ModelSuggestions() {
-  return (
-    <datalist id={MODEL_LIST_ID}>
-      {MODEL_SUGGESTIONS.map((model) => (
-        <option key={model.value} value={model.value} label={model.label} />
-      ))}
-    </datalist>
-  )
-}
 
 function AssistantCard() {
   const toast = useToast()
@@ -247,16 +235,29 @@ function AssistantCard() {
           onChange={(event) => setKey(event.target.value)}
           hint="Stored envelope-encrypted, like every other secret here. It is never shown again."
         />
-        <ModelSuggestions />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Model"
-            value={model}
-            placeholder="gpt-4.1-mini"
-            list={MODEL_LIST_ID}
-            onChange={(event) => setModel(event.target.value)}
-            hint="Pick one or type any id your endpoint serves. These are single-file handlers — a small model is cheaper and quicker."
-          />
+          <div>
+            <span className="mb-1.5 block text-[12.5px] text-ink-2">Model</span>
+            <select
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              className="h-10 w-full rounded-[9px] border border-line bg-bg px-3 font-mono text-sm text-ink outline-none transition focus:border-accent"
+            >
+              {/* Whatever is stored stays selectable, even if it predates this
+                  list — saving must never change the model silently. */}
+              {model && !MODELS.some((entry) => entry.value === model) ? (
+                <option value={model}>{model}</option>
+              ) : null}
+              {MODELS.map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1.5 text-[12.5px] text-ink-3">
+              These are single-file handlers — a small model is cheaper and quicker.
+            </div>
+          </div>
           <Field
             label="Base URL"
             value={baseUrl}
