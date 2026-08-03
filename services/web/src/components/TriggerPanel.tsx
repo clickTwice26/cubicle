@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { Badge, Button, Card, ConfirmButton, EmptyState, Skeleton, cx, useToast } from './ui'
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmButton,
+  EmptyState,
+  Select,
+  Skeleton,
+  cx,
+  useToast,
+} from './ui'
 import {
   useCreateTrigger,
   useDeleteTrigger,
@@ -240,18 +250,17 @@ function NewSchedule({ fn }: { fn: FunctionDetail }) {
           </div>
 
           <div>
-            <span className="mb-1.5 block text-[12.5px] text-ink-2">Timezone</span>
-            <select
+            <Select
+              label="Timezone"
               value={timezone}
               onChange={(event) => setTimezone(event.target.value)}
-              className="h-10 rounded-[9px] border border-line-strong bg-bg px-3 font-mono text-[13.5px] text-ink outline-none transition focus:border-accent"
             >
               {ZONES.map((entry) => (
                 <option key={entry} value={entry}>
                   {entry}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 

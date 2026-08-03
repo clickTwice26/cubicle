@@ -711,6 +711,43 @@ function SettingsForm({
 
   return (
     <Card className="overflow-hidden">
+      {/* At the top, and sticky: the form is taller than the viewport, and Save
+          should not be something you scroll to find. */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-line bg-panel px-5 py-3">
+        <span className="flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            variant={dirty ? 'primary' : 'secondary'}
+            disabled={!dirty}
+            loading={saving}
+            onClick={() => onSave(changes, () => setDraft(draft))}
+          >
+            Save changes
+          </Button>
+          {dirty ? (
+            <Button size="sm" variant="ghost" onClick={() => setDraft(initial)}>
+              Discard
+            </Button>
+          ) : null}
+          {dirty ? (
+            <span className="text-[12.5px] text-ink-3">
+              {Object.keys(changes).length} unsaved change
+              {Object.keys(changes).length === 1 ? '' : 's'}
+              {rebuilds ? ' · saving rebuilds the version' : ''}
+            </span>
+          ) : (
+            <span className="text-[12.5px] text-ink-3">No unsaved changes</span>
+          )}
+        </span>
+        <span className="ml-auto">
+          <ConfirmButton
+            label="Delete function"
+            confirmLabel="Click again to delete"
+            onConfirm={onDelete}
+          />
+        </span>
+      </div>
+
       <div className="grid gap-6 p-5">
         <Section title="Endpoint" hint="How this function is addressed and who may call it.">
           <ChipGroup
@@ -806,40 +843,6 @@ function SettingsForm({
         </Section>
       </div>
 
-      {/* Sticky, so Save is reachable from any part of a long form rather than
-          only from the bottom of it. */}
-      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-line bg-panel px-5 py-3">
-        <ConfirmButton
-          label="Delete function"
-          confirmLabel="Click again to delete"
-          onConfirm={onDelete}
-        />
-        <span className="ml-auto flex flex-wrap items-center gap-3">
-          {dirty ? (
-            <span className="text-[12.5px] text-ink-3">
-              {Object.keys(changes).length} unsaved change
-              {Object.keys(changes).length === 1 ? '' : 's'}
-              {rebuilds ? ' · saving rebuilds the version' : ''}
-            </span>
-          ) : (
-            <span className="text-[12.5px] text-ink-3">No unsaved changes</span>
-          )}
-          {dirty ? (
-            <Button size="sm" variant="ghost" onClick={() => setDraft(initial)}>
-              Discard
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant={dirty ? 'primary' : 'secondary'}
-            disabled={!dirty}
-            loading={saving}
-            onClick={() => onSave(changes, () => setDraft(draft))}
-          >
-            Save changes
-          </Button>
-        </span>
-      </div>
     </Card>
   )
 }

@@ -13,6 +13,7 @@ import {
   Modal,
   PAGE,
   PageHeader,
+  Select,
   Skeleton,
   Tabs,
   cx,
@@ -59,6 +60,7 @@ const SECTIONS = [
   { value: 'clusters', label: 'Clusters' },
   { value: 'runtimes', label: 'Runtimes' },
   { value: 'instance', label: 'Instance' },
+  { value: 'users', label: 'Users' },
   { value: 'access', label: 'Access' },
   { value: 'maintenance', label: 'Maintenance' },
 ] as const
@@ -107,9 +109,10 @@ export default function Settings() {
         </>
       ) : null}
 
+      {tab === 'users' ? <UsersCard /> : null}
+
       {tab === 'access' ? (
         <>
-          <UsersCard />
           <ApiKeysCard />
           <PasswordCard />
         </>
@@ -311,11 +314,10 @@ function AssistantCard() {
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <span className="mb-1.5 block text-[12.5px] text-ink-2">Model</span>
-            <select
+            <Select
+              label="Model"
               value={model}
               onChange={(event) => setModel(event.target.value)}
-              className="h-10 w-full rounded-[9px] border border-line bg-bg px-3 font-mono text-sm text-ink outline-none transition focus:border-accent"
             >
               {/* Whatever is stored stays selectable, even if it predates this
                   list — saving must never change the model silently. */}
@@ -327,7 +329,7 @@ function AssistantCard() {
                   {entry.label}
                 </option>
               ))}
-            </select>
+            </Select>
             <div className="mt-1.5 text-[12.5px] text-ink-3">
               These are single-file handlers — a small model is cheaper and quicker.
             </div>
@@ -796,7 +798,10 @@ function UsersCard() {
             </div>
             <div className="truncate text-xs text-ink-3">{user.email}</div>
           </div>
-          <select
+          <Select
+            size="sm"
+            mono={false}
+            selectClassName="w-auto rounded-full border-line bg-panel-2 text-ink-2"
             value={user.role}
             disabled={user.id === me?.id}
             onChange={(event) =>
@@ -808,14 +813,13 @@ function UsersCard() {
                 },
               )
             }
-            className="rounded-full border border-line bg-panel-2 px-3 py-1 text-xs text-ink-2 disabled:opacity-60"
           >
             {ROLES.map((role) => (
               <option key={role} value={role}>
                 {role}
               </option>
             ))}
-          </select>
+          </Select>
           <ClusterGrants
             user={user}
             clusters={clusters ?? []}

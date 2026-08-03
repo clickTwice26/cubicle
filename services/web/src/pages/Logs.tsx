@@ -11,6 +11,7 @@ import {
   PAGE_SIZES,
   PageHeader,
   Pagination,
+  Select,
   Skeleton,
   cx,
 } from '../components/ui'
@@ -181,10 +182,12 @@ export default function Logs() {
         ))}
 
         {functions?.length ? (
-          <select
+          <Select
+            size="sm"
+            mono={false}
+            selectClassName="border-line bg-panel text-ink-2"
             value={fn}
             onChange={(event) => patch({ fn: event.target.value || null, page: null })}
-            className="h-8 rounded-lg border border-line bg-panel px-2.5 text-[12.5px] text-ink-2 outline-none focus:border-accent"
           >
             <option value="">All functions</option>
             {functions.map((name) => (
@@ -192,7 +195,7 @@ export default function Logs() {
                 {name}
               </option>
             ))}
-          </select>
+          </Select>
         ) : null}
 
         <form

@@ -11,6 +11,7 @@ import {
   Modal,
   PAGE,
   PageHeader,
+  Select,
   Skeleton,
   cx,
   useToast,
@@ -305,17 +306,13 @@ function PackageModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <span className="mb-1.5 block text-[12.5px] text-ink-2">Install into</span>
-              <select
-                value={target}
-                onChange={(event) => setGroup(event.target.value)}
-                className="h-10 w-full rounded-[9px] border border-line bg-bg px-3 font-mono text-[13.5px] text-ink outline-none transition focus:border-accent"
-              >
+              <Select value={target} onChange={(event) => setGroup(event.target.value)}>
                 {(groups ?? []).map((entry) => (
                   <option key={entry.id} value={entry.id}>
                     {entry.ns}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <Field
               label="Name it"

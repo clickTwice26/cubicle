@@ -9,9 +9,10 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type SelectHTMLAttributes,
   type ReactNode,
 } from 'react'
-import { Bolt, Check, ChevronLeft, ChevronRight, Copy, Trash, X } from './Icons'
+import { Bolt, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Trash, X } from './Icons'
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(' ')
@@ -200,6 +201,83 @@ type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   hint?: ReactNode
   mono?: boolean
   error?: string | null
+}
+
+/**
+ * A select that looks like the rest of the console.
+ *
+ * Still a native `<select>` underneath, with the platform arrow suppressed and
+ * one of ours drawn over it. A hand-rolled listbox would have to reimplement
+ * keyboard navigation, typeahead and the whole focus contract, and would give a
+ * phone a floating div where it wants its own wheel picker — this keeps all of
+ * that and only changes how it looks.
+ */
+export function Select({
+  label,
+  hint,
+  error,
+  mono = true,
+  size = 'md',
+  className,
+  selectClassName,
+  children,
+  ...rest
+}: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> & {
+  label?: ReactNode
+  hint?: ReactNode
+  error?: string
+  mono?: boolean
+  size?: 'sm' | 'md'
+  /** Layout for the wrapper — width, grid placement. */
+  className?: string
+  /** Styling for the control itself, matching how `Field` splits the two. */
+  selectClassName?: string
+}) {
+  const id = useId()
+  const small = size === 'sm'
+
+  return (
+    <div className={className}>
+      {label ? (
+        <label htmlFor={id} className="mb-1.5 block text-[12.5px] text-ink-2">
+          {label}
+        </label>
+      ) : null}
+
+      <span className="relative block">
+        <select
+          id={id}
+          className={cx(
+            'w-full appearance-none rounded-[9px] border bg-bg text-ink',
+            'outline-none transition focus:border-accent disabled:opacity-55',
+            small ? 'h-8 pr-7 pl-2.5 text-[12.5px]' : 'h-10 pr-9 pl-3 text-sm',
+            error ? 'border-err' : 'border-line-strong',
+            mono && (small ? 'font-mono' : 'font-mono text-[13.5px]'),
+            selectClassName,
+          )}
+          aria-invalid={Boolean(error)}
+          {...rest}
+        >
+          {children}
+        </select>
+        {/* pointer-events-none, or the icon eats the click that opens the list. */}
+        <span
+          className={cx(
+            'pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-3',
+            small ? 'right-2' : 'right-3',
+          )}
+        >
+          <ChevronDown size={small ? 13 : 15} />
+        </span>
+      </span>
+
+      {error ? (
+        <div className="mt-1.5 text-xs text-err">{error}</div>
+      ) : hint ? (
+        <div className="mt-1.5 text-[12.5px] text-ink-3">{hint}</div>
+      ) : null}
+    </div>
+  )
 }
 
 export function Field({ label, hint, mono = true, error, className, ...rest }: FieldProps) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Chip, Field, Modal, Meter, cx } from '../ui'
+import { Button, Chip, Field, Modal, Meter, Select, cx } from '../ui'
 import { api } from '../../lib/api'
 import type { LiveFunction } from '../../lib/live'
 
@@ -125,18 +125,18 @@ export function TrafficDialog({ open, onClose, functions, focused }: Props) {
       <div className="grid gap-4.5">
         <div>
           <span className="mb-1.5 block text-[12.5px] text-ink-2">Function</span>
-          <select
+          <Select
+            mono={false}
             value={target}
             disabled={running}
             onChange={(event) => setTarget(event.target.value)}
-            className="h-10 w-full rounded-[9px] border border-line bg-bg px-3 text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
           >
             {functions.map((fn) => (
               <option key={fn.id} value={fn.id}>
                 /{fn.namespace}/{fn.name} · {fn.method}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <Row

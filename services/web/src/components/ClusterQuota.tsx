@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Badge, Button, Card, CardHeader, Meter, useToast } from './ui'
+import { Badge, Button, Card, CardHeader, Meter, Select, useToast } from './ui'
 import { useClusters, useMe, useSetClusterQuota } from '../lib/hooks'
 import type { Cluster } from '../lib/types'
 
@@ -191,11 +191,7 @@ function Control({
         {pending ? <Badge tone="warn">not enforced</Badge> : null}
       </div>
 
-      <select
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-10 w-full rounded-[9px] border border-line bg-bg px-3 font-mono text-[13.5px] text-ink outline-none transition focus:border-accent"
-      >
+      <Select value={value} onChange={(event) => onChange(Number(event.target.value))}>
         {/* A value set outside this list stays selectable, so saving never
             silently rounds someone's ceiling to the nearest preset. */}
         {!options.some((option) => option.value === value) ? (
@@ -206,7 +202,7 @@ function Control({
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
 
       <div className="mt-2 min-h-[6px]">
         {measured && cap > 0 ? <Meter value={pct} tone={tone} /> : null}
