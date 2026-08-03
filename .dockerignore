@@ -1,0 +1,5 @@
+services/web/node_modules
+services/web/dist
+**/__pycache__
+**/*.pyc
+.git

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import tarfile
 import time
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 import docker
 from docker.errors import DockerException, NotFound
 
+from .. import runtimes
 from ..config import settings
 from ..logging_setup import log
 from .engine import engines
@@ -57,9 +59,41 @@ def _tar_bytes(files: dict[str, str]) -> bytes:
     return buf.getvalue()
 
 
-def _has_requirements(files: dict[str, str]) -> bool:
-    body = files.get("requirements.txt", "")
-    return any(line.strip() and not line.strip().startswith("#") for line in body.splitlines())
+def _install_command(spec, files: dict[str, str]) -> str | None:
+    """How this runtime installs dependencies, or None if there are none.
+
+    Both land in ``/srv/.deps``: Python because that is what the isolate puts on
+    PYTHONPATH, JavaScript because npm resolves upwards from the handler and
+    finds ``/srv/node_modules`` — which is a symlink into .deps, so one rule
+    about where a build writes covers both.
+    """
+    body = files.get(spec.deps_file, "")
+    if not body.strip():
+        return None
+
+    if spec.deps_file == "requirements.txt":
+        if not any(line.strip() and not line.strip().startswith("#") for line in body.splitlines()):
+            return None
+        return (
+            f"python -m pip install --no-cache-dir --disable-pip-version-check "
+            f"-r {SRV}/requirements.txt -t {SRV}/.deps 2>&1"
+        )
+
+    if spec.deps_file == "package.json":
+        try:
+            declared = json.loads(body).get("dependencies") or {}
+        except (TypeError, ValueError):
+            # A package.json that will not parse is a build error worth showing,
+            # not a reason to silently skip the install.
+            return "echo 'package.json is not valid JSON' >&2; exit 1"
+        if not declared:
+            return None
+        return (
+            f"cd {SRV} && npm install --omit=dev --no-audit --no-fund --loglevel=error 2>&1 "
+            f"&& mkdir -p {SRV}/.deps && ln -sfn {SRV}/node_modules {SRV}/.deps/node_modules"
+        )
+
+    return None
 
 
 def _build_sync(
@@ -68,7 +102,8 @@ def _build_sync(
     image: str,
     volume: str,
     files: dict[str, str],
-    install: bool,
+    install: str | None,
+    label: str,
     timeout: int,
 ) -> BuildResult:
     started = time.perf_counter()
@@ -109,20 +144,12 @@ def _build_sync(
             return BuildResult(False, "\n".join(output), _ms(started), volume)
 
         if install:
-            output.append("installing     pip install -r requirements.txt")
-            code, out = container.exec_run(
-                [
-                    "sh",
-                    "-lc",
-                    f"python -m pip install --no-cache-dir --disable-pip-version-check "
-                    f"-r {SRV}/requirements.txt -t {SRV}/.deps 2>&1",
-                ],
-                user="root",
-            )
+            output.append(f"installing     {label}")
+            code, out = container.exec_run(["sh", "-lc", install], user="root")
             text = out.decode(errors="replace").strip()
             output.append(_tail(text, 120))
             if code != 0:
-                output.append(f"\nbuild failed   pip exited {code}")
+                output.append(f"\nbuild failed   install exited {code}")
                 return BuildResult(False, "\n".join(output), _ms(started), volume)
         else:
             output.append("installing     no dependencies declared, skipped")
@@ -159,9 +186,12 @@ async def build_version(
     version_number: int,
     files: dict[str, str],
 ) -> BuildResult:
+    spec = runtimes.get(runtime)
     image = settings.runtime_image(runtime)
     volume = volume_name(function_id, version_number)
-    install = _has_requirements(files)
+    install = _install_command(spec, files)
+    verb = "pip install -r" if spec.deps_file == "requirements.txt" else "npm install from"
+    label = f"{verb} {spec.deps_file}"
 
     if install:
         await engines.ensure_network(host, settings.function_network)
@@ -170,7 +200,8 @@ async def build_version(
         "building function version",
         function=function_id,
         version=version_number,
-        install=install,
+        runtime=runtime,
+        install=bool(install),
         image=image,
     )
     result = await engines.call(
@@ -180,6 +211,7 @@ async def build_version(
         volume=volume,
         files=files,
         install=install,
+        label=label,
         timeout=settings.build_timeout,
     )
     log.info(

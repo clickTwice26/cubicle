@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Check, Plus } from '../components/Icons'
 import {
   Badge,
@@ -13,12 +14,14 @@ import {
   PAGE,
   PageHeader,
   Skeleton,
+  Tabs,
   cx,
   useToast,
 } from '../components/ui'
 import { NewClusterModal } from '../components/ClusterSwitcher'
 import { ClusterQuotaCard } from '../components/ClusterQuota'
 import { ResourceSync } from '../components/ResourceSync'
+import { RuntimesCard } from '../components/RuntimesCard'
 import { UpdateCard } from '../components/UpdateCard'
 import { activeCluster } from '../lib/cluster'
 import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
@@ -44,19 +47,80 @@ import type { Cluster, Role, User } from '../lib/types'
 
 const ROLES: Role[] = ['owner', 'admin', 'developer', 'readonly']
 
+/**
+ * Settings, grouped by what the setting is about.
+ *
+ * One column of nine cards meant scrolling past the cluster ceilings to reach
+ * your own password. The tab is in the URL so a particular section is a link,
+ * and an unknown or now-hidden one falls back to the first rather than showing
+ * an empty page.
+ */
+const SECTIONS = [
+  { value: 'clusters', label: 'Clusters' },
+  { value: 'runtimes', label: 'Runtimes' },
+  { value: 'instance', label: 'Instance' },
+  { value: 'access', label: 'Access' },
+  { value: 'maintenance', label: 'Maintenance' },
+] as const
+
+type Section = (typeof SECTIONS)[number]['value']
+
 export default function Settings() {
+  const [params, setParams] = useSearchParams()
+  const { data: me } = useMe()
+  const owner = me?.role === 'owner'
+
+  // Maintenance is owner-only in every card it holds. Showing an empty tab
+  // would be worse than not offering it.
+  const sections = SECTIONS.filter((section) => section.value !== 'maintenance' || owner)
+
+  const requested = params.get('tab') as Section | null
+  const tab: Section = sections.some((s) => s.value === requested)
+    ? (requested as Section)
+    : 'clusters'
+
+  const select = (next: Section) => {
+    const updated = new URLSearchParams(params)
+    updated.set('tab', next)
+    setParams(updated, { replace: true })
+  }
+
   return (
     <div className={PAGE}>
       <PageHeader title="Settings" />
-      <ClustersCard />
-      <ClusterQuotaCard />
-      <UpdateCard />
-      <ResourceSync />
-      <InstanceCard />
-      <AssistantCard />
-      <PasswordCard />
-      <ApiKeysCard />
-      <UsersCard />
+
+      <Tabs className="mb-5" value={tab} onChange={select} tabs={[...sections]} />
+
+      {tab === 'clusters' ? (
+        <>
+          <ClustersCard />
+          <ClusterQuotaCard />
+        </>
+      ) : null}
+
+      {tab === 'runtimes' ? <RuntimesCard /> : null}
+
+      {tab === 'instance' ? (
+        <>
+          <InstanceCard />
+          <AssistantCard />
+        </>
+      ) : null}
+
+      {tab === 'access' ? (
+        <>
+          <UsersCard />
+          <ApiKeysCard />
+          <PasswordCard />
+        </>
+      ) : null}
+
+      {tab === 'maintenance' ? (
+        <>
+          <UpdateCard />
+          <ResourceSync />
+        </>
+      ) : null}
     </div>
   )
 }

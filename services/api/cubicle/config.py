@@ -40,8 +40,10 @@ class Settings(BaseSettings):
 
     # ── isolate runtime ──────────────────────────────────────────────────
     function_network: str = "cubicle_fn"
-    runtime_image_py312: str = "cubicle/runtime-py312:1.0.0"
-    runtime_image_py311: str = "cubicle/runtime-py311:1.0.0"
+    #: Kept for instances that set them in .env before runtimes became a
+    #: registry. Anything not named here is tagged `<repository>:<version>`.
+    runtime_image_py312: str = ""
+    runtime_image_py311: str = ""
     isolate_idle_ttl: int = 900
     #: How long a burst keeps the pool wide. Once concurrency has not been seen
     #: for this long the reconcile loop starts giving isolates back, one per
@@ -89,10 +91,21 @@ class Settings(BaseSettings):
         return self.data_dir / "functions"
 
     def runtime_image(self, runtime: str) -> str:
-        return {
+        """The image tag for a runtime key.
+
+        Imported here rather than at module scope: `runtimes` is plain data and
+        importing it from config at load time would make the two circular the
+        moment anything in it wanted a setting.
+        """
+        from . import runtimes
+
+        override = {
             "python312": self.runtime_image_py312,
             "python311": self.runtime_image_py311,
-        }.get(runtime, self.runtime_image_py312)
+        }.get(runtime)
+        if override:
+            return override
+        return f"{runtimes.get(runtime).repository}:{self.version}"
 
 
 @lru_cache

@@ -20,6 +20,7 @@ import {
   useClearContext,
   useContextState,
   useCreateFunction,
+  useRuntimes,
   useDeleteFunction,
   useDeleteGroup,
   useFunctions,
@@ -30,13 +31,12 @@ import {
   CTX_LABEL,
   FUNCTION_TYPE_HINT,
   FUNCTION_TYPE_LABEL,
-  RUNTIME_LABEL,
   slugify,
 } from '../lib/format'
 import type { CtxAccess, FunctionType, Method, Runtime } from '../lib/types'
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
-const RUNTIMES: Runtime[] = ['python312', 'python311']
+
 const CTX_MODES: CtxAccess[] = ['rw', 'r', 'w', 'none']
 const TYPES: FunctionType[] = ['dependent', 'independent']
 
@@ -58,6 +58,11 @@ export default function PlaygroundGroup() {
   const [fnName, setFnName] = useState('')
   const [fnMethod, setFnMethod] = useState<Method>('POST')
   const [fnRuntime, setFnRuntime] = useState<Runtime>('python312')
+  const { data: runtimes } = useRuntimes()
+  const installed = (runtimes ?? []).filter((entry) => entry.installed)
+  const runtimeKeys = (installed.length ? installed.map((entry) => entry.key) : ['python312']) as Runtime[]
+  const runtimeLabels = Object.fromEntries((runtimes ?? []).map((entry) => [entry.key, entry.label]))
+  const missing = (runtimes ?? []).length - installed.length
   const [fnCtx, setFnCtx] = useState<CtxAccess>('rw')
   const [fnType, setFnType] = useState<FunctionType>('dependent')
 
@@ -186,12 +191,20 @@ export default function PlaygroundGroup() {
             onChange={(event) => setFnName(event.target.value)}
           />
           <ChipGroup label="Method" options={METHODS} value={fnMethod} onChange={setFnMethod} />
+          {/* Only what is installed. A runtime whose image is not on the node
+              would fail on the first invocation, not at create time, which is
+              the worst moment to find out. */}
           <ChipGroup
             label="Runtime"
-            options={RUNTIMES}
+            hint={
+              missing
+                ? `${missing} more available in Settings → Runtimes.`
+                : undefined
+            }
+            options={runtimeKeys}
             value={fnRuntime}
             onChange={setFnRuntime}
-            render={(option) => RUNTIME_LABEL[option]}
+            render={(option) => runtimeLabels[option] ?? option}
           />
           <ChipGroup
             label="Type"

@@ -55,7 +55,16 @@ function killLabel(seconds: number) {
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
-const FILES = ['handler.py', 'requirements.txt', 'cubicle.toml', 'README.md'] as const
+//: A function's files depend on the language it is written in. Derived from
+//: what the deploy actually produced rather than from a table here, so a
+//: runtime added on the server needs no matching change in the console.
+const SHARED_FILES = ['cubicle.toml', 'README.md']
+
+function filesFor(files: Record<string, string> | undefined): string[] {
+  const present = Object.keys(files ?? {})
+  const source = present.filter((name) => !SHARED_FILES.includes(name)).sort()
+  return [...source, ...SHARED_FILES.filter((name) => present.includes(name))]
+}
 
 const TABS = ['code', 'test', 'instances', 'settings'] as const
 
@@ -66,7 +75,7 @@ const pkgName = (line: string) =>
     .trim()
     .toLowerCase()
 type Tab = (typeof TABS)[number]
-type FileName = (typeof FILES)[number]
+type FileName = string
 
 /**
  * One function, full width: its code, a request runner and its settings.
@@ -100,9 +109,9 @@ export default function FunctionWorkbench() {
   const clearContext = useClearContext(groupId)
 
   const tab: Tab = TABS.includes(params.get('tab') as Tab) ? (params.get('tab') as Tab) : 'code'
-  const file: FileName = FILES.includes(params.get('file') as FileName)
-    ? (params.get('file') as FileName)
-    : 'handler.py'
+  const names = filesFor(fn?.files)
+  const requested = params.get('file') ?? ''
+  const file: FileName = names.includes(requested) ? requested : (names[0] ?? '')
 
   const patch = (changes: Record<string, string | null>) => {
     const updated = new URLSearchParams(params)
@@ -139,7 +148,7 @@ export default function FunctionWorkbench() {
 
   const save = () => {
     const changed: Record<string, string> = {}
-    for (const name of FILES) {
+    for (const name of names) {
       if (drafts[name] !== undefined && drafts[name] !== fn.files[name])
         changed[name] = drafts[name]
     }
@@ -245,7 +254,7 @@ export default function FunctionWorkbench() {
       {tab === 'code' ? (
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-5 py-2.5">
-            {FILES.map((name) => (
+            {names.map((name) => (
               <button
                 key={name}
                 type="button"

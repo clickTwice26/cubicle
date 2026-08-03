@@ -22,7 +22,7 @@ import docker
 import httpx
 from docker.errors import DockerException, NotFound
 
-from .. import live
+from .. import live, runtimes
 from ..config import settings
 from ..logging_setup import log
 from .builder import volume_name
@@ -366,9 +366,8 @@ class IsolatePool:
                     "CUBICLE_FUNCTION": spec.name,
                     "CUBICLE_NAMESPACE": spec.namespace,
                     "CUBICLE_TIMEOUT": str(spec.timeout_s),
-                    "PYTHONPATH": "/srv/.deps:/srv",
-                    "PYTHONDONTWRITEBYTECODE": "1",
                     "HOME": "/tmp",
+                    **runtimes.get(spec.runtime).env,
                 },
                 volumes={volume: {"bind": "/srv", "mode": "ro"}},
                 working_dir="/srv",

@@ -13,7 +13,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-Runtime = Literal["python312", "python311"]
+#: Spelled out rather than derived, so the OpenAPI schema carries the enum and
+#: clients can see the options. `test_runtimes` asserts it matches the registry,
+#: which is what stops the two drifting apart.
+Runtime = Literal[
+    "python313",
+    "python312",
+    "python311",
+    "python310",
+    "node22",
+    "node20",
+    "node18",
+]
 Method = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 CtxAccess = Literal["rw", "r", "w", "none"]
 #: What a function is triggered with. A label only — see `Function.function_type`.

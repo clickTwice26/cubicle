@@ -25,6 +25,7 @@ import type {
   NodeInfo,
   ReconcileReport,
   ReconcileResult,
+  RuntimeInfo,
   Secret,
   SetupStatus,
   TestResult,
@@ -56,6 +57,7 @@ export const keys = {
   users: ['users'] as const,
   update: ['update'] as const,
   resources: ['cluster', 'resources'] as const,
+  runtimes: ['runtimes'] as const,
   updateProgress: ['update', 'progress'] as const,
   context: (groupId: string, session: string) => ['context', groupId, session] as const,
 }
@@ -154,6 +156,36 @@ export function useSetClusterQuota(slug: string) {
       void client.invalidateQueries({ queryKey: keys.clusters })
       void client.invalidateQueries({ queryKey: keys.instance })
     },
+  })
+}
+
+/**
+ * Every runtime, and whether its image is on this node.
+ *
+ * Needed wherever a runtime is chosen, so it is cached rather than refetched:
+ * the set changes only when someone installs one.
+ */
+export function useRuntimes() {
+  return useQuery({
+    queryKey: keys.runtimes,
+    queryFn: () => api.get<RuntimeInfo[]>('/api/runtimes'),
+    staleTime: 60_000,
+  })
+}
+
+export function useInstallRuntime() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) => api.post<Record<string, string>>(`/api/runtimes/${key}/install`, {}),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.runtimes }),
+  })
+}
+
+export function useUninstallRuntime() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) => api.delete<Record<string, unknown>>(`/api/runtimes/${key}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.runtimes }),
   })
 }
 

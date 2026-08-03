@@ -388,3 +388,20 @@ export interface ClusterResources {
   memory: Headroom
   cpu: Headroom
 }
+
+export interface RuntimeInfo {
+  key: string
+  label: string
+  language: string
+  image: string
+  base_image: string
+  entry_file: string
+  deps_file: string
+  /** Ships with the instance; cannot be removed. */
+  builtin: boolean
+  summary: string
+  installed: boolean
+  /** How many functions are written in it. */
+  functions: number
+  state: 'idle' | 'installing' | 'installed' | 'failed'
+}

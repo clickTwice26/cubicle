@@ -12,7 +12,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential libpq-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY services/api/pyproject.toml ./
 RUN python -m pip install --upgrade pip \
     && python - <<'PY' > /tmp/requirements.txt
 import tomllib
@@ -22,7 +22,14 @@ print("\n".join(data["project"]["dependencies"]))
 PY
 RUN pip install -r /tmp/requirements.txt
 
-COPY . .
+COPY services/api/ ./
+
+# The runtime build contexts travel with the control plane: installing a runtime
+# means building its image through the Docker API, and the daemon needs the
+# context sent to it. Shipping them here is what lets that work against a remote
+# node as well as the local one.
+COPY services/runtime/ /opt/cubicle/runtime/
+
 RUN pip install --no-deps -e . \
     && chmod +x /app/docker-entrypoint.sh
 

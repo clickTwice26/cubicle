@@ -7,8 +7,17 @@ shared across a namespace, and the managed data services.
 
 from __future__ import annotations
 
-RUNTIME_LABELS = {"python312": "Python 3.12", "python311": "Python 3.11"}
-RUNTIME_TOML = {"python312": "python3.12", "python311": "python3.11"}
+from . import runtimes
+
+RUNTIME_LABELS = runtimes.labels()
+RUNTIME_TOML = {
+    key: (
+        f"python{spec.label.split()[-1]}"
+        if spec.language == "Python"
+        else f"node{spec.label.split()[-1]}"
+    )
+    for key, spec in runtimes.RUNTIMES.items()
+}
 CTX_LABELS = {"rw": "read+write", "r": "read only", "w": "write only", "none": "no access"}
 
 
@@ -117,6 +126,58 @@ Edit `handler.py` in the console or deploy from your machine with
 """
 
 
+def default_handler_js(name: str, namespace: str) -> str:
+    return f"""/**
+ * {namespace}/{name}
+ *
+ * Export `handler` by name or as the default. It may be async; the agent awaits
+ * whatever it returns.
+ */
+export async function handler(req, ctx) {{
+  const body = req.json()
+
+  // ctx.env — one store per cluster, readable from any function. Values resolve
+  // at invocation time, so changing one needs no redeploy.
+  const apiBase = ctx.env.PAYMENTS_API_BASE ?? 'https://payments.internal/v2'
+
+  // ctx — session-scoped, keyed by X-Cubicle-Session and shared with every
+  // function in this namespace for as long as the session lives.
+  const seen = ctx.get('seen', 0)
+  ctx.set('seen', seen + 1)
+  ctx.set('last_seen_by', '{name}')
+
+  // Anything written to the console is captured per invocation and shows up in
+  // the logs for this request, not on the container's stdout.
+  console.log('handling', req.method, req.path)
+
+  return {{
+    statusCode: 200,
+    body: {{
+      ok: true,
+      function: '{namespace}/{name}',
+      received: body,
+      seen: seen + 1,
+      api_base: apiBase,
+      request_id: req.requestId,
+    }},
+  }}
+}}
+"""
+
+
+def default_package_json(name: str) -> str:
+    return (
+        "{\n"
+        f'  "name": "{name}",\n'
+        '  "private": true,\n'
+        '  "type": "module",\n'
+        '  "version": "1.0.0",\n'
+        "  // Anything added here is installed with npm at deploy.\n"
+        '  "dependencies": {}\n'
+        "}\n"
+    ).replace("  // Anything added here is installed with npm at deploy.\n", "")
+
+
 def scaffold(
     *,
     name: str,
@@ -129,9 +190,20 @@ def scaffold(
     base_url: str,
     max_instances: int = 4,
 ) -> dict[str, str]:
+    spec = runtimes.get(runtime)
+    if spec.language == "JavaScript":
+        source = {
+            "handler.js": default_handler_js(name, namespace),
+            "package.json": default_package_json(name),
+        }
+    else:
+        source = {
+            "handler.py": default_handler(name, namespace),
+            "requirements.txt": default_requirements(),
+        }
+
     return {
-        "handler.py": default_handler(name, namespace),
-        "requirements.txt": default_requirements(),
+        **source,
         "cubicle.toml": default_toml(
             name=name,
             namespace=namespace,
