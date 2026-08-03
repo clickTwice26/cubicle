@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ClusterSwitcher } from './ClusterSwitcher'
 import { CommandPalette } from './CommandPalette'
+import { ResourceGauge } from './ResourceGauge'
 import { useInstance, useLogout, useMe, useServices, useUpdateStatus } from '../lib/hooks'
 import { useTheme } from '../lib/theme'
 import {
@@ -319,6 +320,7 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
               claiming it, the free space was split between them and neither
               ended up against the edge. */}
           <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
+            <ResourceGauge />
             <button
               type="button"
               onClick={() => setSearchOpen(true)}

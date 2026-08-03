@@ -9,6 +9,7 @@ import { setActiveCluster, useActiveCluster } from './cluster'
 import type {
   ApiKey,
   Cluster,
+  ClusterResources,
   ContextState,
   Dashboard,
   EnvVar,
@@ -54,6 +55,7 @@ export const keys = {
   apiKeys: ['api-keys'] as const,
   users: ['users'] as const,
   update: ['update'] as const,
+  resources: ['cluster', 'resources'] as const,
   updateProgress: ['update', 'progress'] as const,
   context: (groupId: string, session: string) => ['context', groupId, session] as const,
 }
@@ -152,6 +154,24 @@ export function useSetClusterQuota(slug: string) {
       void client.invalidateQueries({ queryKey: keys.clusters })
       void client.invalidateQueries({ queryKey: keys.instance })
     },
+  })
+}
+
+/**
+ * Headroom against the cluster's ceilings, refreshed on a timer.
+ *
+ * Polled rather than streamed: this sits in the header of every page, and a
+ * second SSE connection per tab would compete with the activity stream for the
+ * browser's per-origin limit.
+ */
+export function useClusterResources() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: [...keys.resources, scope],
+    queryFn: () => api.get<ClusterResources>('/api/cluster/resources'),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    retry: false,
   })
 }
 

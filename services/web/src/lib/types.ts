@@ -365,3 +365,22 @@ export interface ReconcileResult {
   skipped: string[]
   report: ReconcileReport
 }
+
+export interface Headroom {
+  /** False when no ceiling is set — there is then no such thing as "remaining". */
+  limited: boolean
+  used: number
+  /** Held by the cluster's own Postgres and Redis, not by any function. */
+  reserved: number
+  held: number
+  cap: number
+  free: number
+  pct: number
+}
+
+export interface ClusterResources {
+  cluster: string
+  isolates: number
+  memory: Headroom
+  cpu: Headroom
+}

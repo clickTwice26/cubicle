@@ -147,6 +147,26 @@ class UpdateProgress(BaseModel):
     exit_code: int | None = None
 
 
+class Headroom(BaseModel):
+    """One resource against its ceiling. ``limited`` false means there isn't one."""
+
+    limited: bool = False
+    used: float = 0
+    #: Held by the cluster's own Postgres and Redis, not by any function.
+    reserved: float = 0
+    held: float = 0
+    cap: float = 0
+    free: float = 0
+    pct: float = 0
+
+
+class ClusterResources(BaseModel):
+    cluster: str = ""
+    isolates: int = 0
+    memory: Headroom = Field(default_factory=Headroom)
+    cpu: Headroom = Field(default_factory=Headroom)
+
+
 class ClusterUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     ingress_domain: str | None = Field(default=None, max_length=255)

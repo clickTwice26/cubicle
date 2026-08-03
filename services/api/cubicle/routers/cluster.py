@@ -15,9 +15,10 @@ from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin
 from ..logging_setup import log
 from ..models import Invocation, Node
 from ..runtime.engine import LOCAL_HOST, EngineError, engines
+from ..runtime.invoker import quota_for
 from ..runtime.nodes import allocation_by_node, format_spec, refresh_nodes, register_node
 from ..runtime.pool import pool
-from ..schemas import NodeCreate, NodeOut
+from ..schemas import ClusterResources, NodeCreate, NodeOut
 
 router = APIRouter(prefix="/api/cluster", tags=["cluster"])
 
@@ -229,3 +230,51 @@ async def _storage_bytes() -> int:
         return await engines.call(LOCAL_HOST, _df)
     except Exception:  # noqa: BLE001 - storage is informational
         return 0
+
+
+@router.get("/resources", response_model=ClusterResources)
+async def resources(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
+    """Headroom against this cluster's ceilings, cheap enough to poll.
+
+    Deliberately not on the live SSE stream. The console shows this on every
+    page, and a second persistent connection per tab would compete with the
+    activity stream for the browser's per-origin limit — a five-second poll of
+    a small object is the lighter thing to do on the page you are not watching.
+
+    Committed comes from the pool rather than the database, because the pool is
+    what actually allocated the containers. Reserved is the cluster's own
+    Postgres and Redis, which spend the ceiling exactly as isolates do and are
+    the part an operator forgets when the numbers do not add up.
+    """
+    isolates = pool.snapshot(cluster=cluster.slug)
+    quota = await quota_for(db, cluster)
+
+    used_mb = sum(i["memory_mb"] for i in isolates)
+    used_cpu = round(sum(i["cpus"] for i in isolates), 2)
+    reserved_mb = quota.reserved_mb if quota else 0
+    reserved_cpu = round(quota.reserved_cpu, 2) if quota else 0.0
+
+    return {
+        "cluster": cluster.slug,
+        "isolates": len(isolates),
+        "memory": _headroom(cluster.max_memory_mb, used_mb, reserved_mb),
+        "cpu": _headroom(cluster.max_cpu_cores, used_cpu, reserved_cpu),
+    }
+
+
+def _headroom(cap: float, used: float, reserved: float) -> dict:
+    """One resource, whether or not it has a ceiling.
+
+    With no ceiling there is no such thing as "remaining", so `limited` is false
+    and the console shows what is committed instead of inventing a denominator.
+    """
+    held = used + reserved
+    return {
+        "limited": bool(cap),
+        "used": round(used, 2),
+        "reserved": round(reserved, 2),
+        "held": round(held, 2),
+        "cap": round(cap, 2),
+        "free": round(max(0.0, cap - held), 2) if cap else 0.0,
+        "pct": round(min(100.0, held / cap * 100), 1) if cap else 0.0,
+    }
