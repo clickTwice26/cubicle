@@ -16,6 +16,7 @@ from . import (
     runtimes,
     settings,
     setup,
+    triggers,
     update,
 )
 
@@ -36,6 +37,7 @@ ROUTERS = [
     runtimes.router,
     marketplace.router,
     settings.router,
+    triggers.router,
     update.router,
     invoke.router,
 ]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AiSidebar } from '../components/AiSidebar'
+import { TriggerPanel } from '../components/TriggerPanel'
 import { CodeEditor } from '../components/CodeEditor'
 import { Bars, Bolt, ChevronLeft, Play } from '../components/Icons'
 import {
@@ -66,7 +67,7 @@ function filesFor(files: Record<string, string> | undefined): string[] {
   return [...source, ...SHARED_FILES.filter((name) => present.includes(name))]
 }
 
-const TABS = ['code', 'test', 'instances', 'settings'] as const
+const TABS = ['code', 'test', 'triggers', 'instances', 'settings'] as const
 
 /** `httpx==0.28.1` and `httpx>=0.27` are the same requirement, differently pinned. */
 const pkgName = (line: string) =>
@@ -503,6 +504,8 @@ export default function FunctionWorkbench() {
           })
         }
       />
+
+      {tab === 'triggers' ? <TriggerPanel fn={fn} /> : null}
 
       {tab === 'settings' ? (
         <Card className="grid gap-5 p-5">

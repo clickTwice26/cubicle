@@ -441,3 +441,27 @@ export interface MarketplacePackage extends MarketplaceListing {
   files: Record<string, string>
   source_url: string
 }
+
+export interface Trigger {
+  id: string
+  function_id: string
+  kind: string
+  enabled: boolean
+  cron: string
+  timezone: string
+  /** The expression in plain language, so the console need not teach cron. */
+  description: string
+  next_run_at: string | null
+  last_run_at: string | null
+  last_status: string
+  last_error: string | null
+  run_count: number
+  created_at: string
+}
+
+export interface SchedulePreview {
+  valid: boolean
+  error: string
+  description: string
+  upcoming: string[]
+}

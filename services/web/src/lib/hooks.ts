@@ -28,9 +28,11 @@ import type {
   ReconcileReport,
   ReconcileResult,
   RuntimeInfo,
+  SchedulePreview,
   Secret,
   SetupStatus,
   TestResult,
+  Trigger,
   UpdateProgress,
   UpdateStatus,
   User,
@@ -62,6 +64,7 @@ export const keys = {
   market: (registry: string) => ['marketplace', registry] as const,
   marketPackage: (url: string) => ['marketplace', 'package', url] as const,
   runtimes: ['runtimes'] as const,
+  triggers: (id: string) => ['function', id, 'triggers'] as const,
   updateProgress: ['update', 'progress'] as const,
   context: (groupId: string, session: string) => ['context', groupId, session] as const,
 }
@@ -190,6 +193,67 @@ export function useUninstallRuntime() {
   return useMutation({
     mutationFn: (key: string) => api.delete<Record<string, unknown>>(`/api/runtimes/${key}`),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.runtimes }),
+  })
+}
+
+// ── triggers ─────────────────────────────────────────────────────────────────
+
+export function useTriggers(functionId: string) {
+  return useQuery({
+    queryKey: keys.triggers(functionId),
+    queryFn: () => api.get<Trigger[]>(`/api/functions/${functionId}/triggers`),
+    enabled: Boolean(functionId),
+    // A schedule that just fired should show its outcome without a reload.
+    refetchInterval: 30_000,
+  })
+}
+
+/** Validates as it is typed, and says when it would next fire. */
+export function useSchedulePreview(functionId: string, cron: string, timezone: string) {
+  return useQuery({
+    queryKey: ['schedule-preview', cron, timezone],
+    queryFn: () =>
+      api.get<SchedulePreview>(
+        `/api/functions/${functionId}/triggers/-/preview` +
+          `?cron=${encodeURIComponent(cron)}&timezone=${encodeURIComponent(timezone)}`,
+      ),
+    enabled: Boolean(functionId && cron.trim()),
+    retry: false,
+  })
+}
+
+export function useCreateTrigger(functionId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { cron: string; timezone: string; enabled?: boolean }) =>
+      api.post<Trigger>(`/api/functions/${functionId}/triggers`, body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.triggers(functionId) }),
+  })
+}
+
+export function useUpdateTrigger(functionId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      api.patch<Trigger>(`/api/functions/${functionId}/triggers/${id}`, body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.triggers(functionId) }),
+  })
+}
+
+export function useRunTrigger(functionId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<Trigger>(`/api/functions/${functionId}/triggers/${id}/run`, {}),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.triggers(functionId) }),
+  })
+}
+
+export function useDeleteTrigger(functionId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/functions/${functionId}/triggers/${id}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.triggers(functionId) }),
   })
 }
 

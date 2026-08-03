@@ -18,6 +18,7 @@ from .db import engine, get_redis, session_scope
 from .logging_setup import configure_logging, log
 from .models import Cluster, Function, FunctionVersion, Group, LogEntry, Node
 from .routers import ROUTERS
+from .runtime import scheduler
 from .runtime.engine import EngineError
 from .runtime.nodes import ensure_local_node
 from .runtime.pool import pool
@@ -41,14 +42,19 @@ async def lifespan(app: FastAPI):
         log.error("docker engine unavailable at boot", error=str(exc))
 
     await _adopt_isolates()
-    task = asyncio.create_task(_reconcile_loop())
+    tasks = [
+        asyncio.create_task(_reconcile_loop()),
+        asyncio.create_task(scheduler.run_forever()),
+    ]
 
     try:
         yield
     finally:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         await pool.close()
         await get_redis().aclose()
         await engine.dispose()

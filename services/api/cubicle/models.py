@@ -398,3 +398,38 @@ class ManagedService(Base, TimestampMixin):
     node_name: Mapped[str] = mapped_column(String(80), default="")
     password_ciphertext: Mapped[str | None] = mapped_column(Text)
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class Trigger(Base, TimestampMixin):
+    """Something other than an HTTP request that causes a function to run.
+
+    Only schedules for now. The interesting column is ``next_run_at``: the
+    scheduler claims work by updating it, so a due trigger is taken exactly
+    once even if two control planes are looking at the same row.
+    """
+
+    __tablename__ = "triggers"
+    __table_args__ = (Index("ix_triggers_due", "enabled", "next_run_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    function_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("functions.id", ondelete="CASCADE"), index=True
+    )
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), default="schedule")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    #: Standard five-field cron. The console writes it from a friendlier form,
+    #: but the stored value is the thing the scheduler reads.
+    cron: Mapped[str] = mapped_column(String(120), default="")
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+
+    #: When it is next owed a run. Null means it has no future — disabled, or
+    #: an expression that stopped parsing after a timezone change.
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status: Mapped[str] = mapped_column(String(20), default="")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    run_count: Mapped[int] = mapped_column(Integer, default=0)

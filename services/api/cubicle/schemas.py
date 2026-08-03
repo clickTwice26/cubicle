@@ -189,6 +189,38 @@ class MarketplaceInstall(BaseModel):
     name: str | None = Field(default=None, max_length=63)
 
 
+class TriggerCreate(BaseModel):
+    """A schedule. Five-field cron, read in the trigger's own timezone."""
+
+    cron: str = Field(min_length=1, max_length=120)
+    timezone: str = Field(default="UTC", max_length=64)
+    enabled: bool = True
+
+
+class TriggerUpdate(BaseModel):
+    cron: str | None = Field(default=None, min_length=1, max_length=120)
+    timezone: str | None = Field(default=None, max_length=64)
+    enabled: bool | None = None
+
+
+class TriggerOut(BaseModel):
+    id: UUID
+    function_id: UUID
+    kind: str
+    enabled: bool
+    cron: str
+    timezone: str
+    #: The expression in plain language, for a console that should not have to
+    #: teach cron to read a schedule back.
+    description: str = ""
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    last_status: str = ""
+    last_error: str | None = None
+    run_count: int = 0
+    created_at: datetime
+
+
 class ClusterUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     ingress_domain: str | None = Field(default=None, max_length=255)
