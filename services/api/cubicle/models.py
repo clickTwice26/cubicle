@@ -225,13 +225,21 @@ class Function(Base, TimestampMixin):
     method: Mapped[str] = mapped_column(String(10), default="POST")
     runtime: Mapped[str] = mapped_column(String(20), default="python312")
     ctx_access: Mapped[str] = mapped_column(String(6), default="rw")
-    memory_mb: Mapped[int] = mapped_column(Integer, default=512)
+    #: ``dependent`` may be sent a request body; ``independent`` takes no input
+    #: at all. Nothing in the runtime reads this — it is a label an operator
+    #: applies so a namespace says which of its functions are triggered with
+    #: data and which just run. Enforcing it would make it a contract, and it
+    #: is deliberately not one.
+    function_type: Mapped[str] = mapped_column(String(12), default="dependent")
+    #: Resource defaults are the smallest each control offers. A function that
+    #: needs more says so; one created and forgotten costs the least it can.
+    memory_mb: Mapped[int] = mapped_column(Integer, default=128)
     timeout_s: Mapped[int] = mapped_column(Integer, default=30)
     min_instances: Mapped[int] = mapped_column(Integer, default=0)
     #: Ceiling on concurrent isolates. Requests past it queue for a free one
     #: rather than starting another container, which is what stops one busy
     #: function from taking the whole node.
-    max_instances: Mapped[int] = mapped_column(Integer, default=4)
+    max_instances: Mapped[int] = mapped_column(Integer, default=1)
     node_pool: Mapped[str] = mapped_column(String(40), default="general")
     auth_required: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), default="active")

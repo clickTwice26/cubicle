@@ -26,12 +26,19 @@ import {
   useGroups,
 } from '../lib/hooks'
 import { useGroupSession } from '../lib/session'
-import { CTX_LABEL, RUNTIME_LABEL, slugify } from '../lib/format'
-import type { CtxAccess, Method, Runtime } from '../lib/types'
+import {
+  CTX_LABEL,
+  FUNCTION_TYPE_HINT,
+  FUNCTION_TYPE_LABEL,
+  RUNTIME_LABEL,
+  slugify,
+} from '../lib/format'
+import type { CtxAccess, FunctionType, Method, Runtime } from '../lib/types'
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
 const RUNTIMES: Runtime[] = ['python312', 'python311']
 const CTX_MODES: CtxAccess[] = ['rw', 'r', 'w', 'none']
+const TYPES: FunctionType[] = ['dependent', 'independent']
 
 export default function PlaygroundGroup() {
   const { groupId = '' } = useParams()
@@ -52,6 +59,7 @@ export default function PlaygroundGroup() {
   const [fnMethod, setFnMethod] = useState<Method>('POST')
   const [fnRuntime, setFnRuntime] = useState<Runtime>('python312')
   const [fnCtx, setFnCtx] = useState<CtxAccess>('rw')
+  const [fnType, setFnType] = useState<FunctionType>('dependent')
 
   const createFunction = useCreateFunction(groupId)
   const { data: context } = useContextState(groupId, session)
@@ -74,12 +82,14 @@ export default function PlaygroundGroup() {
         method: fnMethod,
         runtime: fnRuntime,
         ctx_access: fnCtx,
+        function_type: fnType,
       },
       {
         onSuccess: (fn) => {
           toast.push(`${fn.name} created`, 'ok', 'building')
           setCreating(false)
           setFnName('')
+          setFnType('dependent')
           // Straight into the editor — a new function is an empty handler
           // waiting to be written.
           open(fn.id)
@@ -184,6 +194,14 @@ export default function PlaygroundGroup() {
             render={(option) => RUNTIME_LABEL[option]}
           />
           <ChipGroup
+            label="Type"
+            hint="A label only — nothing is refused either way. Independent means the function takes no input; dependent means a body may be sent."
+            options={TYPES}
+            value={fnType}
+            onChange={setFnType}
+            render={(option) => FUNCTION_TYPE_LABEL[option]}
+          />
+          <ChipGroup
             label="Runtime context access"
             hint="What this function may do with the shared session context."
             options={CTX_MODES}
@@ -229,8 +247,16 @@ export default function PlaygroundGroup() {
               className="grid cursor-pointer grid-cols-1 items-center gap-3 border-b border-line px-5 py-3.5 transition last:border-b-0 hover:bg-panel-2 md:grid-cols-[82px_minmax(140px,1fr)_minmax(0,1.5fr)_96px_94px_146px]"
             >
               <MethodBadge method={fn.method} />
-              <div className="truncate text-sm font-semibold">
+              <div className="min-w-0 truncate text-sm font-semibold">
                 {fn.name}
+                {fn.function_type === 'independent' ? (
+                  <span
+                    className="ml-2 font-mono text-[10.5px] font-normal text-ink-3"
+                    title={FUNCTION_TYPE_HINT.independent}
+                  >
+                    independent
+                  </span>
+                ) : null}
                 {fn.version_status !== 'ready' ? (
                   <span
                     className="ml-2 font-mono text-[10.5px]"

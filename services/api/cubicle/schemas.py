@@ -16,6 +16,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 Runtime = Literal["python312", "python311"]
 Method = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 CtxAccess = Literal["rw", "r", "w", "none"]
+#: What a function is triggered with. A label only — see `Function.function_type`.
+FunctionType = Literal["dependent", "independent"]
 Role = Literal["owner", "admin", "developer", "readonly"]
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$|^[a-z0-9]$")
@@ -293,8 +295,13 @@ class FunctionCreate(BaseModel):
     method: Method = "POST"
     runtime: Runtime = "python312"
     ctx_access: CtxAccess = "rw"
-    memory_mb: int = Field(default=512, ge=64, le=8192)
+    function_type: FunctionType = "dependent"
+    #: The smallest each control offers, so a function created and left alone
+    #: holds the least it can until someone asks for more.
+    memory_mb: int = Field(default=128, ge=64, le=8192)
     timeout_s: int = Field(default=30, ge=1, le=900)
+    min_instances: int = Field(default=0, ge=0, le=64)
+    max_instances: int = Field(default=1, ge=1, le=64)
     auth_required: bool = True
     node_pool: str = "general"
 
@@ -309,6 +316,7 @@ class FunctionUpdate(BaseModel):
     method: Method | None = None
     runtime: Runtime | None = None
     ctx_access: CtxAccess | None = None
+    function_type: FunctionType | None = None
     memory_mb: int | None = Field(default=None, ge=64, le=8192)
     timeout_s: int | None = Field(default=None, ge=1, le=900)
     min_instances: int | None = Field(default=None, ge=0, le=20)
@@ -332,6 +340,7 @@ class FunctionOut(ORMModel):
     runtime: Runtime
     runtime_label: str = ""
     ctx_access: CtxAccess
+    function_type: FunctionType = "dependent"
     memory_mb: int
     timeout_s: int
     min_instances: int

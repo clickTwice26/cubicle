@@ -62,6 +62,17 @@ export const CTX_LABEL: Record<string, string> = {
   none: 'no access',
 }
 
+export const FUNCTION_TYPE_LABEL: Record<string, string> = {
+  dependent: 'dependent',
+  independent: 'independent',
+}
+
+/** What the label claims, in the one sentence a tooltip has room for. */
+export const FUNCTION_TYPE_HINT: Record<string, string> = {
+  dependent: 'May be sent a request body. Not required to have one.',
+  independent: 'Takes no input — it just runs.',
+}
+
 export function statusTone(status: string): 'ok' | 'warn' | 'err' | 'idle' {
   if (status === 'active' || status === 'ready' || status === 'running') return 'ok'
   if (status === 'degraded' || status === 'draining' || status === 'building') return 'warn'

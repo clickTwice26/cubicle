@@ -1,6 +1,8 @@
 export type Runtime = 'python312' | 'python311'
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 export type CtxAccess = 'rw' | 'r' | 'w' | 'none'
+/** Whether anything is sent to the function. A label; the runtime ignores it. */
+export type FunctionType = 'dependent' | 'independent'
 export type Role = 'owner' | 'admin' | 'developer' | 'readonly'
 
 export interface Cluster {
@@ -97,6 +99,7 @@ export interface FunctionSummary {
   runtime: Runtime
   runtime_label: string
   ctx_access: CtxAccess
+  function_type: FunctionType
   memory_mb: number
   timeout_s: number
   min_instances: number

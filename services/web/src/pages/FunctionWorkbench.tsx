@@ -32,12 +32,13 @@ import {
   useUpdateFunction,
 } from '../lib/hooks'
 import { useGroupSession } from '../lib/session'
-import { CTX_LABEL, RUNTIME_LABEL, statusTone } from '../lib/format'
-import type { CtxAccess, Method, Runtime, TestResult } from '../lib/types'
+import { CTX_LABEL, FUNCTION_TYPE_LABEL, RUNTIME_LABEL, statusTone } from '../lib/format'
+import type { CtxAccess, FunctionType, Method, Runtime, TestResult } from '../lib/types'
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
 const RUNTIMES: Runtime[] = ['python312', 'python311']
 const CTX_MODES: CtxAccess[] = ['rw', 'r', 'w', 'none']
+const FUNCTION_TYPES: FunctionType[] = ['dependent', 'independent']
 const MEMORY = [128, 256, 512, 1024]
 const TIMEOUTS = [5, 30, 60, 300]
 const MAX_INSTANCES = [1, 2, 4, 8]
@@ -496,6 +497,14 @@ export default function FunctionWorkbench() {
             onChange={(runtime) => update.mutate({ runtime })}
             render={(option) => RUNTIME_LABEL[option]}
             hint="Changing the interpreter rebuilds the current version."
+          />
+          <ChipGroup
+            label="Type"
+            hint="A label for whoever reads this namespace next. Nothing is enforced: an independent function sent a body still receives it."
+            options={FUNCTION_TYPES}
+            value={fn.function_type}
+            onChange={(function_type) => update.mutate({ function_type })}
+            render={(option) => FUNCTION_TYPE_LABEL[option]}
           />
           <ChipGroup
             label="Runtime context access"
