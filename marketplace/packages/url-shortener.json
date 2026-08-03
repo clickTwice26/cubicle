@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "slug": "url-shortener",
+  "name": "URL shortener",
+  "summary": "Stores links in the session context and redirects to them.",
+  "author": "cubicle",
+  "license": "MIT",
+  "version": "1.0.0",
+  "runtime": "node22",
+  "method": "POST",
+  "ctx_access": "rw",
+  "function_type": "dependent",
+  "memory_mb": 128,
+  "timeout_s": 10,
+  "tags": [
+    "javascript",
+    "starter"
+  ],
+  "env": [],
+  "readme": "POST {\"url\": \"...\"} to store one and get a code back. POST {\"code\": \"...\"} to be redirected. Links live as long as the session.",
+  "files": {
+    "handler.js": "const ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789'\n\nfunction code(seed) {\n  let out = ''\n  for (let i = 0; i < 6; i += 1) out += ALPHABET[(seed + i * 31) % ALPHABET.length]\n  return out\n}\n\nexport function handler(req, ctx) {\n  const body = req.json() ?? {}\n\n  if (body.url) {\n    // Seeded from the length and first character rather than at random:\n    // the same URL in a session should come back as the same code.\n    const key = code(body.url.length + body.url.charCodeAt(0))\n    ctx.set(`link:${key}`, body.url)\n    return { statusCode: 201, body: { code: key } }\n  }\n\n  if (body.code) {\n    const target = ctx.get(`link:${body.code}`, null)\n    if (!target) return { statusCode: 404, body: { error: 'unknown code' } }\n    return { statusCode: 302, headers: { location: target }, body: null }\n  }\n\n  return { statusCode: 400, body: { error: 'send either url or code' } }\n}\n",
+    "package.json": "{\n  \"name\": \"url-shortener\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": {}\n}\n"
+  }
+}

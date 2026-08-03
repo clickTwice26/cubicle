@@ -405,3 +405,39 @@ export interface RuntimeInfo {
   functions: number
   state: 'idle' | 'installing' | 'installed' | 'failed'
 }
+
+export interface MarketplaceListing {
+  slug: string
+  name: string
+  summary: string
+  author: string
+  runtime: string
+  language: string
+  tags: string[]
+  url: string
+  version: string
+  homepage: string
+  /** Whether this instance can actually run it today. */
+  runtime_installed: boolean
+}
+
+export interface MarketplaceIndex {
+  registry: string
+  is_default: boolean
+  packages: MarketplaceListing[]
+}
+
+export interface MarketplacePackage extends MarketplaceListing {
+  license: string
+  runtime_label: string
+  method: Method
+  ctx_access: CtxAccess
+  function_type: FunctionType
+  memory_mb: number
+  timeout_s: number
+  /** What it needs in Global env. Declared by the author, never set for you. */
+  env: { key: string; required: boolean; description: string }[]
+  readme: string
+  files: Record<string, string>
+  source_url: string
+}

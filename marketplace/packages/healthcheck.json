@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "slug": "healthcheck",
+  "name": "Health check",
+  "summary": "Answers 200 with uptime and the current version. Takes no input.",
+  "author": "cubicle",
+  "license": "MIT",
+  "version": "1.0.0",
+  "runtime": "python312",
+  "method": "GET",
+  "ctx_access": "none",
+  "function_type": "independent",
+  "memory_mb": 128,
+  "timeout_s": 5,
+  "tags": [
+    "monitoring",
+    "starter"
+  ],
+  "env": [],
+  "readme": "A probe to point a monitor at. Independent: it reads nothing from the request.",
+  "files": {
+    "handler.py": "import os\nimport time\n\nSTARTED = time.time()\n\n\ndef handler(req, ctx):\n    \"\"\"Answer 200 for as long as this instance is able to.\"\"\"\n    return {\n        \"statusCode\": 200,\n        \"body\": {\n            \"ok\": True,\n            \"uptime_s\": round(time.time() - STARTED, 1),\n            \"function\": os.environ.get(\"CUBICLE_FUNCTION\", \"\"),\n        },\n    }\n",
+    "requirements.txt": "# No dependencies.\n"
+  }
+}

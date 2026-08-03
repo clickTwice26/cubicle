@@ -21,6 +21,8 @@ import type {
   JoinableNode,
   LogLine,
   ManagedService,
+  MarketplaceIndex,
+  MarketplacePackage,
   Metering,
   NodeInfo,
   ReconcileReport,
@@ -57,6 +59,8 @@ export const keys = {
   users: ['users'] as const,
   update: ['update'] as const,
   resources: ['cluster', 'resources'] as const,
+  market: (registry: string) => ['marketplace', registry] as const,
+  marketPackage: (url: string) => ['marketplace', 'package', url] as const,
   runtimes: ['runtimes'] as const,
   updateProgress: ['update', 'progress'] as const,
   context: (groupId: string, session: string) => ['context', groupId, session] as const,
@@ -186,6 +190,46 @@ export function useUninstallRuntime() {
   return useMutation({
     mutationFn: (key: string) => api.delete<Record<string, unknown>>(`/api/runtimes/${key}`),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.runtimes }),
+  })
+}
+
+// ── marketplace ──────────────────────────────────────────────────────────────
+
+export function useMarketplace(registry: string) {
+  return useQuery({
+    queryKey: keys.market(registry),
+    queryFn: () =>
+      api.get<MarketplaceIndex>(
+        registry ? `/api/marketplace?url=${encodeURIComponent(registry)}` : '/api/marketplace',
+      ),
+    retry: false,
+    staleTime: 60_000,
+  })
+}
+
+/** The whole package including its source, so it can be read before installing. */
+export function useMarketplacePackage(url: string | null) {
+  return useQuery({
+    queryKey: keys.marketPackage(url ?? ''),
+    queryFn: () =>
+      api.get<MarketplacePackage>(`/api/marketplace/package?url=${encodeURIComponent(url ?? '')}`),
+    enabled: Boolean(url),
+    retry: false,
+  })
+}
+
+export function useInstallFromMarketplace() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { url: string; group_id: string; name?: string }) =>
+      api.post<FunctionDetail & { declared_env: MarketplacePackage['env'] }>(
+        '/api/marketplace/install',
+        body,
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.functions })
+      void client.invalidateQueries({ queryKey: keys.groups })
+    },
   })
 }
 

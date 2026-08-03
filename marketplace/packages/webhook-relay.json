@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "slug": "webhook-relay",
+  "name": "Webhook relay",
+  "summary": "Verifies an HMAC signature and forwards the payload onward.",
+  "author": "cubicle",
+  "license": "MIT",
+  "version": "1.0.0",
+  "runtime": "python312",
+  "method": "POST",
+  "ctx_access": "rw",
+  "function_type": "dependent",
+  "memory_mb": 128,
+  "timeout_s": 30,
+  "tags": [
+    "webhooks",
+    "security"
+  ],
+  "env": [
+    {
+      "key": "WEBHOOK_SECRET",
+      "required": true,
+      "description": "Shared secret the sender signs with."
+    },
+    {
+      "key": "RELAY_URL",
+      "required": true,
+      "description": "Where a verified payload is forwarded."
+    }
+  ],
+  "readme": "Set WEBHOOK_SECRET and RELAY_URL in Global env before invoking. An unsigned or badly signed request is refused with 401.",
+  "files": {
+    "handler.py": "import hashlib\nimport hmac\n\nimport httpx\nfrom cubicle_context import env\n\n\ndef handler(req, ctx):\n    secret = env.get(\"WEBHOOK_SECRET\", \"\")\n    target = env.get(\"RELAY_URL\", \"\")\n    if not secret or not target:\n        return {\"statusCode\": 500,\n                \"body\": {\"error\": \"set WEBHOOK_SECRET and RELAY_URL in Global env\"}}\n\n    signature = req.header(\"x-signature\", \"\")\n    expected = hmac.new(secret.encode(), req.text().encode(), hashlib.sha256).hexdigest()\n    # compare_digest, not ==: the timing of a bytewise comparison leaks\n    # how much of the signature was right.\n    if not hmac.compare_digest(signature, expected):\n        return {\"statusCode\": 401, \"body\": {\"error\": \"bad signature\"}}\n\n    forwarded = httpx.post(target, json=req.json(), timeout=10)\n    ctx.set(\"last_relayed_status\", forwarded.status_code)\n    return {\"statusCode\": 202, \"body\": {\"relayed\": forwarded.status_code}}\n",
+    "requirements.txt": "httpx==0.28.1\n"
+  }
+}

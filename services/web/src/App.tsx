@@ -12,6 +12,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Live = lazy(() => import('./pages/Live'))
 const FunctionDetail = lazy(() => import('./pages/FunctionDetail'))
 const Playground = lazy(() => import('./pages/Playground'))
+const Marketplace = lazy(() => import('./pages/Marketplace'))
 const PlaygroundGroup = lazy(() => import('./pages/PlaygroundGroup'))
 const FunctionWorkbench = lazy(() => import('./pages/FunctionWorkbench'))
 const GlobalEnv = lazy(() => import('./pages/GlobalEnv'))
@@ -100,6 +101,14 @@ export default function App() {
           element={
             <Guarded>
               <FunctionWorkbench />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/marketplace"
+          element={
+            <Guarded>
+              <Marketplace />
             </Guarded>
           }
         />

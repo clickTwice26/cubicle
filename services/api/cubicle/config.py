@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     function_network: str = "cubicle_fn"
     #: Kept for instances that set them in .env before runtimes became a
     #: registry. Anything not named here is tagged `<repository>:<version>`.
+    #: Where the function marketplace is read from. A registry is a JSON index
+    #: at a URL, so pointing this at a company's own is a config change rather
+    #: than a fork.
+    marketplace_url: str = (
+        "https://raw.githubusercontent.com/clickTwice26/cubicle/main/marketplace/index.json"
+    )
     runtime_image_py312: str = ""
     runtime_image_py311: str = ""
     isolate_idle_ttl: int = 900

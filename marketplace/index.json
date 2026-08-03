@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "updated": "2026-08-03",
+  "packages": [
+    {
+      "slug": "healthcheck",
+      "name": "Health check",
+      "summary": "Answers 200 with uptime and the current version. Takes no input.",
+      "author": "cubicle",
+      "runtime": "python312",
+      "version": "1.0.0",
+      "tags": ["monitoring", "starter"],
+      "url": "packages/healthcheck.json"
+    },
+    {
+      "slug": "webhook-relay",
+      "name": "Webhook relay",
+      "summary": "Verifies an HMAC signature and forwards the payload onward.",
+      "author": "cubicle",
+      "runtime": "python312",
+      "version": "1.0.0",
+      "tags": ["webhooks", "security"],
+      "url": "packages/webhook-relay.json"
+    },
+    {
+      "slug": "url-shortener",
+      "name": "URL shortener",
+      "summary": "Stores links in the session context and redirects to them.",
+      "author": "cubicle",
+      "runtime": "node22",
+      "version": "1.0.0",
+      "tags": ["javascript", "starter"],
+      "url": "packages/url-shortener.json"
+    }
+  ]
+}

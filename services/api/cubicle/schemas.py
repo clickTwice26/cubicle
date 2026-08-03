@@ -178,6 +178,17 @@ class ClusterResources(BaseModel):
     cpu: Headroom = Field(default_factory=Headroom)
 
 
+class MarketplaceInstall(BaseModel):
+    """Install a published package into one of this cluster's namespaces."""
+
+    #: The package document's URL. Refetched server-side rather than trusted
+    #: from the browser, so what is built is what the registry actually serves.
+    url: str = Field(max_length=1000)
+    group_id: UUID
+    #: Defaults to the package's own slug.
+    name: str | None = Field(default=None, max_length=63)
+
+
 class ClusterUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     ingress_domain: str | None = Field(default=None, max_length=255)
