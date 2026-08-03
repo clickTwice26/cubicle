@@ -22,11 +22,13 @@ import docker
 from docker.errors import DockerException, NotFound
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..logging_setup import log
-from ..models import Cluster, Function, ManagedService, Node
+from ..models import Cluster, Function, Group, ManagedService, Node
 from .engine import LOCAL_HOST, engines
-from .pool import ISOLATE_ROLE, ROLE_LABEL, pool
+from .invoker import quota_for
+from .pool import ISOLATE_ROLE, ROLE_LABEL, cpu_quota_for, pool
 
 #: A container started moments ago may not be in the pool yet — it is registered
 #: only once it answers readiness. Calling that an orphan and removing it would
@@ -96,7 +98,12 @@ async def scan(db: AsyncSession) -> list[Finding]:
 
     clusters = (await db.execute(select(Cluster))).scalars().all()
     by_slug = {c.slug: c for c in clusters}
-    functions = {str(fid) for fid in (await db.execute(select(Function.id))).scalars().all()}
+    function_rows = (
+        (await db.execute(select(Function).options(selectinload(Function.group)).join(Group)))
+        .scalars()
+        .all()
+    )
+    functions = {str(f.id) for f in function_rows}
     services = (await db.execute(select(ManagedService))).scalars().all()
     nodes = (await db.execute(select(Node))).scalars().all()
 
@@ -303,6 +310,8 @@ async def scan(db: AsyncSession) -> list[Finding]:
                 )
             )
 
+    findings.extend(await _allocation(db, clusters, function_rows, by_slug))
+
     order = {"error": 0, "warn": 1, "info": 2}
     findings.sort(key=lambda f: (order.get(f.severity, 3), f.kind, f.id))
     return findings
@@ -354,6 +363,26 @@ async def _apply_one(db: AsyncSession, finding: Finding) -> None:
         await engines.call(host, _remove_container(finding.target["container"]))
         return
 
+    if finding.kind in {
+        "cluster_over_ceiling",
+        "function_over_max_instances",
+        "isolate_wrong_size",
+    }:
+        # One finding covers several containers, and any of them may have gone
+        # busy since the scan proposed it. Each is re-checked under the pool's
+        # lock and skipped if it is now serving a request — getting back under
+        # a ceiling never justifies failing one in flight.
+        skipped = 0
+        for container in finding.target.get("containers", []):
+            if await pool.reclaim_if_idle(container) == "busy":
+                skipped += 1
+        if skipped:
+            raise RuntimeError(
+                f"{skipped} instance{'' if skipped == 1 else 's'} went busy and "
+                "were left alone. Scan again once they are idle."
+            )
+        return
+
     if finding.kind in {"service_container_missing", "service_not_running"}:
         service = await db.get(ManagedService, uuid.UUID(finding.target["service"]))
         if service is None:
@@ -383,3 +412,195 @@ def _remove_container(container_id: str):
             client.containers.get(container_id).remove(force=True)
 
     return _run
+
+
+# ── allocation against the ceilings ──────────────────────────────────────────
+
+
+async def _allocation(
+    db: AsyncSession,
+    clusters: list,
+    functions: list,
+    by_slug: dict,
+) -> list[Finding]:
+    """Whether what is running still fits the limits that were configured.
+
+    Admission control refuses anything that would breach a ceiling, so a breach
+    here does not mean the check failed — it means the ceiling moved after the
+    containers started, or they were adopted across a control-plane restart,
+    which re-attaches to whatever was running without re-testing it against a
+    limit that may have changed since.
+
+    Nothing busy is ever proposed for reclaim. Getting back under a ceiling is
+    not worth failing a request that is mid-flight.
+    """
+    findings: list[Finding] = []
+    tracked = pool.tracked()
+
+    for cluster in clusters:
+        mine = [i for i in tracked if i.cluster == cluster.slug]
+        quota = await quota_for(db, cluster)
+
+        # ── the cluster's own ceilings ───────────────────────────────────────
+        if quota:
+            used_mb = sum(i.memory_mb for i in mine)
+            used_cpu = sum(cpu_quota_for(i.memory_mb) / 1_000_000_000 for i in mine)
+            for label, held, reserved, cap, unit in (
+                ("memory", used_mb, quota.reserved_mb, quota.memory_cap_mb, "MB"),
+                ("CPU", used_cpu, quota.reserved_cpu, quota.cpu_cap, "cores"),
+            ):
+                total = held + reserved
+                if not cap or total <= cap:
+                    continue
+                idle = sorted(
+                    (i for i in mine if not i.busy), key=lambda i: (i.invocations, i.last_used)
+                )
+                findings.append(
+                    Finding(
+                        id=f"over-ceiling:{cluster.slug}:{label}",
+                        kind="cluster_over_ceiling",
+                        severity="error",
+                        cluster=cluster.slug,
+                        summary=(
+                            f"{cluster.name} holds {_num(total)} {unit} against a "
+                            f"{_num(cap)} {unit} ceiling"
+                        ),
+                        detail=(
+                            f"{len(mine)} warm instance{'' if len(mine) == 1 else 's'} hold "
+                            f"{_num(held)} {unit} and the cluster's own Postgres and Redis hold "
+                            f"{_num(reserved)} {unit}. Admission control refuses anything that "
+                            "would breach the ceiling, so this means the ceiling was lowered "
+                            "while these were already running, or they were adopted after a "
+                            "restart. New requests are already being refused."
+                            + (
+                                ""
+                                if idle
+                                else " Every instance is busy, so nothing can be "
+                                "reclaimed without failing a live request."
+                            )
+                        ),
+                        fix=(
+                            f"Reclaim {len(idle)} idle instance{'' if len(idle) == 1 else 's'}"
+                            if idle
+                            else None
+                        ),
+                        target={"containers": [i.container_id for i in idle]},
+                    )
+                )
+
+        # ── each function against its own ceiling ────────────────────────────
+        for fn in functions:
+            if fn.group.cluster_id != cluster.id:
+                continue
+            running = [i for i in mine if i.function_id == str(fn.id)]
+
+            if len(running) > fn.max_instances:
+                idle = sorted(
+                    (i for i in running if not i.busy),
+                    key=lambda i: (i.invocations, i.last_used),
+                )
+                surplus = idle[: len(running) - fn.max_instances]
+                findings.append(
+                    Finding(
+                        id=f"over-max-instances:{fn.id}",
+                        kind="function_over_max_instances",
+                        severity="error",
+                        cluster=cluster.slug,
+                        summary=(
+                            f"{fn.group.ns}/{fn.name} has {len(running)} warm instances "
+                            f"but allows {fn.max_instances}"
+                        ),
+                        detail=(
+                            "The ceiling was lowered while these were running, or they were "
+                            "adopted after a restart. They hold memory the function is no "
+                            f"longer configured to use — {_num(sum(i.memory_mb for i in running))}"
+                            f" MB against {_num(fn.max_instances * fn.memory_mb)} MB allowed."
+                        ),
+                        fix=(
+                            f"Reclaim {len(surplus)} idle instance"
+                            f"{'' if len(surplus) == 1 else 's'}"
+                            if surplus
+                            else None
+                        ),
+                        target={"containers": [i.container_id for i in surplus]},
+                    )
+                )
+
+            # An isolate keeps the size it started with; changing the setting
+            # does not resize a running container.
+            wrong = [i for i in running if i.memory_mb != fn.memory_mb and not i.busy]
+            if wrong:
+                findings.append(
+                    Finding(
+                        id=f"wrong-size:{fn.id}",
+                        kind="isolate_wrong_size",
+                        severity="warn",
+                        cluster=cluster.slug,
+                        summary=(
+                            f"{fn.group.ns}/{fn.name} has {len(wrong)} instance"
+                            f"{'' if len(wrong) == 1 else 's'} running at the wrong size"
+                        ),
+                        detail=(
+                            f"They hold {', '.join(sorted({f'{i.memory_mb} MB' for i in wrong}))} "
+                            f"while the function is set to {fn.memory_mb} MB. A container keeps "
+                            "the size it started with, so the setting only takes effect on the "
+                            "next one — and the cluster is charged for what they actually hold."
+                        ),
+                        fix=f"Reclaim {len(wrong)} instance{'' if len(wrong) == 1 else 's'}",
+                        target={"containers": [i.container_id for i in wrong]},
+                    )
+                )
+
+            # ── configuration that can never be satisfied ────────────────────
+            if quota:
+                room = quota.memory_cap_mb - quota.reserved_mb
+                if fn.memory_mb > room:
+                    findings.append(
+                        Finding(
+                            id=f"never-fits:{fn.id}",
+                            kind="function_cannot_fit",
+                            severity="warn",
+                            cluster=cluster.slug,
+                            summary=(
+                                f"{fn.group.ns}/{fn.name} can never start under "
+                                f"{cluster.name}'s ceiling"
+                            ),
+                            detail=(
+                                f"It asks for {fn.memory_mb} MB, and the cluster's "
+                                f"{quota.memory_cap_mb} MB ceiling has only {_num(room)} MB left "
+                                "once its Postgres and Redis are counted. Every request to it is "
+                                "refused immediately rather than queued."
+                            ),
+                            fix=None,
+                            target={"function": str(fn.id)},
+                        )
+                    )
+                elif fn.max_instances * fn.memory_mb > room:
+                    fits = int(room // fn.memory_mb)
+                    findings.append(
+                        Finding(
+                            id=f"cannot-reach-max:{fn.id}",
+                            kind="function_cannot_reach_max",
+                            severity="info",
+                            cluster=cluster.slug,
+                            summary=(
+                                f"{fn.group.ns}/{fn.name} cannot reach its "
+                                f"{fn.max_instances}-instance ceiling"
+                            ),
+                            detail=(
+                                f"{fn.max_instances} × {fn.memory_mb} MB exceeds the "
+                                f"{_num(room)} MB {cluster.name} has left under its ceiling. It "
+                                f"will stop at {fits} and queue the rest, which is a working "
+                                "arrangement — just not the one the setting describes."
+                            ),
+                            fix=None,
+                            target={"function": str(fn.id)},
+                        )
+                    )
+
+    return findings
+
+
+def _num(value: float) -> str:
+    """Whole numbers without a trailing .0, fractions to two places."""
+    return f"{value:.2f}".rstrip("0").rstrip(".") if value % 1 else f"{value:.0f}"

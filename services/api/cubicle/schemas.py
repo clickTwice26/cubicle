@@ -322,6 +322,8 @@ class FunctionCreate(BaseModel):
     timeout_s: int = Field(default=30, ge=1, le=900)
     min_instances: int = Field(default=0, ge=0, le=64)
     max_instances: int = Field(default=1, ge=1, le=64)
+    #: 0 means "use the instance-wide TTL".
+    idle_timeout_s: int = Field(default=0, ge=0, le=86400)
     auth_required: bool = True
     node_pool: str = "general"
 
@@ -337,6 +339,7 @@ class FunctionUpdate(BaseModel):
     runtime: Runtime | None = None
     ctx_access: CtxAccess | None = None
     function_type: FunctionType | None = None
+    idle_timeout_s: int | None = Field(default=None, ge=0, le=86400)
     memory_mb: int | None = Field(default=None, ge=64, le=8192)
     timeout_s: int | None = Field(default=None, ge=1, le=900)
     min_instances: int | None = Field(default=None, ge=0, le=20)
@@ -361,6 +364,10 @@ class FunctionOut(ORMModel):
     runtime_label: str = ""
     ctx_access: CtxAccess
     function_type: FunctionType = "dependent"
+    idle_timeout_s: int = 0
+    #: What `idle_timeout_s` resolves to once the instance default is applied,
+    #: so the console can say "15m (instance default)" without knowing it.
+    effective_idle_timeout_s: int = 0
     memory_mb: int
     timeout_s: int
     min_instances: int

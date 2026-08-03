@@ -240,6 +240,10 @@ class Function(Base, TimestampMixin):
     #: rather than starting another container, which is what stops one busy
     #: function from taking the whole node.
     max_instances: Mapped[int] = mapped_column(Integer, default=1)
+    #: Seconds an instance may sit idle before it is reclaimed. Zero defers to
+    #: the instance-wide TTL, which is what every function did before this
+    #: existed — a function nobody has an opinion about keeps the old behaviour.
+    idle_timeout_s: Mapped[int] = mapped_column(Integer, default=0)
     node_pool: Mapped[str] = mapped_column(String(40), default="general")
     auth_required: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), default="active")

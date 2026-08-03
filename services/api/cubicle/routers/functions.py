@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from .. import analytics
 from .. import clusters as cluster_svc
+from ..config import settings
 from ..crypto import decrypt, encrypt, mask
 from ..db import session_scope
 from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireDeveloper
@@ -66,6 +67,8 @@ def serialize_function(
         "runtime_label": RUNTIME_LABELS.get(fn.runtime, fn.runtime),
         "ctx_access": fn.ctx_access,
         "function_type": fn.function_type,
+        "idle_timeout_s": fn.idle_timeout_s,
+        "effective_idle_timeout_s": fn.idle_timeout_s or settings.isolate_idle_ttl,
         "memory_mb": fn.memory_mb,
         "timeout_s": fn.timeout_s,
         "min_instances": fn.min_instances,
@@ -259,6 +262,7 @@ async def create_function(
         runtime=payload.runtime,
         ctx_access=payload.ctx_access,
         function_type=payload.function_type,
+        idle_timeout_s=payload.idle_timeout_s,
         memory_mb=payload.memory_mb,
         timeout_s=payload.timeout_s,
         min_instances=payload.min_instances,

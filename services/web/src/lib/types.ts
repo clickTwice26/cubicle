@@ -100,6 +100,10 @@ export interface FunctionSummary {
   runtime_label: string
   ctx_access: CtxAccess
   function_type: FunctionType
+  /** Seconds idle before an instance is reclaimed. 0 defers to the instance default. */
+  idle_timeout_s: number
+  /** What that resolves to once the instance default is applied. */
+  effective_idle_timeout_s: number
   memory_mb: number
   timeout_s: number
   min_instances: number

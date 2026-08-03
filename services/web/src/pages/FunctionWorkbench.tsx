@@ -42,6 +42,19 @@ const FUNCTION_TYPES: FunctionType[] = ['dependent', 'independent']
 const MEMORY = [128, 256, 512, 1024]
 const TIMEOUTS = [5, 30, 60, 300]
 const MAX_INSTANCES = [1, 2, 4, 8]
+
+//: 0 defers to the instance-wide TTL, which is what every function did before
+//: this setting existed. The rest span seconds to minutes, which is the range
+//: worth choosing in — anything longer is what the instance default is for.
+const KILL_TIMES = [0, 15, 30, 60, 300, 900]
+const KILL_MIN = 5
+const KILL_MAX = 3600
+
+function killLabel(seconds: number) {
+  if (seconds % 60 === 0 && seconds >= 60) return `${seconds / 60}m`
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
 const FILES = ['handler.py', 'requirements.txt', 'cubicle.toml', 'README.md'] as const
 
 const TABS = ['code', 'test', 'instances', 'settings'] as const
@@ -546,6 +559,11 @@ export default function FunctionWorkbench() {
               onChange={(max_instances) => update.mutate({ max_instances })}
               render={(option) => `${option} max`}
             />
+            <KillTime
+              value={fn.idle_timeout_s}
+              fallback={fn.effective_idle_timeout_s}
+              onChange={(idle_timeout_s) => update.mutate({ idle_timeout_s })}
+            />
           </div>
           <div className="rounded-[9px] border border-line bg-panel-2 px-3.5 py-2.5 text-[12.5px] text-ink-2">
             At most <span className="font-mono font-semibold text-ink">{fn.max_instances}</span>{' '}
@@ -712,6 +730,96 @@ function Instances({
         loses the request it is serving.
       </div>
     </Card>
+  )
+}
+
+/**
+ * How long an idle instance may live, in the range worth choosing in.
+ *
+ * Presets cover seconds to minutes; anything beyond that is what the instance
+ * default is for. The field takes a value that is not on the list, because the
+ * right number here depends on how often a particular function is called and
+ * no set of presets will guess it.
+ *
+ * Committed on blur or Enter rather than per keystroke: this saves immediately,
+ * and typing "300" would otherwise apply 3, then 30, then 300.
+ */
+function KillTime({
+  value,
+  fallback,
+  onChange,
+}: {
+  value: number
+  fallback: number
+  onChange: (next: number) => void
+}) {
+  const [draft, setDraft] = useState('')
+  const custom = value !== 0 && !KILL_TIMES.includes(value)
+
+  // Adopt the stored value when it changes underneath — another tab, or a
+  // preset clicked after something custom was typed.
+  useEffect(() => setDraft(custom ? String(value) : ''), [value, custom])
+
+  const commit = () => {
+    const seconds = Number(draft)
+    if (!draft.trim() || !Number.isFinite(seconds)) {
+      setDraft(custom ? String(value) : '')
+      return
+    }
+    const clamped = Math.round(Math.min(KILL_MAX, Math.max(KILL_MIN, seconds)))
+    setDraft(String(clamped))
+    if (clamped !== value) onChange(clamped)
+  }
+
+  return (
+    <div>
+      <span className="mb-2 block text-[12.5px] text-ink-2">Kill time</span>
+      <div className="mb-2 text-[12.5px] text-ink-3">
+        How long an instance may sit idle before it is reclaimed. Shorter frees memory sooner;
+        longer avoids the next cold start.
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {KILL_TIMES.map((option) => (
+          <Chip
+            key={option}
+            active={value === option}
+            onClick={() => onChange(option)}
+          >
+            {option === 0 ? `default (${killLabel(fallback)})` : killLabel(option)}
+          </Chip>
+        ))}
+
+        <span
+          className={cx(
+            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 transition',
+            custom ? 'border-accent bg-accent-soft' : 'border-line',
+          )}
+        >
+          <input
+            type="number"
+            inputMode="numeric"
+            min={KILL_MIN}
+            max={KILL_MAX}
+            value={draft}
+            placeholder="custom"
+            aria-label="Custom kill time in seconds"
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+            }}
+            className="w-[68px] border-0 bg-transparent p-0 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
+          />
+          <span className="text-[12px] text-ink-3">s</span>
+        </span>
+      </div>
+
+      <div className="mt-1.5 text-[12px] text-ink-3">
+        {custom ? `${killLabel(value)} — ` : ''}
+        {KILL_MIN}s to {killLabel(KILL_MAX)}.
+      </div>
+    </div>
   )
 }
 

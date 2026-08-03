@@ -503,7 +503,7 @@ class IsolatePool:
             await self._destroy(isolate)
         return len(victims)
 
-    async def reap_idle(self, *, limits: dict[str, tuple[int, int]] | None = None) -> int:
+    async def reap_idle(self, *, limits: dict[str, tuple[int, int, int]] | None = None) -> int:
         """Reclaim isolates the pool no longer needs.
 
         Two reasons to let one go, and both are needed:
@@ -526,12 +526,14 @@ class IsolatePool:
 
         async with self._cond:
             for key, pool in list(self._isolates.items()):
-                floor, ceiling = bounds.get(
-                    key.split(":", 1)[0], (0, settings.isolate_max_per_function)
+                floor, ceiling, ttl = bounds.get(
+                    key.split(":", 1)[0], (0, settings.isolate_max_per_function, 0)
                 )
-                stale = [
-                    i for i in pool if not i.busy and now - i.last_used > settings.isolate_idle_ttl
-                ]
+                # Zero defers to the instance-wide TTL, so a function nobody has
+                # set a kill time on behaves exactly as it did before the
+                # setting existed.
+                ttl = ttl or settings.isolate_idle_ttl
+                stale = [i for i in pool if not i.busy and now - i.last_used > ttl]
                 # Only one surplus isolate per pass, so a pool that is merely
                 # between bursts drifts down instead of collapsing and paying
                 # for a fresh round of cold starts.
@@ -588,6 +590,44 @@ class IsolatePool:
             busy=victim.busy,
         )
         return True
+
+    async def reclaim_if_idle(self, container_id: str) -> str:
+        """Reclaim an isolate, but never one that is serving a request.
+
+        The reconciler's fixes come through here rather than
+        ``destroy_isolate``: getting back under a ceiling is not worth failing
+        a live request over, and an isolate can go busy between the scan that
+        proposed the fix and the apply that performs it — so the check and the
+        removal happen together under the lock.
+
+        Returns ``reclaimed``, ``busy`` or ``gone``.
+        """
+        victim: Isolate | None = None
+        async with self._cond:
+            for key, isolates in list(self._isolates.items()):
+                for isolate in isolates:
+                    if isolate.container_id != container_id:
+                        continue
+                    if isolate.busy:
+                        return "busy"
+                    victim = isolate
+                    isolates.remove(isolate)
+                    if not isolates:
+                        self._isolates.pop(key, None)
+                    break
+                if victim:
+                    break
+            self._cond.notify_all()
+
+        if victim is None:
+            return "gone"
+        await self._destroy(victim)
+        log.info(
+            "isolate reclaimed by resource sync",
+            container=victim.container_id[:12],
+            function=victim.name,
+        )
+        return "reclaimed"
 
     def isolates_for(self, function_id: str, cluster: str) -> list[dict]:
         """This function's isolates, in the shape the snapshot uses."""

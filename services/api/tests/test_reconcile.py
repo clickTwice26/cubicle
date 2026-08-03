@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from cubicle.models import Cluster, Function, ManagedService, Node
+from cubicle.models import Cluster, Function, Group, ManagedService, Node
 from cubicle.runtime import reconcile
 from cubicle.runtime.pool import Isolate, pool
 
@@ -76,6 +76,7 @@ class FakeSession:
     def __init__(self, *, clusters=(), functions=(), services=(), nodes=()):
         self.rows = {
             (Cluster, None): list(clusters),
+            (Function, None): list(functions),
             (Function, "id"): [f.id for f in functions],
             (ManagedService, None): list(services),
             (Node, None): list(nodes),
@@ -114,6 +115,7 @@ def docker(monkeypatch):
 
 
 def _isolate(cid, **kwargs):
+    kwargs.setdefault("memory_mb", 512)
     return Isolate(
         container_id=cid,
         address="http://127.0.0.1:9000",
@@ -122,7 +124,6 @@ def _isolate(cid, **kwargs):
         version_id="v1",
         node_name="node-01",
         docker_host=HOST,
-        memory_mb=512,
         **kwargs,
     )
 
@@ -470,3 +471,187 @@ async def test_one_failure_does_not_stop_the_others(empty_pool, monkeypatch):
     assert result["applied"] == ["orphan-isolate:b"]
     assert len(result["failed"]) == 1
     assert "engine is down" in result["failed"][0]["error"]
+
+
+# ── allocation against the ceilings ──────────────────────────────────────────
+#
+# Admission control refuses anything that would breach a ceiling, so these only
+# arise when the ceiling moved after the containers started, or they were
+# adopted across a restart without being re-tested. The property worth pinning
+# down is that nothing busy is ever proposed for reclaim.
+
+
+def _cluster(**kwargs):
+    cluster = Cluster(name="Prod", slug="prod", **kwargs)
+    cluster.id = uuid.uuid4()
+    return cluster
+
+
+def _function(cluster, *, memory_mb=128, max_instances=2, name="charge"):
+    group = Group(name="Payments", ns="payments")
+    group.id = uuid.uuid4()
+    group.cluster_id = cluster.id
+    fn = Function(name=name, memory_mb=memory_mb, max_instances=max_instances)
+    fn.id = uuid.uuid4()
+    fn.group_id = group.id
+    fn.group = group
+    return fn
+
+
+def _for(fn, cid, **kwargs):
+    """An isolate of the size its function asks for, unless told otherwise."""
+    kwargs.setdefault("memory_mb", fn.memory_mb)
+    isolate = _isolate(cid, cluster="prod", name=fn.name, **kwargs)
+    isolate.function_id = str(fn.id)
+    return isolate
+
+
+async def test_a_cluster_within_its_ceiling_is_not_a_finding(empty_pool, docker):
+    cluster = _cluster(max_memory_mb=2048, max_cpu_cores=8)
+    fn = _function(cluster)
+    empty_pool._isolates["fn:v1"] = [_for(fn, "aaaa1111")]
+    docker(containers=[FakeContainer("aaaa1111", role="isolate")])
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    assert [f.kind for f in findings] == []
+
+
+async def test_holding_more_than_the_ceiling_is_an_error(empty_pool, docker):
+    """A ceiling lowered under running containers."""
+    cluster = _cluster(max_memory_mb=512, max_cpu_cores=64)
+    fn = _function(cluster, memory_mb=512, max_instances=8)
+    empty_pool._isolates["fn:v1"] = [_for(fn, "aaaa1111"), _for(fn, "bbbb2222")]
+    docker(
+        containers=[
+            FakeContainer("aaaa1111", role="isolate"),
+            FakeContainer("bbbb2222", role="isolate"),
+        ]
+    )
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    over = [f for f in findings if f.kind == "cluster_over_ceiling"]
+    assert len(over) == 1
+    assert over[0].severity == "error"
+    assert over[0].fix == "Reclaim 2 idle instances"
+    assert set(over[0].target["containers"]) == {"aaaa1111", "bbbb2222"}
+
+
+async def test_a_busy_instance_is_never_proposed_for_reclaim(empty_pool, docker):
+    """Getting back under a ceiling does not justify failing a live request."""
+    cluster = _cluster(max_memory_mb=512, max_cpu_cores=64)
+    fn = _function(cluster, memory_mb=512, max_instances=8)
+    empty_pool._isolates["fn:v1"] = [
+        _for(fn, "aaaa1111", busy=True),
+        _for(fn, "bbbb2222"),
+    ]
+    docker(
+        containers=[
+            FakeContainer("aaaa1111", role="isolate"),
+            FakeContainer("bbbb2222", role="isolate"),
+        ]
+    )
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    over = next(f for f in findings if f.kind == "cluster_over_ceiling")
+    assert over.target["containers"] == ["bbbb2222"]
+
+
+async def test_every_instance_busy_offers_no_fix(empty_pool, docker):
+    cluster = _cluster(max_memory_mb=512, max_cpu_cores=64)
+    fn = _function(cluster, memory_mb=512, max_instances=8)
+    empty_pool._isolates["fn:v1"] = [
+        _for(fn, "aaaa1111", busy=True),
+        _for(fn, "bbbb2222", busy=True),
+    ]
+    docker(
+        containers=[
+            FakeContainer("aaaa1111", role="isolate"),
+            FakeContainer("bbbb2222", role="isolate"),
+        ]
+    )
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    over = next(f for f in findings if f.kind == "cluster_over_ceiling")
+    assert over.fix is None
+    assert "Every instance is busy" in over.detail
+
+
+async def test_more_instances_than_the_function_allows(empty_pool, docker):
+    cluster = _cluster()
+    fn = _function(cluster, max_instances=1)
+    empty_pool._isolates["fn:v1"] = [_for(fn, "aaaa1111"), _for(fn, "bbbb2222")]
+    docker(
+        containers=[
+            FakeContainer("aaaa1111", role="isolate"),
+            FakeContainer("bbbb2222", role="isolate"),
+        ]
+    )
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    over = [f for f in findings if f.kind == "function_over_max_instances"]
+    assert len(over) == 1
+    # Only the surplus, not every instance: one is allowed to stay.
+    assert len(over[0].target["containers"]) == 1
+
+
+async def test_an_instance_running_at_the_old_size_is_reported(empty_pool, docker):
+    """Changing the setting does not resize a container that is already up."""
+    cluster = _cluster()
+    fn = _function(cluster, memory_mb=128, max_instances=4)
+    empty_pool._isolates["fn:v1"] = [_for(fn, "aaaa1111", memory_mb=512)]
+    docker(containers=[FakeContainer("aaaa1111", role="isolate")])
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    wrong = [f for f in findings if f.kind == "isolate_wrong_size"]
+    assert len(wrong) == 1
+    assert "512 MB" in wrong[0].detail and "128 MB" in wrong[0].detail
+
+
+async def test_a_function_too_big_for_the_ceiling_is_reported(empty_pool, docker):
+    cluster = _cluster(max_memory_mb=256, max_cpu_cores=64)
+    fn = _function(cluster, memory_mb=1024, max_instances=1)
+    docker(containers=[])
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    assert any(f.kind == "function_cannot_fit" for f in findings)
+    # Nothing to reclaim — this is a configuration decision, not drift.
+    assert next(f for f in findings if f.kind == "function_cannot_fit").fix is None
+
+
+async def test_a_function_that_cannot_reach_its_ceiling_is_only_noted(empty_pool, docker):
+    cluster = _cluster(max_memory_mb=1024, max_cpu_cores=64)
+    fn = _function(cluster, memory_mb=256, max_instances=8)
+    docker(containers=[])
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    note = next(f for f in findings if f.kind == "function_cannot_reach_max")
+    assert note.severity == "info"
+    assert note.fix is None
+
+
+async def test_no_ceiling_means_no_allocation_findings(empty_pool, docker):
+    """Unlimited is a real answer, not a very large number to compare against."""
+    cluster = _cluster(max_memory_mb=0, max_cpu_cores=0)
+    fn = _function(cluster, memory_mb=1024, max_instances=64)
+    docker(containers=[])
+
+    findings = await reconcile.scan(
+        FakeSession(clusters=[cluster], functions=[fn], nodes=[_node()])
+    )
+    assert not [f for f in findings if "ceiling" in f.kind or "fit" in f.kind]

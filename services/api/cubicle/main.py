@@ -160,10 +160,15 @@ async def _reconcile_loop() -> None:
             await asyncio.sleep(settings.reconcile_interval)
             async with session_scope() as db:
                 limits = {
-                    str(fid): (lo, hi)
-                    for fid, lo, hi in (
+                    str(fid): (lo, hi, ttl)
+                    for fid, lo, hi, ttl in (
                         await db.execute(
-                            select(Function.id, Function.min_instances, Function.max_instances)
+                            select(
+                                Function.id,
+                                Function.min_instances,
+                                Function.max_instances,
+                                Function.idle_timeout_s,
+                            )
                         )
                     ).all()
                 }
