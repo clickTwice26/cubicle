@@ -34,7 +34,14 @@ import {
 } from '../lib/hooks'
 import { useGroupSession } from '../lib/session'
 import { CTX_LABEL, FUNCTION_TYPE_LABEL, RUNTIME_LABEL, statusTone } from '../lib/format'
-import type { CtxAccess, FunctionType, Method, Runtime, TestResult } from '../lib/types'
+import type {
+  CtxAccess,
+  FunctionDetail,
+  FunctionType,
+  Method,
+  Runtime,
+  TestResult,
+} from '../lib/types'
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
 const RUNTIMES: Runtime[] = ['python312', 'python311']
@@ -247,6 +254,7 @@ export default function FunctionWorkbench() {
         tabs={[
           { value: 'code', label: 'Code' },
           { value: 'test', label: 'Test' },
+          { value: 'triggers', label: 'Triggers' },
           { value: 'instances', label: 'Instances' },
           { value: 'settings', label: 'Settings' },
         ]}
@@ -508,116 +516,27 @@ export default function FunctionWorkbench() {
       {tab === 'triggers' ? <TriggerPanel fn={fn} /> : null}
 
       {tab === 'settings' ? (
-        <Card className="grid gap-5 p-5">
-          <ChipGroup
-            label="Method"
-            options={METHODS}
-            value={fn.method}
-            onChange={(method) => update.mutate({ method })}
-          />
-          <ChipGroup
-            label="Runtime"
-            options={RUNTIMES}
-            value={fn.runtime}
-            onChange={(runtime) => update.mutate({ runtime })}
-            render={(option) => RUNTIME_LABEL[option]}
-            hint="Changing the interpreter rebuilds the current version."
-          />
-          <ChipGroup
-            label="Type"
-            hint="A label for whoever reads this namespace next. Nothing is enforced: an independent function sent a body still receives it."
-            options={FUNCTION_TYPES}
-            value={fn.function_type}
-            onChange={(function_type) => update.mutate({ function_type })}
-            render={(option) => FUNCTION_TYPE_LABEL[option]}
-          />
-          <ChipGroup
-            label="Runtime context access"
-            options={CTX_MODES}
-            value={fn.ctx_access}
-            onChange={(ctx_access) => update.mutate({ ctx_access })}
-            render={(option) => CTX_LABEL[option]}
-          />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <ChipGroup
-              label="Memory"
-              options={MEMORY}
-              value={fn.memory_mb}
-              onChange={(memory_mb) => update.mutate({ memory_mb })}
-              render={(option) => (option >= 1024 ? `${option / 1024} GB` : `${option} MB`)}
-            />
-            <ChipGroup
-              label="Timeout"
-              options={TIMEOUTS}
-              value={fn.timeout_s}
-              onChange={(timeout_s) => update.mutate({ timeout_s })}
-              render={(option) => `${option}s`}
-            />
-          </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <ChipGroup
-              label="Warm instances"
-              hint="Above zero keeps isolates resident, trading held memory for no cold starts."
-              options={[0, 1, 2]}
-              value={fn.min_instances}
-              onChange={(min_instances) => update.mutate({ min_instances })}
-              render={(option) => (option === 0 ? 'scale to zero' : `${option} warm`)}
-            />
-            <ChipGroup
-              label="Max instances"
-              hint="The ceiling on concurrent isolates. Requests past it wait for a free one rather than starting another container."
-              options={MAX_INSTANCES}
-              value={fn.max_instances}
-              onChange={(max_instances) => update.mutate({ max_instances })}
-              render={(option) => `${option} max`}
-            />
-            <KillTime
-              value={fn.idle_timeout_s}
-              fallback={fn.effective_idle_timeout_s}
-              onChange={(idle_timeout_s) => update.mutate({ idle_timeout_s })}
-            />
-          </div>
-          <div className="rounded-[9px] border border-line bg-panel-2 px-3.5 py-2.5 text-[12.5px] text-ink-2">
-            At most <span className="font-mono font-semibold text-ink">{fn.max_instances}</span>{' '}
-            request
-            {fn.max_instances === 1 ? '' : 's'} run concurrently, each in its own container with{' '}
-            <span className="font-mono">{fn.memory_mb} MB</span> — up to{' '}
-            <span className="font-mono font-semibold text-ink">
-              {(fn.max_instances * fn.memory_mb) / 1024 >= 1
-                ? `${((fn.max_instances * fn.memory_mb) / 1024).toFixed(1)} GB`
-                : `${fn.max_instances * fn.memory_mb} MB`}
-            </span>{' '}
-            held by this function at peak.
-          </div>
-
-          <div className="border-t border-line pt-4">
-            <Checkbox
-              checked={fn.auth_required}
-              onChange={(auth_required) => update.mutate({ auth_required })}
-              label="Require an API key to invoke this endpoint. Turn off for public webhooks."
-            />
-          </div>
-
-          <div className="flex items-center gap-3 border-t border-line pt-4">
-            <span className="text-[12.5px] text-ink-3">
-              {update.isPending ? 'Saving…' : 'Changes apply immediately.'}
-            </span>
-            <span className="ml-auto">
-              <ConfirmButton
-                label="Delete function"
-                confirmLabel="Click again to delete"
-                onConfirm={() =>
-                  remove.mutate(functionId, {
-                    onSuccess: () => {
-                      toast.push(`${fn.name} deleted`)
-                      navigate(`/console/playground/${groupId}`)
-                    },
-                  })
-                }
-              />
-            </span>
-          </div>
-        </Card>
+        <SettingsForm
+          fn={fn}
+          saving={update.isPending}
+          onSave={(changes, done) =>
+            update.mutate(changes, {
+              onSuccess: () => {
+                toast.push('Settings saved')
+                done()
+              },
+              onError: (error) => toast.push(error.message, 'err'),
+            })
+          }
+          onDelete={() =>
+            remove.mutate(functionId, {
+              onSuccess: () => {
+                toast.push(`${fn.name} deleted`)
+                navigate(`/console/playground/${groupId}`)
+              },
+            })
+          }
+        />
       ) : null}
     </div>
   )
@@ -742,6 +661,206 @@ function Instances({
         loses the request it is serving.
       </div>
     </Card>
+  )
+}
+
+/**
+ * Every setting on one form, saved when you say so.
+ *
+ * These used to apply on click, one PATCH per chip. That made every stray
+ * click a deploy — changing the runtime rebuilds the version — and left no way
+ * to change two things at once or to change your mind. The draft lives here
+ * until Save, and only the fields that actually differ are sent, so picking a
+ * memory size does not resend a runtime and trigger a rebuild nobody asked for.
+ */
+function SettingsForm({
+  fn,
+  saving,
+  onSave,
+  onDelete,
+}: {
+  fn: FunctionDetail
+  saving: boolean
+  onSave: (changes: Record<string, unknown>, done: () => void) => void
+  onDelete: () => void
+}) {
+  const initial = {
+    method: fn.method,
+    runtime: fn.runtime,
+    function_type: fn.function_type,
+    ctx_access: fn.ctx_access,
+    memory_mb: fn.memory_mb,
+    timeout_s: fn.timeout_s,
+    min_instances: fn.min_instances,
+    max_instances: fn.max_instances,
+    idle_timeout_s: fn.idle_timeout_s,
+    auth_required: fn.auth_required,
+  }
+  const [draft, setDraft] = useState(initial)
+
+  // Adopt the stored values whenever they change underneath — after a save, or
+  // an edit made in another tab.
+  useEffect(() => setDraft(initial), [JSON.stringify(initial)])
+
+  const set = (patch: Partial<typeof initial>) => setDraft((d) => ({ ...d, ...patch }))
+  const changes = Object.fromEntries(
+    Object.entries(draft).filter(([key, value]) => value !== initial[key as keyof typeof initial]),
+  )
+  const dirty = Object.keys(changes).length > 0
+  const rebuilds = 'runtime' in changes
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="grid gap-6 p-5">
+        <Section title="Endpoint" hint="How this function is addressed and who may call it.">
+          <ChipGroup
+            label="Method"
+            options={METHODS}
+            value={draft.method}
+            onChange={(method) => set({ method })}
+          />
+          <Checkbox
+            checked={draft.auth_required}
+            onChange={(auth_required) => set({ auth_required })}
+            label="Require an API key to invoke this endpoint. Turn off for public webhooks."
+          />
+        </Section>
+
+        <Section title="Runtime" hint="What runs the code, and what it is allowed to see.">
+          <ChipGroup
+            label="Interpreter"
+            options={RUNTIMES}
+            value={draft.runtime}
+            onChange={(runtime) => set({ runtime })}
+            render={(option) => RUNTIME_LABEL[option]}
+            hint="Changing this rebuilds the current version on save."
+          />
+          <ChipGroup
+            label="Type"
+            hint="Independent means it takes no input — the only kind that can be put on a schedule."
+            options={FUNCTION_TYPES}
+            value={draft.function_type}
+            onChange={(function_type) => set({ function_type })}
+            render={(option) => FUNCTION_TYPE_LABEL[option]}
+          />
+          <ChipGroup
+            label="Runtime context access"
+            options={CTX_MODES}
+            value={draft.ctx_access}
+            onChange={(ctx_access) => set({ ctx_access })}
+            render={(option) => CTX_LABEL[option]}
+          />
+        </Section>
+
+        <Section title="Resources" hint="What each instance holds, and how many there may be.">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <ChipGroup
+              label="Memory"
+              options={MEMORY}
+              value={draft.memory_mb}
+              onChange={(memory_mb) => set({ memory_mb })}
+              render={(option) => (option >= 1024 ? `${option / 1024} GB` : `${option} MB`)}
+            />
+            <ChipGroup
+              label="Timeout"
+              hint="How long one request may run before it is cut off."
+              options={TIMEOUTS}
+              value={draft.timeout_s}
+              onChange={(timeout_s) => set({ timeout_s })}
+              render={(option) => `${option}s`}
+            />
+            <ChipGroup
+              label="Warm instances"
+              hint="Above zero keeps instances resident, trading held memory for no cold starts."
+              options={[0, 1, 2]}
+              value={draft.min_instances}
+              onChange={(min_instances) => set({ min_instances })}
+              render={(option) => (option === 0 ? 'scale to zero' : `${option} warm`)}
+            />
+            <ChipGroup
+              label="Max instances"
+              hint="The ceiling on concurrent instances. Requests past it wait for a free one."
+              options={MAX_INSTANCES}
+              value={draft.max_instances}
+              onChange={(max_instances) => set({ max_instances })}
+              render={(option) => `${option} max`}
+            />
+          </div>
+          <KillTime
+            value={draft.idle_timeout_s}
+            fallback={fn.effective_idle_timeout_s}
+            onChange={(idle_timeout_s) => set({ idle_timeout_s })}
+          />
+          <div className="rounded-[9px] border border-line bg-panel-2 px-3.5 py-2.5 text-[12.5px] text-ink-2">
+            At most{' '}
+            <span className="font-mono font-semibold text-ink">{draft.max_instances}</span> request
+            {draft.max_instances === 1 ? '' : 's'} run concurrently, each in its own container with{' '}
+            <span className="font-mono">{draft.memory_mb} MB</span> — up to{' '}
+            <span className="font-mono font-semibold text-ink">
+              {(draft.max_instances * draft.memory_mb) / 1024 >= 1
+                ? `${((draft.max_instances * draft.memory_mb) / 1024).toFixed(1)} GB`
+                : `${draft.max_instances * draft.memory_mb} MB`}
+            </span>{' '}
+            held by this function at peak.
+          </div>
+        </Section>
+      </div>
+
+      {/* Sticky, so Save is reachable from any part of a long form rather than
+          only from the bottom of it. */}
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-line bg-panel px-5 py-3">
+        <ConfirmButton
+          label="Delete function"
+          confirmLabel="Click again to delete"
+          onConfirm={onDelete}
+        />
+        <span className="ml-auto flex flex-wrap items-center gap-3">
+          {dirty ? (
+            <span className="text-[12.5px] text-ink-3">
+              {Object.keys(changes).length} unsaved change
+              {Object.keys(changes).length === 1 ? '' : 's'}
+              {rebuilds ? ' · saving rebuilds the version' : ''}
+            </span>
+          ) : (
+            <span className="text-[12.5px] text-ink-3">No unsaved changes</span>
+          )}
+          {dirty ? (
+            <Button size="sm" variant="ghost" onClick={() => setDraft(initial)}>
+              Discard
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant={dirty ? 'primary' : 'secondary'}
+            disabled={!dirty}
+            loading={saving}
+            onClick={() => onSave(changes, () => setDraft(draft))}
+          >
+            Save changes
+          </Button>
+        </span>
+      </div>
+    </Card>
+  )
+}
+
+function Section({
+  title,
+  hint,
+  children,
+}: {
+  title: string
+  hint: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="grid gap-4">
+      <div>
+        <h2 className="m-0 text-[13.5px] font-semibold">{title}</h2>
+        <div className="mt-0.5 text-[12px] text-ink-3">{hint}</div>
+      </div>
+      {children}
+    </section>
   )
 }
 
