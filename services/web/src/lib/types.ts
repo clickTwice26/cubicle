@@ -24,9 +24,10 @@ export interface Cluster {
   max_memory_mb: number
   max_cpu_cores: number
   max_storage_gb: number
-  /** Committed against those ceilings right now. */
+  /** Committed against those ceilings right now — functions and data services. */
   used_memory_mb: number
   used_cpu_cores: number
+  used_storage_bytes: number
   created_at: string
 }
 

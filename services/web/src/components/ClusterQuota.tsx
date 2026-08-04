@@ -147,10 +147,10 @@ function ClusterRow({ cluster }: { cluster: Cluster }) {
           options={STORAGE}
           value={storage}
           onChange={setStorage}
+          used={cluster.used_storage_bytes / 1024 ** 3}
           cap={cluster.max_storage_gb}
-          format={(gb) => (gb >= 1024 ? `${gb / 1024} TB` : `${gb} GB`)}
-          note="Stored, but nothing is refused on it yet."
-          pending
+          format={(gb) => (gb >= 1 ? `${gb.toFixed(2)} GB` : `${Math.round(gb * 1024)} MB`)}
+          note="Function version volumes plus the data services' own."
         />
       </div>
     </div>

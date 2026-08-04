@@ -17,7 +17,9 @@ from ..deps import CurrentPrincipal, DbSession, RequireAdmin, RequireOwner
 from ..logging_setup import log
 from ..models import Cluster, Function, Group, Node, UserCluster
 from ..runtime import services as service_svc
+from ..runtime import storage
 from ..runtime.engine import EngineError
+from ..runtime.invoker import quota_for
 from ..runtime.nodes import ensure_local_node
 from ..runtime.pool import pool
 from ..schemas import (
@@ -32,16 +34,29 @@ from ..schemas import (
 router = APIRouter(prefix="/api/clusters", tags=["clusters"])
 
 
-def _committed(slug: str) -> dict:
-    """What this cluster's isolates hold right now, against its ceilings.
+async def _committed(db, cluster: Cluster) -> dict:
+    """Everything this cluster holds against its ceilings — not just functions.
 
-    Read from the pool rather than the database: the pool is the thing that
-    actually allocated the containers, so it is the only honest source.
+    Isolates come from the pool, which is what actually allocated them. The
+    cluster's own Postgres and Redis are added because they spend the ceiling
+    identically and admission control has always counted them: reporting only
+    the isolates meant the card said 0 MB while the enforcement that refuses
+    requests saw 768.
+
+    Disk is measured rather than derived. The platform decides how much memory
+    a container gets, so it can add that up; a volume grows because a function
+    wrote to it, and only the engine knows how far.
     """
-    isolates = pool.snapshot(cluster=slug)
+    isolates = pool.snapshot(cluster=cluster.slug)
+    quota = await quota_for(db, cluster)
+
     return {
-        "used_memory_mb": sum(i["memory_mb"] for i in isolates),
-        "used_cpu_cores": round(sum(i["cpus"] for i in isolates), 2),
+        "used_memory_mb": sum(i["memory_mb"] for i in isolates)
+        + (quota.reserved_mb if quota else 0),
+        "used_cpu_cores": round(
+            sum(i["cpus"] for i in isolates) + (quota.reserved_cpu if quota else 0.0), 2
+        ),
+        "used_storage_bytes": await storage.used_bytes(db, cluster.id),
     }
 
 
@@ -67,7 +82,7 @@ async def _serialize(db, cluster: Cluster) -> ClusterOut:
             if column.name in ClusterOut.model_fields
         },
         base_url=cluster_svc.function_url(cluster),
-        **_committed(cluster.slug),
+        **(await _committed(db, cluster)),
         node_count=nodes,
         namespace_count=namespaces,
         function_count=functions,

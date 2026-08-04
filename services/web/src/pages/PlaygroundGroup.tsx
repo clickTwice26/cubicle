@@ -27,12 +27,7 @@ import {
   useGroups,
 } from '../lib/hooks'
 import { useGroupSession } from '../lib/session'
-import {
-  CTX_LABEL,
-  FUNCTION_TYPE_HINT,
-  FUNCTION_TYPE_LABEL,
-  slugify,
-} from '../lib/format'
+import { CTX_LABEL, FUNCTION_TYPE_HINT, FUNCTION_TYPE_LABEL, slugify } from '../lib/format'
 import type { CtxAccess, FunctionType, Method, Runtime } from '../lib/types'
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
@@ -60,8 +55,12 @@ export default function PlaygroundGroup() {
   const [fnRuntime, setFnRuntime] = useState<Runtime>('python312')
   const { data: runtimes } = useRuntimes()
   const installed = (runtimes ?? []).filter((entry) => entry.installed)
-  const runtimeKeys = (installed.length ? installed.map((entry) => entry.key) : ['python312']) as Runtime[]
-  const runtimeLabels = Object.fromEntries((runtimes ?? []).map((entry) => [entry.key, entry.label]))
+  const runtimeKeys = (
+    installed.length ? installed.map((entry) => entry.key) : ['python312']
+  ) as Runtime[]
+  const runtimeLabels = Object.fromEntries(
+    (runtimes ?? []).map((entry) => [entry.key, entry.label]),
+  )
   const missing = (runtimes ?? []).length - installed.length
   const [fnCtx, setFnCtx] = useState<CtxAccess>('rw')
   const [fnType, setFnType] = useState<FunctionType>('dependent')
@@ -79,6 +78,11 @@ export default function PlaygroundGroup() {
   }
 
   const open = (functionId: string) => navigate(`/console/playground/${groupId}/${functionId}`)
+
+  // The list is authoritative once it has loaded; the group's own count covers
+  // the moment before that, so the header does not flash a zero.
+  const functionCount = functions?.length ?? group.function_count
+  const contextKeys = context ? Object.keys(context.data).length : 0
 
   const submitNew = () => {
     createFunction.mutate(
@@ -114,51 +118,64 @@ export default function PlaygroundGroup() {
         All groups
       </Link>
 
-      <div className="mb-2 flex flex-wrap items-end justify-between gap-4">
+      {/* One primary action. Deleting a namespace is not something to put a
+          filled red button next to it — it stays reachable, and stops
+          competing for the eye every time you open the page. */}
+      <div className="mb-4.5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="m-0 text-2xl tracking-[-0.02em]">{group.name}</h1>
-          <div className="mt-1.5 flex items-center gap-2.5">
-            <span className="text-xs text-ink-2">namespace</span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="m-0 text-2xl tracking-[-0.02em]">{group.name}</h1>
             <Badge tone="accent">{group.ns}</Badge>
           </div>
+          <div className="mt-1.5 text-[13px] text-ink-2">
+            {functionCount} function{functionCount === 1 ? '' : 's'} · served under{' '}
+            <span className="font-mono">/{group.ns}/</span>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
             New function
           </Button>
-          <Button variant="danger" icon={<Trash size={14} />} onClick={() => setDeleting(true)}>
-            Delete namespace
+          <Button
+            variant="ghost"
+            icon={<Trash size={14} />}
+            title="Delete this namespace and its functions"
+            className="text-ink-3 hover:border-err hover:text-err"
+            onClick={() => setDeleting(true)}
+          >
+            Delete
           </Button>
         </div>
       </div>
 
-      <Card className="my-4.5 flex items-center gap-2.5 px-3.5 py-3">
-        <span className="flex-none text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-          Base URL
-        </span>
-        <span className="flex-1 overflow-x-auto font-mono text-[12.5px] whitespace-nowrap">
-          {group.base_url}
-        </span>
-        <CopyButton value={group.base_url} />
-      </Card>
-
-      <Card className="mb-5 flex flex-wrap items-center gap-3 px-3.5 py-3">
-        <span className="flex-none text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-          Session
-        </span>
-        <Badge tone="accent">{session}</Badge>
-        <span className="text-[12.5px] text-ink-2">
-          {context ? Object.keys(context.data).length : 0} key
-          {context && Object.keys(context.data).length === 1 ? '' : 's'} ·{' '}
-          {context?.size_bytes ?? 0} B · ttl 30m
-        </span>
-        <button
-          type="button"
-          onClick={newSession}
-          className="ml-auto text-[12.5px] text-ink-3 transition hover:text-ink"
-        >
-          New session
-        </button>
+      {/* Base URL and session are both "where am I pointing" facts, so they
+          read better as one strip than as two stacked bars. */}
+      <Card className="mb-5 grid divide-line md:grid-cols-[1.5fr_1fr] md:divide-x">
+        <div className="flex min-w-0 items-center gap-3 px-4 py-3.5">
+          <span className="flex-none text-[11px] font-bold tracking-[0.05em] text-ink-3 uppercase">
+            Base URL
+          </span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]">
+            {group.base_url}
+          </span>
+          <CopyButton value={group.base_url} />
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2.5 border-t border-line px-4 py-3.5 md:border-t-0">
+          <span className="flex-none text-[11px] font-bold tracking-[0.05em] text-ink-3 uppercase">
+            Session
+          </span>
+          <span className="truncate font-mono text-[12.5px]">{session}</span>
+          <span className="text-[12px] text-ink-3">
+            {contextKeys} key{contextKeys === 1 ? '' : 's'} · {context?.size_bytes ?? 0} B · 30m
+          </span>
+          <button
+            type="button"
+            onClick={newSession}
+            className="ml-auto flex-none text-[12px] text-ink-3 transition hover:text-ink"
+          >
+            New
+          </button>
+        </div>
       </Card>
 
       <Modal
@@ -196,11 +213,7 @@ export default function PlaygroundGroup() {
               the worst moment to find out. */}
           <ChipGroup
             label="Runtime"
-            hint={
-              missing
-                ? `${missing} more available in Settings → Runtimes.`
-                : undefined
-            }
+            hint={missing ? `${missing} more available in Settings → Runtimes.` : undefined}
             options={runtimeKeys}
             value={fnRuntime}
             onChange={setFnRuntime}
@@ -242,7 +255,12 @@ export default function PlaygroundGroup() {
         <Skeleton className="h-32 w-full" />
       ) : functions && functions.length > 0 ? (
         <Card className="overflow-hidden">
-          <div className="hidden grid-cols-[82px_minmax(140px,1fr)_minmax(0,1.5fr)_96px_94px_146px] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase md:grid">
+          <div className="flex items-center gap-2.5 border-b border-line px-5 py-3.5">
+            <span className="text-sm font-semibold">Functions</span>
+            <Badge>{functions.length}</Badge>
+            <span className="ml-auto text-[12.5px] text-ink-3">Every row opens its editor</span>
+          </div>
+          <div className="hidden grid-cols-[82px_minmax(140px,1fr)_minmax(0,1.5fr)_96px_94px_146px] gap-3 border-b border-line bg-panel-2 px-5 py-2.5 text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase md:grid">
             <span>Method</span>
             <span>Function</span>
             <span>Endpoint</span>
@@ -310,12 +328,21 @@ export default function PlaygroundGroup() {
         </Card>
       ) : (
         <EmptyState
-          title="No functions in this group"
+          title="No functions in this namespace"
           body={
             <>
               Anything you add here is served under{' '}
               <span className="font-mono">/{group.ns}/</span>
             </>
+          }
+          action={
+            <Button
+              variant="primary"
+              icon={<Plus size={15} />}
+              onClick={() => setCreating(true)}
+            >
+              New function
+            </Button>
           }
         />
       )}
@@ -323,7 +350,12 @@ export default function PlaygroundGroup() {
       <Card className="mt-5 overflow-hidden">
         <div className="flex items-center gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold">Runtime context</div>
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm font-semibold">Runtime context</span>
+              <Badge tone={contextKeys ? 'accent' : 'neutral'}>
+                {contextKeys} key{contextKeys === 1 ? '' : 's'}
+              </Badge>
+            </div>
             <div className="mt-0.5 text-[12.5px] text-ink-2">
               Carried on <span className="font-mono">X-Cubicle-Session</span> · readable by
               every function in this namespace

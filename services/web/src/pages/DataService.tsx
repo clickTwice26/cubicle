@@ -23,8 +23,13 @@ const OPTIONS = {
     title: 'PostgreSQL',
     icon: Database,
     versions: ['16.3', '15.6', '14.11'],
-    storage: ['10 GB', '20 GB', '50 GB', '100 GB'],
-    memory: ['512 MB', '1 GB', '2 GB', '4 GB'],
+    storage: ['1 GB', '5 GB', '10 GB', '20 GB', '50 GB', '100 GB'],
+    // 128 MB is the floor a tuned Postgres actually starts and runs in — the
+    // server is sized to whichever of these you pick.
+    memory: ['128 MB', '256 MB', '512 MB', '1 GB', '2 GB', '4 GB'],
+    defaults: { memory: '512 MB', storage: '10 GB' },
+    memoryHint:
+      'The server is tuned to fit: shared buffers, sort memory and the connection ceiling all scale with this. 128 MB runs a real database on a small box.',
     eviction: null,
   },
   redis: {
@@ -32,7 +37,10 @@ const OPTIONS = {
     icon: Layers,
     versions: ['7.2', '7.0', '6.2'],
     storage: null,
-    memory: ['256 MB', '512 MB', '1 GB', '2 GB'],
+    memory: ['32 MB', '64 MB', '128 MB', '256 MB', '512 MB', '1 GB', '2 GB'],
+    defaults: { memory: '128 MB', storage: '20 GB' },
+    memoryHint:
+      'The cap on the data itself; the container gets a little more for the fork an AOF rewrite makes. Redis idles at about 10 MB.',
     eviction: ['noeviction', 'allkeys-lru', 'volatile-lru'],
   },
 } as const
@@ -49,8 +57,8 @@ export default function DataService() {
   const service = services?.find((entry) => entry.kind === safeKind)
 
   const [version, setVersion] = useState<string>(config.versions[0])
-  const [memory, setMemory] = useState<string>(config.memory[1])
-  const [storage, setStorage] = useState<string>(config.storage?.[1] ?? '20 GB')
+  const [memory, setMemory] = useState<string>(config.defaults.memory)
+  const [storage, setStorage] = useState<string>(config.defaults.storage)
   const [eviction, setEviction] = useState<string>(config.eviction?.[1] ?? 'allkeys-lru')
   const [pool, setPool] = useState('general')
   const [url, setUrl] = useState<string | null>(null)
@@ -258,6 +266,7 @@ export default function DataService() {
               options={config.memory}
               value={memory}
               onChange={setMemory}
+              hint={config.memoryHint}
             />
             {config.eviction ? (
               <Group

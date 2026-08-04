@@ -41,6 +41,18 @@ class RuntimeSpec:
     summary: str = ""
 
     @property
+    def min_memory_mb(self) -> int:
+        """The smallest limit an isolate of this runtime actually serves at.
+
+        Measured, not guessed: a Python agent with a trivial handler holds
+        18 MB and serves at a 32 MB limit; at 24 MB it starts but never
+        answers, and at 16 MB the container will not start at all. Node's
+        baseline is higher, so it gets more headroom rather than one floor
+        that is wrong for one of them.
+        """
+        return 64 if self.language == "JavaScript" else 32
+
+    @property
     def env(self) -> dict[str, str]:
         """Where the isolate looks for the dependencies the build installed."""
         if self.language == "JavaScript":

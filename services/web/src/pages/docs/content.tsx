@@ -868,6 +868,40 @@ export const DOCS: DocPage[] = [
           </>,
         )}
 
+        {h2('sizing', 'Sizing it for a small machine')}
+        {p(
+          <>
+            The memory you pick is not just a container limit — Postgres is started tuned to it.
+            Shared buffers take a quarter, the sort and maintenance workspaces scale with it,
+            the connection ceiling comes down with it, and parallel query is off below 256 MB.
+            Stock Postgres asks for 128 MB of shared buffers on its own, which is why an untuned
+            container that size is killed during <span className="font-mono">initdb</span>{' '}
+            rather than starting.
+          </>,
+        )}
+        {table(
+          ['Memory', 'shared_buffers', 'max_connections', 'Suits'],
+          [
+            ['128 MB', '32 MB', '20', 'A small VPS. Real database, modest working set.'],
+            ['256 MB', '64 MB', '30', 'A handful of functions with steady traffic.'],
+            ['512 MB', '128 MB', '50', 'The default. Comfortable for most single-node work.'],
+            ['1 GB and up', '25% of it', '75 – 100', 'Parallel query on, larger sorts.'],
+          ],
+        )}
+        {p(
+          <>
+            Redis goes lower still: 32 MB is a working cache, because Redis idles at about 10 MB
+            and the number you pick is the cap on the data rather than the process. The
+            container gets a little more than that for the fork an AOF rewrite makes.
+          </>,
+        )}
+        {note(
+          <>
+            Storage is recorded as the target for the instance, not enforced as a quota — what a
+            volume can actually grow to is a property of your storage driver, not of Cubicle.
+          </>,
+        )}
+
         {h2('browse', 'Browsing and editing the data')}
         {p(
           <>

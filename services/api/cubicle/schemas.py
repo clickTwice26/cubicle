@@ -250,14 +250,15 @@ class ClusterOut(ORMModel):
     node_count: int = 0
     function_count: int = 0
     namespace_count: int = 0
-    #: Ceilings, and what is committed against them right now. Storage has a
-    #: ceiling but no usage figure: volumes are measured instance-wide, so
-    #: there is nothing honest to report per cluster yet.
+    #: Ceilings, and what is committed against them right now. Every figure
+    #: counts the cluster's own data services as well as its functions — they
+    #: spend the ceiling identically, and admission control has always said so.
     max_memory_mb: int = 0
     max_cpu_cores: float = 0.0
     max_storage_gb: int = 0
     used_memory_mb: int = 0
     used_cpu_cores: float = 0.0
+    used_storage_bytes: int = 0
     created_at: datetime
 
 
@@ -372,7 +373,7 @@ class FunctionCreate(BaseModel):
     function_type: FunctionType = "dependent"
     #: The smallest each control offers, so a function created and left alone
     #: holds the least it can until someone asks for more.
-    memory_mb: int = Field(default=128, ge=64, le=8192)
+    memory_mb: int = Field(default=128, ge=32, le=8192)
     timeout_s: int = Field(default=30, ge=1, le=900)
     min_instances: int = Field(default=0, ge=0, le=64)
     max_instances: int = Field(default=1, ge=1, le=64)
@@ -394,7 +395,7 @@ class FunctionUpdate(BaseModel):
     ctx_access: CtxAccess | None = None
     function_type: FunctionType | None = None
     idle_timeout_s: int | None = Field(default=None, ge=0, le=86400)
-    memory_mb: int | None = Field(default=None, ge=64, le=8192)
+    memory_mb: int | None = Field(default=None, ge=32, le=8192)
     timeout_s: int | None = Field(default=None, ge=1, le=900)
     min_instances: int | None = Field(default=None, ge=0, le=20)
     max_instances: int | None = Field(default=None, ge=1, le=32)

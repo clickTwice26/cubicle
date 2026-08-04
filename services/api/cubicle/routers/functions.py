@@ -22,7 +22,7 @@ from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireDeveloper
 from ..logging_setup import log
 from ..metrics import BUILDS
 from ..models import Cluster, Function, FunctionSecret, FunctionVersion, Group, Invocation, LogEntry
-from ..runtime import builder, invoker
+from ..runtime import builder, invoker, storage
 from ..runtime.nodes import pick_node
 from ..runtime.pool import pool
 from ..schemas import (
@@ -84,6 +84,30 @@ def serialize_function(
         "updated_at": fn.updated_at,
         "created_at": fn.created_at,
     }
+
+
+async def _check_storage_ceiling(db, cluster: Cluster) -> None:
+    """Refuse a deploy that would take the cluster past its disk ceiling.
+
+    Checked before the build rather than after: a build writes a volume, and
+    discovering the ceiling afterwards would mean the thing that broke the
+    limit is already on disk. Measured at the moment of asking, because a
+    volume's size is not something the platform decides.
+    """
+    if not cluster.max_storage_gb:
+        return
+
+    used = await storage.used_bytes(db, cluster.id)
+    cap = cluster.max_storage_gb * 1024**3
+    if used < cap:
+        return
+
+    raise HTTPException(
+        status.HTTP_507_INSUFFICIENT_STORAGE,
+        f"{cluster.name} holds {used / 1024**3:.2f} GB against a "
+        f"{cluster.max_storage_gb} GB ceiling. Delete an old version or raise the "
+        "ceiling in Settings before deploying again.",
+    )
 
 
 async def _load_group(db, group_id: uuid.UUID, cluster: Cluster) -> Group | None:
@@ -472,6 +496,7 @@ async def deploy(
     _: RequireDeveloper,
 ):
     fn = await load_function(db, function_id, cluster)
+    await _check_storage_ceiling(db, cluster)
     latest = (
         await db.execute(
             select(func.max(FunctionVersion.number)).where(FunctionVersion.function_id == fn.id)

@@ -47,7 +47,11 @@ const METHODS: Method[] = ['GET', 'POST', 'PUT', 'DELETE']
 const RUNTIMES: Runtime[] = ['python312', 'python311']
 const CTX_MODES: CtxAccess[] = ['rw', 'r', 'w', 'none']
 const FUNCTION_TYPES: FunctionType[] = ['dependent', 'independent']
-const MEMORY = [128, 256, 512, 1024]
+//: 32 MB is where a Python isolate still serves — measured, with the agent
+//: holding 18 MB of it. Node needs 64. The list is filtered per runtime rather
+//: than trimmed to the larger of the two.
+const MEMORY = [32, 64, 128, 256, 512, 1024]
+const MIN_MEMORY: Record<string, number> = { node22: 64, node20: 64, node18: 64 }
 const TIMEOUTS = [5, 30, 60, 300]
 const MAX_INSTANCES = [1, 2, 4, 8]
 
@@ -793,7 +797,12 @@ function SettingsForm({
           <div className="grid gap-5 sm:grid-cols-2">
             <ChipGroup
               label="Memory"
-              options={MEMORY}
+              hint={
+                (MIN_MEMORY[draft.runtime] ?? 32) > 32
+                  ? 'JavaScript needs 64 MB to start; Python serves at 32.'
+                  : 'A Python isolate holds about 18 MB before your code runs.'
+              }
+              options={MEMORY.filter((mb) => mb >= (MIN_MEMORY[draft.runtime] ?? 32))}
               value={draft.memory_mb}
               onChange={(memory_mb) => set({ memory_mb })}
               render={(option) => (option >= 1024 ? `${option / 1024} GB` : `${option} MB`)}

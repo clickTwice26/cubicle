@@ -57,6 +57,9 @@ def _names(cluster: Cluster, kind: str) -> tuple[str, str]:
 
 
 MEMORY_BYTES = {
+    "32 MB": 32 * 1024**2,
+    "64 MB": 64 * 1024**2,
+    "128 MB": 128 * 1024**2,
     "256 MB": 256 * 1024**2,
     "512 MB": 512 * 1024**2,
     "1 GB": 1024**3,
@@ -80,6 +83,43 @@ def _memory_arg(label: str) -> int:
     return MEMORY_BYTES.get(label, 1024**3)
 
 
+def _postgres_tuning(memory_bytes: int) -> list[str]:
+    """Postgres sized to the memory it was given.
+
+    Stock Postgres asks for 128 MB of shared buffers and room for 100 backends,
+    which is why an untuned container under about 256 MB is killed during
+    ``initdb`` rather than starting. Scaling the four settings that actually
+    allocate — the buffer pool, the per-sort workspace, the maintenance
+    workspace and the connection ceiling — is what makes a 128 MB instance a
+    working database instead of a checkbox.
+    """
+    mb = memory_bytes // 1024**2
+    shared = max(16, mb // 4)
+    connections = (
+        20 if mb <= 128 else 30 if mb <= 256 else 50 if mb <= 512 else 75 if mb <= 1024 else 100
+    )
+    # Parallel query costs a worker's memory per gather, which a small instance
+    # does not have to spare and would not benefit from anyway.
+    parallel = 0 if mb <= 256 else 2
+    return [
+        "postgres",
+        "-c",
+        f"shared_buffers={shared}MB",
+        "-c",
+        f"effective_cache_size={max(32, mb // 2)}MB",
+        "-c",
+        f"maintenance_work_mem={min(256, max(8, mb // 8))}MB",
+        "-c",
+        f"work_mem={min(16, max(1, mb // 128))}MB",
+        "-c",
+        f"max_connections={connections}",
+        "-c",
+        f"max_parallel_workers_per_gather={parallel}",
+        "-c",
+        f"max_worker_processes={max(2, parallel * 2)}",
+    ]
+
+
 def _postgres_spec(
     *,
     image: str,
@@ -89,11 +129,13 @@ def _postgres_spec(
     password: str,
     memory: str,
 ) -> dict:
+    memory_bytes = _memory_arg(memory)
     return {
         "image": image,
         "name": container_name,
         "detach": True,
         "labels": _labels("postgres", cluster_slug),
+        "command": _postgres_tuning(memory_bytes),
         "environment": {
             "POSTGRES_USER": "cubicle",
             "POSTGRES_PASSWORD": password,
@@ -102,7 +144,10 @@ def _postgres_spec(
         },
         "volumes": {volume_name: {"bind": "/var/lib/postgresql/data", "mode": "rw"}},
         "network": settings.function_network,
-        "mem_limit": _memory_arg(memory),
+        "mem_limit": memory_bytes,
+        # /dev/shm is where parallel workers meet. Docker's 64 MB default is
+        # plenty for the small tiers, which do not run them at all.
+        "shm_size": max(64 * 1024**2, min(memory_bytes // 4, 256 * 1024**2)),
         "restart_policy": {"Name": "unless-stopped"},
     }
 
@@ -136,7 +181,9 @@ def _redis_spec(
         ],
         "volumes": {volume_name: {"bind": "/data", "mode": "rw"}},
         "network": settings.function_network,
-        "mem_limit": int(max_memory * 1.3),
+        # Headroom over the data itself for the fork an AOF rewrite makes. The
+        # floor keeps the smallest tiers above Redis' own ~10 MB baseline.
+        "mem_limit": max(int(max_memory * 1.3), 64 * 1024**2),
         "restart_policy": {"Name": "unless-stopped"},
     }
 
