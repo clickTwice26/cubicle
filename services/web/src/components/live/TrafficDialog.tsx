@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Chip, Field, Modal, Meter, Select, cx } from '../ui'
+import { Button, Chip, Field, Modal, Meter, Select, cx, useToast } from '../ui'
 import { api } from '../../lib/api'
 import type { LiveFunction } from '../../lib/live'
 import type { TestResult } from '../../lib/types'
@@ -62,6 +62,7 @@ export function TrafficDialog({ open, onClose, functions, focused }: Props) {
   const [error, setError] = useState('')
   const stop = useRef(false)
   const samples = useRef<Sample[]>([])
+  const toast = useToast()
 
   const running = progress !== null && progress.sent < progress.total
 
@@ -126,13 +127,26 @@ export function TrafficDialog({ open, onClose, functions, focused }: Props) {
       }
     }
 
-    setReport({
+    const finished: Report = {
       samples: [...samples.current],
       failed,
       wall_ms: performance.now() - started,
       stopped: stop.current,
-    })
-  }, [body, bursts, concurrency, interval, target, total])
+    }
+    setReport(finished)
+
+    // A run of any size is one people start and then close the dialog on, and
+    // the report is no use if it only exists on a screen nobody is looking at.
+    // The headline goes to a toast; reopening shows the rest.
+    const ms = finished.samples.map((s) => s.ms).sort((a, b) => a - b)
+    const rate = finished.wall_ms > 0 ? (ms.length / finished.wall_ms) * 1000 : 0
+    const p95 = ms.length ? ms[Math.min(ms.length - 1, Math.floor(0.95 * ms.length))] : 0
+    toast.push(
+      `${ms.length.toLocaleString()} sent · ${rate.toFixed(0)} req/s · p95 ${p95.toFixed(0)}ms`,
+      failed ? 'err' : 'ok',
+      failed ? `${failed} failed — open Send traffic for the report` : 'open Send traffic for the report',
+    )
+  }, [body, bursts, concurrency, interval, target, total, toast])
 
   const chosen = functions.find((fn) => fn.id === target)
 
@@ -170,7 +184,16 @@ export function TrafficDialog({ open, onClose, functions, focused }: Props) {
       }
     >
       {report && !running ? (
-        <ReportView report={report} name={chosen ? `/${chosen.namespace}/${chosen.name}` : ''} />
+        <div className="grid gap-4">
+          <ReportView report={report} name={chosen ? `/${chosen.namespace}/${chosen.name}` : ''} />
+          <button
+            type="button"
+            onClick={() => setReport(null)}
+            className="justify-self-start text-[12.5px] text-ink-2 underline-offset-2 hover:text-ink hover:underline"
+          >
+            Back to settings
+          </button>
+        </div>
       ) : (
       <div className="grid gap-4.5">
         <div>
