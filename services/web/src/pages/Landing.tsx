@@ -22,9 +22,11 @@ const SPEC: { group: string; rows: [string, string][] }[] = [
   {
     group: 'Runtime',
     rows: [
-      ['Languages', 'Python 3.12, 3.11'],
+      ['Languages', 'Python 3.10–3.13, Node 18/20/22'],
+      ['More of them', 'Built on the node when you install one, from Settings'],
       ['Isolation', 'One container per function version'],
       ['Concurrency', 'One request per container'],
+      ['Smallest instance', '32 MB — the agent holds 18 of it'],
       ['Filesystem', 'Read-only, 64 MB tmpfs at /tmp'],
       ['Privileges', 'Unprivileged, all capabilities dropped'],
     ],
@@ -32,10 +34,11 @@ const SPEC: { group: string; rows: [string, string][] }[] = [
   {
     group: 'Scheduling',
     rows: [
-      ['Ceiling', '4 containers per function, 8 per instance'],
+      ['Ceiling', 'Per function, and a hard cap per cluster above it'],
       ['At the ceiling', 'Requests queue, they do not fail'],
       ['Distribution', 'Least-used container takes the request'],
-      ['Scale down', '60 s to shed a burst, 900 s to zero'],
+      ['Triggers', 'HTTP, or a cron schedule in any timezone'],
+      ['Scale down', '60 s to shed a burst, then a kill time you set'],
       ['Idle cost', 'One database row'],
     ],
   },
@@ -54,8 +57,10 @@ const SPEC: { group: string; rows: [string, string][] }[] = [
     rows: [
       ['Install', 'One command, 5 containers, 3 networks'],
       ['TLS', 'Let’s Encrypt on first boot, or your own proxy'],
+      ['Upgrades', 'One press — it pulls the branch and rebuilds itself'],
       ['Metrics', 'Prometheus at /metrics'],
       ['Live view', 'Every request and container, streamed'],
+      ['Drift', 'Scans what Docker has against what it believes'],
       ['Telemetry', 'None'],
     ],
   },
@@ -128,7 +133,7 @@ export default function Landing() {
       <section className="mx-auto max-w-[1080px] px-5 pt-14 pb-10 sm:px-8 sm:pt-20">
         <Reveal>
           <h1 className="m-0 max-w-[760px] text-[clamp(2.1rem,6vw,3.4rem)] leading-[1.05] font-bold tracking-[-0.035em] text-balance">
-            Python functions on a server you already own.
+            Python and JavaScript functions on a server you already own.
           </h1>
           <p className="mt-5 max-w-[560px] text-[17px] leading-[1.6] text-ink-2">
             Cubicle builds each function into its own container, keeps it warm between requests
@@ -220,6 +225,19 @@ export default function Landing() {
                 <span className="text-warn">True</span>
                 {'}'}, <span className="text-warn">201</span>
               </pre>
+
+              {/* The same contract in the other language that ships. Two lines
+                  rather than a second styled block: the point is that the shape
+                  does not change, not to show the whole file twice. */}
+              <div className="border-t border-line px-4 py-3 font-mono text-[11.5px] leading-[1.8] text-ink-3">
+                <span className="text-ink-2">handler.js</span> — same contract, same context:
+                {'\n'}
+                <span className="text-info">export function</span>{' '}
+                <span className="text-ink-2">handler</span>(req, ctx) {'{'}{' '}
+                <span className="text-info">return</span> {'{'} statusCode:{' '}
+                <span className="text-warn">201</span>, body: {'{'} ok:{' '}
+                <span className="text-warn">true</span> {'}'} {'}'} {'}'}
+              </div>
             </Card>
           </Reveal>
         </div>
@@ -329,6 +347,11 @@ const ROWS: { label: string; cubicle: string; rivals: string | string[] }[] = [
     label: 'Postgres and Redis',
     cubicle: 'In the same box, one click',
     rivals: 'A separate billable service',
+  },
+  {
+    label: 'Adding a language',
+    cubicle: 'Install the runtime, or write one',
+    rivals: 'Wait for the vendor',
   },
   { label: 'Licence', cubicle: 'Apache-2.0', rivals: 'Terms of service' },
 ]
