@@ -486,6 +486,7 @@ async def generate(
     return {
         "code": result["code"],
         "requirements": result.get("requirements") or [],
+        "readme": result.get("readme") or "",
         "notes": result.get("notes") or "",
         "model": body.get("model", config.model),
         "usage": {
