@@ -41,6 +41,9 @@ MAX_HISTORY_CHARS = 2000
 
 MAX_PROMPT = 4000
 MAX_CODE_IN = 24_000
+#: A README is prose and grows without bound; the code is what the model has to
+#: get right, so it keeps the larger share of the window.
+MAX_README_IN = 6_000
 #: Enough to show shape without shipping payloads to a third party.
 CONTEXT_PREVIEW = 80
 
@@ -109,6 +112,10 @@ STYLE
 - Complete, runnable file content — never a diff, never an ellipsis, never a \
 placeholder like `# your logic here`.
 - Type hints on the signature, a short docstring, guard clauses for bad input.
+- Keep README.md true. It is the first thing whoever inherits this function \
+reads, so when the request changes the endpoint's shape, its inputs or what it \
+needs configured, update the README to match. Return it unchanged when nothing \
+about it changed.
 - Comment only what is not obvious from the code.
 - Prefer the standard library. Add a dependency only when it genuinely earns \
 its place, and pin it exactly.
@@ -129,6 +136,15 @@ RESPONSE_SCHEMA: dict[str, Any] = {
                 "Empty when the standard library and the built-in SDKs are enough."
             ),
         },
+        "readme": {
+            "type": "string",
+            "description": (
+                "The complete contents of README.md, in markdown. Document what the "
+                "endpoint does, the request and response shape, and anything it needs "
+                "in Global env. Return the current README unchanged when the request "
+                "did not affect what it says."
+            ),
+        },
         "notes": {
             "type": "string",
             "description": (
@@ -137,7 +153,7 @@ RESPONSE_SCHEMA: dict[str, Any] = {
             ),
         },
     },
-    "required": ["code", "requirements", "notes"],
+    "required": ["code", "requirements", "readme", "notes"],
     "additionalProperties": False,
 }
 
@@ -320,7 +336,12 @@ async def build_brief(
     )
 
 
-def _render(brief: Brief, current_code: str | None, requirements: str | None) -> str:
+def _render(
+    brief: Brief,
+    current_code: str | None,
+    requirements: str | None,
+    readme: str | None = None,
+) -> str:
     """The brief as the model sees it: facts, not prose."""
     fn = brief.function
     lines = [
@@ -365,6 +386,8 @@ def _render(brief: Brief, current_code: str | None, requirements: str | None) ->
         lines += ["", "CURRENT handler.py:", "```python", current_code[:MAX_CODE_IN], "```"]
     if requirements and requirements.strip():
         lines += ["", "CURRENT requirements.txt:", "```", requirements[:2000], "```"]
+    if readme and readme.strip():
+        lines += ["", "CURRENT README.md:", "```markdown", readme[:MAX_README_IN], "```"]
 
     return "\n".join(lines)
 
@@ -390,6 +413,7 @@ async def generate(
     mode: str,
     current_code: str | None,
     requirements: str | None,
+    readme: str | None = None,
     history: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     if not config.configured:
@@ -411,16 +435,18 @@ async def generate(
         if role in ("user", "assistant") and content:
             turns.append({"role": role, "content": content[:MAX_HISTORY_CHARS]})
 
+    # `write` starts from nothing, so the current handler is withheld; the
+    # README still goes in, because a rewrite should keep the documentation
+    # true rather than start it over.
+    seen_code = current_code if mode == "edit" else None
+    rendered = _render(brief, seen_code, requirements, readme)
+
     messages = [
         {"role": "system", "content": RUNTIME_BRIEF},
         *turns,
         {
             "role": "user",
-            "content": (
-                f"{_instruction(mode)}\n\n"
-                f"{_render(brief, current_code if mode == 'edit' else None, requirements)}\n\n"
-                f"REQUEST\n{prompt}"
-            ),
+            "content": (f"{_instruction(mode)}\n\n" f"{rendered}\n\n" f"REQUEST\n{prompt}"),
         },
     ]
 

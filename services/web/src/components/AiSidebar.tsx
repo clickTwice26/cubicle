@@ -115,6 +115,7 @@ export function AiSidebar({
   functionId,
   currentCode,
   requirements,
+  readme,
   sessionId,
   onApply,
 }: {
@@ -123,8 +124,9 @@ export function AiSidebar({
   functionId: string
   currentCode: string
   requirements: string
+  readme: string
   sessionId: string
-  onApply: (code: string, requirements: string[]) => void
+  onApply: (code: string, requirements: string[], readme: string) => void
 }) {
   const toast = useToast()
   const { data: status } = useAiStatus()
@@ -161,6 +163,7 @@ export function AiSidebar({
         mode,
         code: currentCode,
         requirements,
+        readme,
         session_id: sessionId,
         // Only what was said, not the code: the current buffer is sent
         // separately and replaying old files would waste the context window.
@@ -194,7 +197,7 @@ export function AiSidebar({
     // Captured before onApply, because after it the buffer is the new file and
     // there is nothing left to compare against.
     const from = currentCode
-    onApply(turn.result.code, turn.result.requirements)
+    onApply(turn.result.code, turn.result.requirements, turn.result.readme)
     setTurns((current) =>
       current.map((t) => (t.id === turn.id ? { ...t, applied: true, appliedFrom: from } : t)),
     )
@@ -291,7 +294,12 @@ export function AiSidebar({
               ) : (
                 <div className="grid min-w-0 gap-3">
                   {turns.map((turn) => (
-                    <Message key={turn.id} turn={turn} onApply={() => apply(turn)} />
+                    <Message
+                      key={turn.id}
+                      turn={turn}
+                      readme={readme}
+                      onApply={() => apply(turn)}
+                    />
                   ))}
                 </div>
               )}
@@ -425,7 +433,16 @@ function Empty({ mode }: { mode: 'edit' | 'write' }) {
   )
 }
 
-function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
+function Message({
+  turn,
+  readme,
+  onApply,
+}: {
+  turn: Turn
+  /** The current README, so an unchanged one is not announced as a change. */
+  readme: string
+  onApply: () => void
+}) {
   if (turn.role === 'user') {
     return (
       <div className="animate-turn-in ml-4 min-w-0 rounded-xl rounded-br-[4px] border border-accent bg-accent-soft px-3.5 py-2.5 text-[13px] leading-relaxed [overflow-wrap:anywhere]">
@@ -447,7 +464,7 @@ function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
 
       {turn.result ? (
         <>
-          {turn.result.requirements.length ? (
+          {turn.result.requirements.length || turn.result.readme?.trim() ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {turn.result.requirements.map((line) => (
                 <span
@@ -457,6 +474,13 @@ function Message({ turn, onApply }: { turn: Turn; onApply: () => void }) {
                   {line}
                 </span>
               ))}
+              {/* Only when it would actually change something — a README that
+                  came back identical is not a thing to announce. */}
+              {turn.result.readme?.trim() && turn.result.readme !== readme ? (
+                <span className="rounded-full border border-accent bg-accent-soft px-2 py-0.5 font-mono text-[11px]">
+                  README.md
+                </span>
+              ) : null}
             </div>
           ) : null}
 

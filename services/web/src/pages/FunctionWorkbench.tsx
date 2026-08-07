@@ -494,8 +494,9 @@ export default function FunctionWorkbench() {
         functionId={functionId}
         currentCode={drafts['handler.py'] ?? fn.files?.['handler.py'] ?? ''}
         requirements={drafts['requirements.txt'] ?? fn.files?.['requirements.txt'] ?? ''}
+        readme={drafts['README.md'] ?? fn.files?.['README.md'] ?? ''}
         sessionId={session}
-        onApply={(code, packages) =>
+        onApply={(code, packages, nextReadme) =>
           setDrafts((current) => {
             const next: Record<string, string> = { ...current, 'handler.py': code }
             if (packages.length) {
@@ -511,6 +512,13 @@ export default function FunctionWorkbench() {
               const byName = new Map(existing.map((line) => [pkgName(line), line]))
               for (const line of packages) byName.set(pkgName(line), line)
               next['requirements.txt'] = [...byName.values()].join('\n') + '\n'
+            }
+            // Only when it actually differs, so applying a code change does not
+            // mark the README dirty and ask you to redeploy prose that did not
+            // move.
+            const readmeNow = current['README.md'] ?? fn.files?.['README.md'] ?? ''
+            if (nextReadme && nextReadme.trim() && nextReadme !== readmeNow) {
+              next['README.md'] = nextReadme
             }
             return next
           })

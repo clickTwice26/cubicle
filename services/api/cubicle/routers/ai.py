@@ -49,6 +49,8 @@ class GenerateRequest(BaseModel):
     #: rather than the last deployed version.
     code: str | None = Field(default=None, max_length=assistant.MAX_CODE_IN)
     requirements: str | None = Field(default=None, max_length=4000)
+    #: The editor's README buffer, for the same reason as the code.
+    readme: str | None = Field(default=None, max_length=assistant.MAX_README_IN)
     #: Playground session, so the assistant can see the shape of the live context.
     session_id: str | None = Field(default=None, max_length=120)
     #: Earlier turns of this conversation, oldest first.
@@ -132,6 +134,7 @@ async def generate(
                 if payload.requirements is not None
                 else files.get("requirements.txt")
             ),
+            readme=payload.readme if payload.readme is not None else files.get("README.md"),
             history=[turn.model_dump() for turn in payload.history],
         )
     except assistant.AssistantError as exc:

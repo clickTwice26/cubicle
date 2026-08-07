@@ -37,6 +37,8 @@ export interface ContextSent {
 export interface Generation {
   code: string
   requirements: string[]
+  /** The README the assistant thinks the function should now have. */
+  readme: string
   notes: string
   model: string
   usage: { prompt_tokens: number; completion_tokens: number }
@@ -50,6 +52,7 @@ export interface GenerateArgs {
   mode: 'write' | 'edit'
   code?: string
   requirements?: string
+  readme?: string
   session_id?: string
   /** Earlier turns, oldest first. Only what was said, never the code. */
   history?: { role: 'user' | 'assistant'; content: string }[]
