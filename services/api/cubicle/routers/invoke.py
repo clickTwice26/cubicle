@@ -179,7 +179,15 @@ async def _invoke(
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
     else:
-        body = raw.decode("utf-8", errors="replace")
+        # Binary bodies used to be decoded with errors="replace", which turned
+        # every byte that is not valid UTF-8 into U+FFFD — an image arrived as
+        # text that could never be turned back into an image. A body that does
+        # not decode is carried as bytes instead of being destroyed on the way
+        # in.
+        try:
+            body = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            body = raw
 
     node = await pick_node(db, cluster, fn.node_pool)
     session_id = request.headers.get(SESSION_HEADER) or "sess_" + uuid.uuid4().hex[:12]
@@ -207,6 +215,15 @@ async def _invoke(
         **{k: v for k, v in result.headers.items() if k.lower() not in HOP_BY_HOP},
     }
 
+    if isinstance(result.body, bytes):
+        # `str(b"...")` would have sent the literal repr, which is how a handler
+        # returning an image ended up returning the text "b'\\x89PNG...'".
+        return Response(
+            content=result.body,
+            status_code=result.status_code,
+            headers=headers,
+            media_type=result.headers.get("content-type") or "application/octet-stream",
+        )
     if isinstance(result.body, dict | list) or result.body is None:
         return JSONResponse(result.body, status_code=result.status_code, headers=headers)
     return PlainTextResponse(str(result.body), status_code=result.status_code, headers=headers)

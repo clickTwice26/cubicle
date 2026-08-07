@@ -247,6 +247,12 @@ async function runInvocation(payload) {
     }
   }
 
+  // Base64 on the wire, a Buffer by the time the handler sees it — the same
+  // contract the Python runtime honours, so a function behaves the same in both.
+  if (payload.body_is_binary && typeof payload.body === 'string') {
+    payload = { ...payload, body: Buffer.from(payload.body, 'base64') }
+  }
+
   const request = new Request(payload)
   const context = new Context(payload.context || {}, payload.ctx_access || 'rw', payload.session_id)
 
@@ -280,8 +286,13 @@ async function runInvocation(payload) {
   const collected = logs
   logs = null
 
+  // A handler returning a Buffer or a typed array is returning a file, not text.
+  const binary = Buffer.isBuffer(body) || body instanceof Uint8Array
+  if (binary) body = Buffer.from(body).toString('base64')
+
   return {
     status_code: statusCode,
+    body_is_binary: binary,
     body,
     headers,
     logs: collected,

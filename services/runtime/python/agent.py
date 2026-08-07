@@ -12,6 +12,7 @@ Protocol
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import inspect
 import io
@@ -135,6 +136,14 @@ def run_invocation(payload: dict) -> dict:
             "context_deletes": [],
         }
 
+    # Base64 on the wire because the hop is JSON; bytes by the time the handler
+    # sees it, because that is what was actually sent.
+    if payload.get("body_is_binary") and isinstance(payload.get("body"), str):
+        try:
+            payload = {**payload, "body": base64.b64decode(payload["body"])}
+        except (ValueError, TypeError):
+            pass
+
     request = Request(payload)
     context = Context(
         payload.get("context") or {},
@@ -168,8 +177,15 @@ def run_invocation(payload: dict) -> dict:
         cubicle_context._clear()
 
     writes, deletes = context._drain()
+    # A handler returning an image returns bytes. Without this it went out as
+    # `str(b"\x89PNG...")` — the repr, not the file.
+    binary = isinstance(body, (bytes, bytearray, memoryview))
+    if binary:
+        body = base64.b64encode(bytes(body)).decode()
+
     return {
         "status_code": status_code,
+        "body_is_binary": binary,
         "body": body,
         "headers": headers,
         "logs": logs,

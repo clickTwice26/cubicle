@@ -8,6 +8,8 @@ derived from the rows written here — nothing is sampled or estimated.
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import json
 import time
 import uuid
@@ -305,7 +307,12 @@ async def invoke(
         "path": path,
         "headers": headers,
         "query": query,
-        "body": body,
+        # The hop to the agent is JSON, which has no way to carry bytes. Binary
+        # travels base64 with a flag, and the agent turns it back into bytes
+        # before the handler ever sees it — so a handler receives what was sent,
+        # not a transport detail.
+        "body": base64.b64encode(body).decode() if isinstance(body, bytes) else body,
+        "body_is_binary": isinstance(body, bytes),
         "timeout_s": function.timeout_s,
         "ctx_access": ctx_access,
         "context": ctx_before,
@@ -341,6 +348,13 @@ async def invoke(
 
         status_code = int(result.get("status_code", 200))
         response_body = result.get("body")
+        # The agent flags a bytes body the same way we flag one on the way in,
+        # so an image comes back as an image rather than as the text of its repr.
+        if result.get("body_is_binary") and isinstance(response_body, str):
+            # A body flagged binary that will not decode is a broken agent, not
+            # a reason to fail the request — the caller gets the string.
+            with contextlib.suppress(ValueError, TypeError):
+                response_body = base64.b64decode(response_body)
         response_headers = result.get("headers") or {}
         handler_logs = result.get("logs") or []
         error = result.get("error")
