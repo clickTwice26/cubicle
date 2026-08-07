@@ -107,11 +107,17 @@ def progress(key: str) -> dict:
     return _progress.get(key, {"state": "idle", "log": "", "error": ""})
 
 
-async def install(key: str, host: str = LOCAL_HOST) -> dict:
+async def install(key: str, host: str = LOCAL_HOST, *, force: bool = False) -> dict:
     """Build a runtime's image on a node, and report how it went.
 
-    Idempotent: an image that is already present is reported as installed
-    without a rebuild, so pressing the button twice costs nothing.
+    Idempotent by default: an image that is already present is reported as
+    installed without a rebuild, so pressing the button twice costs nothing.
+
+    ``force`` is for when the image is present but stale — the agent lives in
+    it, so a Cubicle update that changes the agent leaves every isolate running
+    the old one until the image is rebuilt. Without this the only way to rebuild
+    a built-in was a shell on the host, because Remove refuses one that ships
+    with Cubicle and Install saw it was already there.
     """
     if key not in runtimes.RUNTIMES:
         raise InstallError(f"'{key}' is not a runtime this instance knows about.")
@@ -124,7 +130,7 @@ async def install(key: str, host: str = LOCAL_HOST) -> dict:
         raise InstallError(f"{spec.label} is already being installed.")
 
     async with lock:
-        if key in await installed(host):
+        if not force and key in await installed(host):
             _progress[key] = {"state": "installed", "log": "already installed", "error": ""}
             return _progress[key]
 

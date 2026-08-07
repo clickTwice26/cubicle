@@ -53,6 +53,21 @@ async def install(key: str, principal: RequireOwner):
     return result
 
 
+@router.post("/{key}/rebuild", response_model=dict)
+async def rebuild(key: str, principal: RequireOwner):
+    """Build a runtime's image again even though it is already here.
+
+    The agent lives in the image, so an update that changes it leaves every
+    isolate on the old one until this runs. Separate from install rather than a
+    flag on it, because install is the safe idempotent one people press twice
+    and this deliberately throws away a working image to make another.
+    """
+    try:
+        return await images.install(key, force=True)
+    except images.InstallError as exc:
+        raise HTTPException(http.HTTP_409_CONFLICT, str(exc)) from exc
+
+
 @router.delete("/{key}", response_model=dict)
 async def uninstall(key: str, db: DbSession, principal: RequireOwner):
     """Remove a runtime's image, unless functions are still written in it."""

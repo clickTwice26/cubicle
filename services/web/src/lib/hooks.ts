@@ -188,6 +188,16 @@ export function useInstallRuntime() {
   })
 }
 
+/** Force a rebuild of an image that is already here — the agent may have moved. */
+export function useRebuildRuntime() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) =>
+      api.post<Record<string, string>>(`/api/runtimes/${key}/rebuild`, {}),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.runtimes }),
+  })
+}
+
 export function useUninstallRuntime() {
   const client = useQueryClient()
   return useMutation({

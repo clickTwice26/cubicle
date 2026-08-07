@@ -1,5 +1,6 @@
-import { Badge, Button, Card, CardHeader, ConfirmButton, Spinner, cx, useToast } from './ui'
-import { useInstallRuntime, useMe, useRuntimes, useUninstallRuntime } from '../lib/hooks'
+import { Badge, Button, Card, CardHeader, ConfirmButton, Spinner, useToast } from './ui'
+import { useInstallRuntime,
+  useRebuildRuntime, useMe, useRuntimes, useUninstallRuntime } from '../lib/hooks'
 import type { RuntimeInfo } from '../lib/types'
 
 /**
@@ -15,6 +16,7 @@ export function RuntimesCard() {
   const { data: me } = useMe()
   const { data: runtimes, isLoading } = useRuntimes()
   const install = useInstallRuntime()
+  const rebuild = useRebuildRuntime()
   const uninstall = useUninstallRuntime()
 
   const owner = me?.role === 'owner'
@@ -57,10 +59,19 @@ export function RuntimesCard() {
               key={entry.key}
               entry={entry}
               owner={owner}
-              busy={install.isPending && install.variables === entry.key}
+              busy={
+                (install.isPending && install.variables === entry.key) ||
+                (rebuild.isPending && rebuild.variables === entry.key)
+              }
               onInstall={() =>
                 install.mutate(entry.key, {
                   onSuccess: () => toast.push(`${entry.label} installed`),
+                  onError: (error) => toast.push(error.message, 'err'),
+                })
+              }
+              onRebuild={() =>
+                rebuild.mutate(entry.key, {
+                  onSuccess: () => toast.push(`${entry.label} rebuilt`),
                   onError: (error) => toast.push(error.message, 'err'),
                 })
               }
@@ -88,12 +99,14 @@ function Row({
   owner,
   busy,
   onInstall,
+  onRebuild,
   onRemove,
 }: {
   entry: RuntimeInfo
   owner: boolean
   busy: boolean
   onInstall: () => void
+  onRebuild: () => void
   onRemove: () => void
 }) {
   return (
@@ -127,17 +140,30 @@ function Row({
               building…
             </span>
           ) : entry.installed ? (
-            entry.builtin ? (
-              <span className={cx('text-[12.5px] text-ink-3')}>ships with Cubicle</span>
-            ) : (
+            <span className="flex flex-wrap items-center gap-2">
+              {/* The agent lives in the image, so an update that changes it
+                  leaves every isolate on the old one until this runs. A
+                  built-in could not be rebuilt at all before: Remove refuses
+                  one that ships with Cubicle, and Install saw it was there. */}
               <ConfirmButton
                 as="button"
-                label="Remove"
-                confirmLabel="Confirm"
-                hint="Frees the disk the image uses. Install it again at any time."
-                onConfirm={onRemove}
+                label="Rebuild"
+                confirmLabel="Rebuild now"
+                hint="Builds the image again from the current agent. Running instances keep serving until they are next replaced."
+                onConfirm={onRebuild}
               />
-            )
+              {entry.builtin ? (
+                <span className="text-[12.5px] text-ink-3">ships with Cubicle</span>
+              ) : (
+                <ConfirmButton
+                  as="button"
+                  label="Remove"
+                  confirmLabel="Confirm"
+                  hint="Frees the disk the image uses. Install it again at any time."
+                  onConfirm={onRemove}
+                />
+              )}
+            </span>
           ) : (
             <Button size="sm" variant="primary" onClick={onInstall}>
               Install
