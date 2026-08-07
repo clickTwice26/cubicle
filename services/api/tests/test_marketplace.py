@@ -84,9 +84,7 @@ def test_a_file_outside_the_allowed_set_is_refused():
     """Not filtered — refused. A package with files it cannot install is not
     the package its author tested."""
     with pytest.raises(marketplace.MarketplaceError) as exc:
-        marketplace.parse_package(
-            _package(files={"handler.py": "x", "../../etc/passwd": "root"})
-        )
+        marketplace.parse_package(_package(files={"handler.py": "x", "../../etc/passwd": "root"}))
     assert "unexpected file" in str(exc.value)
 
 
@@ -154,9 +152,7 @@ def test_declared_env_is_described_never_set():
     package = marketplace.parse_package(
         _package(env=[{"key": "SECRET", "required": True, "description": "the secret"}])
     )
-    assert package.env == [
-        {"key": "SECRET", "required": True, "description": "the secret"}
-    ]
+    assert package.env == [{"key": "SECRET", "required": True, "description": "the secret"}]
     assert "value" not in package.env[0]
 
 
@@ -177,9 +173,7 @@ needs_repo = pytest.mark.skipif(REPO is None, reason="not running from a checkou
 @needs_repo
 def test_the_bundled_registry_parses():
     index = json.loads((REPO / "marketplace" / "index.json").read_text())
-    listings = marketplace.parse_index(
-        index, base_url="https://host/marketplace/index.json"
-    )
+    listings = marketplace.parse_index(index, base_url="https://host/marketplace/index.json")
     assert listings, "the bundled index lists nothing"
 
     for listing in listings:

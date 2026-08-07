@@ -425,6 +425,34 @@ async def invoke(
     return result
 
 
+def _reason(result: InvokeResult) -> str:
+    """Why a request failed, in the few words a log line has room for.
+
+    `result.error` is only set when the handler raised. A handler that *returns*
+    a 4xx — which is the ordinary way to reject bad input — leaves it empty and
+    puts the reason in the body, so a log line that reads only `→ 400` says
+    nothing about which of the twenty ways in it was.
+    """
+    if result.error:
+        return result.error
+
+    body = result.body
+    if isinstance(body, dict):
+        for key in ("message", "error", "detail"):
+            value = body.get(key)
+            if isinstance(value, str) and value.strip():
+                # Both, when the two say different things: "not_found" is a code
+                # and "no such image" is the sentence.
+                code = body.get("error")
+                if key != "error" and isinstance(code, str) and code and code != value:
+                    return f"{code}: {value}"[:400]
+                return value.strip()[:400]
+        return json.dumps(body, default=str)[:400]
+    if isinstance(body, str) and body.strip():
+        return body.strip()[:400]
+    return ""
+
+
 def _response_size(body: Any) -> int:
     if body is None:
         return 0
@@ -504,8 +532,9 @@ async def _record(
                 f"{function.method} {function.path} → {result.status_code}"
                 f"{' · cold start' if result.cold else ''}"
             )
-            if result.error:
-                summary += f" · {result.error}"
+            reason = _reason(result) if result.status_code >= 400 else ""
+            if reason:
+                summary += f" · {reason}"
             entries.append(
                 LogEntry(
                     cluster_id=cluster.id,
@@ -555,7 +584,10 @@ async def _publish_logs(
             if result.status_code >= 400
             else "INFO",
             "function_name": function.name,
-            "message": f"{function.method} {function.path} → {result.status_code}",
+            "message": (
+                f"{function.method} {function.path} → {result.status_code}"
+                + (f" · {_reason(result)}" if result.status_code >= 400 and _reason(result) else "")
+            ),
             "duration": f"{result.duration_ms:.0f}ms",
             "request_id": result.request_id,
         }
