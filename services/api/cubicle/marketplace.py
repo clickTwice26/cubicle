@@ -192,8 +192,7 @@ def parse_package(payload: Any) -> Package:
     slug = _text(payload.get("slug"), limit=SLUG_READ_LIMIT).lower()
     if not SLUG_RE.match(slug):
         raise MarketplaceError(
-            "The package has no usable slug. It must be lower-case letters, "
-            "digits and hyphens."
+            "The package has no usable slug. It must be lower-case letters, " "digits and hyphens."
         )
 
     runtime = _text(payload.get("runtime"), limit=32) or runtimes.DEFAULT

@@ -169,9 +169,7 @@ async def export(
     fn = await load_function(db, function_id, cluster)
     version = await current_version(db, fn)
     if version is None:
-        raise HTTPException(
-            http.HTTP_409_CONFLICT, "Deploy this function before exporting it."
-        )
+        raise HTTPException(http.HTTP_409_CONFLICT, "Deploy this function before exporting it.")
 
     return marketplace.publish_bundle(
         slug=fn.name,
