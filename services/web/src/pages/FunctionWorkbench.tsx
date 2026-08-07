@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AiSidebar } from '../components/AiSidebar'
+import { Markdown } from '../components/Markdown'
 import { TriggerPanel } from '../components/TriggerPanel'
 import { CodeEditor } from '../components/CodeEditor'
 import { Bars, Bolt, ChevronLeft, Play } from '../components/Icons'
@@ -135,6 +136,7 @@ export default function FunctionWorkbench() {
   }
 
   const [aiOpen, setAiOpen] = useState(false)
+  const [preview, setPreview] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [requestBody, setRequestBody] = useState('{\n  "amount": 4200,\n  "currency": "usd"\n}')
   const [result, setResult] = useState<TestResult | null>(null)
@@ -143,6 +145,8 @@ export default function FunctionWorkbench() {
     setDrafts({})
     setResult(null)
   }, [functionId])
+
+  useEffect(() => setPreview(false), [file])
 
   if (isLoading || !fn || !group) {
     return (
@@ -291,6 +295,25 @@ export default function FunctionWorkbench() {
             >
               {dirty ? 'unsaved changes' : 'in sync with cluster'}
             </span>
+
+            {/* Preview only where markdown means something; copy on every file,
+                because withholding it from handler.py would be arbitrary. */}
+            {file.endsWith('.md') ? (
+              <button
+                type="button"
+                onClick={() => setPreview((on) => !on)}
+                title={preview ? 'Back to the source' : 'Render the markdown'}
+                className={cx(
+                  'rounded-md border px-2.5 py-1 text-xs font-semibold transition',
+                  preview
+                    ? 'border-accent bg-accent-soft text-ink'
+                    : 'border-line text-ink-2 hover:border-accent hover:text-ink',
+                )}
+              >
+                {preview ? 'Source' : 'Preview'}
+              </button>
+            ) : null}
+            <CopyButton value={value} />
             <button
               type="button"
               onClick={() => setAiOpen(true)}
@@ -308,12 +331,18 @@ export default function FunctionWorkbench() {
           </div>
 
           <div className="border-b border-line">
-            <CodeEditor
-              value={value}
-              language={file.endsWith('.py') ? 'python' : 'text'}
-              minHeight={460}
-              onChange={(next) => setDrafts((current) => ({ ...current, [file]: next }))}
-            />
+            {preview && file.endsWith('.md') ? (
+              <div className="min-h-[460px] px-5 py-4">
+                <Markdown source={value} />
+              </div>
+            ) : (
+              <CodeEditor
+                value={value}
+                language={file.endsWith('.py') ? 'python' : 'text'}
+                minHeight={460}
+                onChange={(next) => setDrafts((current) => ({ ...current, [file]: next }))}
+              />
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 px-5 py-3.5">
