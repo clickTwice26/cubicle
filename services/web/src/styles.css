@@ -531,3 +531,103 @@ button {
     animation: none;
   }
 }
+
+/* Background grid pattern & ambient hero glow */
+.bg-grid-pattern {
+  background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.hero-glow-bg {
+  position: absolute;
+  top: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 900px;
+  height: 480px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 18%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 45%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.glass-panel {
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+.hover-glow {
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.hover-glow:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06), 0 0 20px color-mix(in srgb, var(--accent) 12%, transparent);
+  transform: translateY(-2px);
+}
+
+@keyframes hero-glow-pulse {
+  0%, 100% {
+    opacity: 0.55;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateX(-50%) scale(1.12);
+  }
+}
+
+@keyframes word-slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-hero-glow {
+  animation: hero-glow-pulse 8s ease-in-out infinite;
+}
+
+.animate-word-up {
+  animation: word-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.hero-stagger-1 {
+  animation: cubicle-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+.hero-stagger-2 {
+  animation: cubicle-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both;
+}
+.hero-stagger-3 {
+  animation: cubicle-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.34s both;
+}
+.hero-stagger-4 {
+  animation: cubicle-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.46s both;
+}
+
+

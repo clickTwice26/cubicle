@@ -288,3 +288,52 @@ export const Github = ({ size = 16, ...rest }: Props) => (
     <path d="M12 2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.94.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0012 2z" />
   </svg>
 )
+
+export const Zap = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </Svg>
+)
+
+export const Shield = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </Svg>
+)
+
+export const Cpu = (p: Props) => (
+  <Svg strokeWidth={1.7} {...p}>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <rect x="9" y="9" width="6" height="6" />
+    <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
+  </Svg>
+)
+
+export const CheckCircle = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+    <polyline points="22 4 12 14.01 9 11.01" />
+  </Svg>
+)
+
+export const XCircle = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="15" y1="9" x2="9" y2="15" />
+    <line x1="9" y1="9" x2="15" y2="15" />
+  </Svg>
+)
+
+export const Activity = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </Svg>
+)
+
+export const ArrowUpRight = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <line x1="7" y1="17" x2="17" y2="7" />
+    <polyline points="7 7 17 7 17 17" />
+  </Svg>
+)
+

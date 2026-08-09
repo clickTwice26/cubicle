@@ -66,12 +66,14 @@ export function Reveal({
   children,
   delay = 0,
   className,
+  as: Component = 'div',
 }: {
   children: ReactNode
   delay?: number
   className?: string
+  as?: React.ElementType
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<any>(null)
   const [shown, setShown] = useState(false)
 
   useEffect(() => {
@@ -81,14 +83,14 @@ export function Reveal({
   }, [])
 
   return (
-    <div
+    <Component
       ref={ref}
-      className={cx('reveal min-w-0', className)}
+      className={cx('reveal', Component === 'div' && 'min-w-0', className)}
       data-shown={shown}
       style={{ '--reveal-delay': `${delay}ms` } as React.CSSProperties}
     >
       {children}
-    </div>
+    </Component>
   )
 }
 
