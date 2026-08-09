@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Logo, ThemeToggle } from '../components/Layout'
 
@@ -42,7 +42,7 @@ import {
   Activity,
 } from '../components/Icons'
 import { Button, Card, cx } from '../components/ui'
-import { Reveal } from '../components/landing/Motion'
+import { Reveal, CountUp } from '../components/landing/Motion'
 import { FlowStrip } from '../components/landing/FlowStrip'
 import { useSetupStatus } from '../lib/hooks'
 
@@ -450,7 +450,11 @@ export default function Landing() {
       <section className="relative z-10 mx-auto max-w-[1080px] px-5 pt-28 pb-12 text-center sm:px-8 sm:pt-36">
         <Reveal className="flex flex-col items-center text-center">
           <h1 className="hero-stagger-1 m-0 max-w-[820px] text-[clamp(2.3rem,5.8vw,3.8rem)] leading-[1.08] font-extrabold tracking-[-0.035em] text-balance mx-auto">
-            Free Function-as-a-Service on servers you already own.
+            <span className="relative inline-block px-4 py-1.5 mr-2 -mt-2 rounded-2xl bg-accent-soft text-accent-ink border border-accent/40 shadow-[0_0_30px_color-mix(in_srgb,var(--accent)_35%,transparent)] rotate-[-3deg] hover:rotate-[-1deg] transition-transform duration-300 overflow-hidden align-middle cursor-default">
+              <span className="relative z-10">Free</span>
+              <div className="absolute top-0 left-[-100%] w-[100%] h-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.6)_50%,transparent_100%)] animate-[cubicle-shimmer_3s_infinite_ease-in-out]" />
+            </span>
+            Function-as-a-Service on servers you already own.
           </h1>
 
           <p className="hero-stagger-2 mt-5 max-w-[650px] text-[17.5px] leading-[1.65] text-ink-2 mx-auto">
@@ -507,6 +511,7 @@ export default function Landing() {
         <Reveal delay={60}>
           <ComparisonTable />
         </Reveal>
+        <CostComparisonChart />
       </section>
 
       {/* Live Activity Visualizer */}
@@ -898,5 +903,73 @@ function ComparisonTable() {
         <span className="font-semibold text-ink">When to choose cloud FaaS:</span> If you need multi-region edge nodes across 50 countries or auto-scaling to tens of millions of concurrent requests. <span className="font-semibold text-ink">When to choose Cubicle:</span> When you want full hardware ownership, zero usage bills, absolute data privacy, and zero telemetry.
       </div>
     </Card>
+  )
+}
+
+function CostComparisonChart() {
+  const [shown, setShown] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setShown(true)
+        observer.disconnect()
+      }
+    }, { threshold: 0.25 })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const data = [
+    { name: 'Managed Edge (Vercel, Netlify)', cost: 150, width: '100%', color: 'bg-err/70', desc: '100M req + 1TB egress' },
+    { name: 'Google Cloud Run', cost: 95, width: '63%', color: 'bg-ink-3/50', desc: '100M req + 1TB egress' },
+    { name: 'AWS Lambda', cost: 65, width: '43%', color: 'bg-ink-3/50', desc: '100M req + 1TB egress' },
+    { name: 'Cubicle', cost: 0, width: '4%', color: 'bg-accent text-accent-ink', desc: 'Bring your own hardware' },
+  ]
+
+  return (
+    <div ref={ref}>
+      <Card className="mx-auto mt-6 max-w-[1000px] border border-line shadow-card overflow-hidden bg-panel p-6 sm:p-8 hover-glow transition-all">
+        <div className="mb-8">
+          <h3 className="m-0 text-[18px] font-bold tracking-tight text-ink">Monthly Cost at Scale</h3>
+          <p className="mt-1 text-[14px] text-ink-2">Estimated base cost for 100M requests and 1TB of egress bandwidth.</p>
+        </div>
+      <div className="grid gap-6">
+        {data.map((item, i) => (
+          <div key={item.name} className="relative">
+            <div className="mb-2 flex items-center justify-between text-[13px] font-medium">
+              <div className="flex items-center gap-2">
+                <span className="text-ink">{item.name}</span>
+                <span className="hidden text-ink-3 sm:inline-block">— {item.desc}</span>
+              </div>
+              <div className="font-mono font-bold text-ink tracking-tight flex items-center">
+                <span>$</span>
+                {shown ? <CountUp to={item.cost} duration={1400} /> : 0}
+                <span className="text-ink-3 text-[11px] ml-1">/mo</span>
+              </div>
+            </div>
+            <div className="h-[22px] w-full overflow-hidden rounded-[4px] bg-panel-2/60 relative">
+              <div 
+                className={cx("h-full transition-all duration-[1400ms] ease-out flex items-center px-2", item.color)}
+                style={{ 
+                  width: shown ? item.width : '0%', 
+                  transitionDelay: `${i * 150}ms`
+                }}
+              >
+                {item.cost === 0 && shown && (
+                  <span className="text-[10.5px] font-bold tracking-wider uppercase ml-1 animate-fade-in-down" style={{ animationDelay: '800ms' }}>
+                    Free
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+    </div>
   )
 }
