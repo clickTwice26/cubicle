@@ -450,9 +450,9 @@ export default function Landing() {
       <section className="relative z-10 mx-auto max-w-[1080px] px-5 pt-28 pb-12 text-center sm:px-8 sm:pt-36">
         <Reveal className="flex flex-col items-center text-center">
           <h1 className="hero-stagger-1 m-0 max-w-[820px] text-[clamp(2.3rem,5.8vw,3.8rem)] leading-[1.08] font-extrabold tracking-[-0.035em] text-balance mx-auto">
-            <span className="relative inline-block px-4 py-1.5 mr-2 -mt-2 rounded-2xl bg-accent-soft text-accent-ink border border-accent/40 shadow-[0_0_30px_color-mix(in_srgb,var(--accent)_35%,transparent)] rotate-[-3deg] hover:rotate-[-1deg] transition-transform duration-300 overflow-hidden align-middle cursor-default">
+            <span className="relative inline-block px-4 py-1 mr-2 -mt-2 rounded-xl bg-accent text-accent-ink border border-accent/80 shadow-[0_4px_24px_color-mix(in_srgb,var(--accent)_60%,transparent)] rotate-[-3deg] hover:rotate-[-1deg] transition-transform duration-300 overflow-hidden align-middle cursor-default">
               <span className="relative z-10">Free</span>
-              <div className="absolute top-0 left-[-100%] w-[100%] h-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.6)_50%,transparent_100%)] animate-[cubicle-shimmer_3s_infinite_ease-in-out]" />
+              <div className="absolute top-0 left-[-100%] w-[100%] h-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.7)_50%,transparent_100%)] animate-[cubicle-shimmer_3s_infinite_ease-in-out]" />
             </span>
             Function-as-a-Service on servers you already own.
           </h1>
@@ -855,8 +855,11 @@ function ComparisonTable() {
           <thead>
             <tr className="border-b border-line bg-panel">
               <th className="sticky left-0 z-10 bg-panel px-5 py-3.5 text-[11.5px] font-bold tracking-[0.05em] text-ink-3 uppercase sm:px-7" />
-              <th className="bg-accent-soft/80 px-4 py-3.5 text-[13.5px] font-bold whitespace-nowrap text-accent-ink border-x border-accent/20">
-                ⚡ Cubicle
+              <th className="bg-accent px-4 py-4 text-[14px] font-extrabold whitespace-nowrap text-accent-ink border border-accent shadow-[0_0_25px_color-mix(in_srgb,var(--accent)_50%,transparent)] relative z-20 rounded-t-lg">
+                <div className="flex items-center justify-center gap-1.5">
+                  <Zap size={16} className="fill-accent-ink" />
+                  <span>Cubicle</span>
+                </div>
               </th>
               {RIVALS.map((name) => (
                 <th
@@ -877,17 +880,17 @@ function ComparisonTable() {
                 >
                   {row.label}
                 </th>
-                <td className="bg-accent-soft/30 px-4 py-3.5 text-[13px] font-bold text-ink border-x border-accent/15">
+                <td className="bg-accent-soft/40 px-4 py-3.5 text-[13px] font-bold text-ink border-x border-accent/50 relative">
                   <div className="flex items-center gap-1.5">
-                    <CheckCircle size={15} className="text-ok flex-none" />
-                    <span>{row.cubicle}</span>
+                    <CheckCircle size={15} className="text-ok drop-shadow-[0_0_8px_var(--ok)] flex-none" />
+                    <span className="drop-shadow-sm">{row.cubicle}</span>
                   </div>
                 </td>
                 {row.rivals.map((value, i) => (
-                  <td key={RIVALS[i]} className="px-4 py-3.5 text-[13px] text-ink-2">
-                    <div className="flex items-center gap-1.5">
+                  <td key={RIVALS[i]} className="px-4 py-3.5 text-[12.5px] text-ink-3 font-medium transition-colors hover:text-ink-2">
+                    <div className="flex items-center gap-1.5 opacity-80">
                       {value === 'Required' || value === 'No' || value.includes('Proprietary') ? (
-                        <XCircle size={14} className="text-err/70 flex-none" />
+                        <XCircle size={14} className="text-err/60 flex-none" />
                       ) : null}
                       <span>{value}</span>
                     </div>
