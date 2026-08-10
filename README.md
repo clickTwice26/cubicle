@@ -8,7 +8,7 @@ An open-source functions platform you run yourself. Your hardware, your data,
 no account anywhere. One command to install, automatic HTTPS when you point a
 domain at it, and nothing that calls home.
 
-Apache-2.0 · Python 3.12 and 3.11 runtimes · entirely Docker-based
+Apache-2.0 · Python and JavaScript runtimes · entirely Docker-based
 
 <img src="docs/screenshots/02-overview.png" alt="The Cubicle console overview, showing invocation KPIs, an invocations chart and the function table" width="900">
 
@@ -174,7 +174,8 @@ Tailwind v4 for the console, Caddy 2 at the edge, and the Docker Engine API as
 the scheduler's substrate.
 
 **How a function runs.** A deploy writes the source into a fresh Docker volume
-and installs `requirements.txt` into it — that is the build. Isolates mount the
+and installs its dependency file into it, `requirements.txt` with pip or
+`package.json` with npm — that is the build. Isolates mount the
 volume read-only, so a function never sees another's code and a rebuild is
 atomic: the old version keeps serving until the new one is ready. Isolates stay
 warm between requests and are reclaimed after `CUBICLE_ISOLATE_IDLE_TTL`
@@ -220,6 +221,25 @@ def handler(req: Request, ctx: Context):
 too — the request object is also a mapping, so both documented shapes run
 against the same runtime.
 
+The same function in JavaScript, on a `node22`, `node20` or `node18` runtime:
+
+```javascript
+export async function handler(req, ctx) {
+  const body = req.json()
+  const apiBase = ctx.env.PAYMENTS_API_BASE
+  const actor = ctx.get('actor') ?? { tier: 'anonymous' }
+
+  ctx.set('last_charge', { amount: body.amount, api_base: apiBase })
+  return { statusCode: 200, body: { ok: true, actor } }
+}
+```
+
+Export `handler` by name or as the default, and it may be async: the agent
+awaits whatever it returns. Set the language when you create the function, in
+the console or with `cubicle init --runtime node22`. It is fixed per function
+rather than per file, which is why a bundle carries `handler.py` or
+`handler.js` and never both.
+
 Invoke it:
 
 ```bash
@@ -245,9 +265,28 @@ cubicle invoke payments/create-charge -d '{"amount": 4200}'
 cubicle logs --follow
 ```
 
-Zero dependencies beyond the standard library, so it installs on an air-gapped
-jump host. The full OpenAPI document is at `/api/openapi.json` with a browsable
-UI at `/api/docs`.
+`cubicle init --runtime node22 payments/create-charge` scaffolds the same
+directory in JavaScript, with `handler.js` and `package.json` in place of
+`handler.py` and `requirements.txt`. `cubicle deploy` bundles whichever pair the
+function's own runtime reads, so the workflow above is identical in either
+language. `cubicle runtimes` lists what this instance can actually run.
+
+Everything the console does is here, because both are clients of the same API:
+
+| Commands | What they cover |
+| --- | --- |
+| `login` `clusters` `status` `ls` | Authenticate, then see what the instance is holding |
+| `init` `deploy` `invoke` `logs` | Write a function and watch it answer |
+| `versions` `metrics` `instances` `kill` | Which build is serving, how it performs, which containers are alive |
+| `scale` `config` `pause` `resume` `rm` | Change a function without opening the console |
+| `env` `secrets` `schedule` | Cluster configuration, per-function secrets, cron triggers |
+| `runtimes` `services` `market` | Language images, managed Postgres and Redis, published functions |
+| `metering` `reconcile` `update` | Usage for chargeback, drift against Docker, upgrading the instance |
+
+Every command takes `--cluster <slug>` and honours `CUBICLE_CLUSTER`; every one
+of them explains itself under `--help`. Zero dependencies beyond the standard
+library, so it installs on an air-gapped jump host. The full OpenAPI document is
+at `/api/openapi.json` with a browsable UI at `/api/docs`.
 
 ---
 

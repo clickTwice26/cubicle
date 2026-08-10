@@ -71,21 +71,21 @@ def _install_command(spec, files: dict[str, str]) -> str | None:
     if not body.strip():
         return None
 
-    if spec.deps_file == "requirements.txt":
+    if spec.language == "Python":
         if not any(line.strip() and not line.strip().startswith("#") for line in body.splitlines()):
             return None
         return (
             f"python -m pip install --no-cache-dir --disable-pip-version-check "
-            f"-r {SRV}/requirements.txt -t {SRV}/.deps 2>&1"
+            f"-r {SRV}/{spec.deps_file} -t {SRV}/.deps 2>&1"
         )
 
-    if spec.deps_file == "package.json":
+    if spec.language == "JavaScript":
         try:
             declared = json.loads(body).get("dependencies") or {}
         except (TypeError, ValueError):
-            # A package.json that will not parse is a build error worth showing,
-            # not a reason to silently skip the install.
-            return "echo 'package.json is not valid JSON' >&2; exit 1"
+            # A manifest that will not parse is a build error worth showing, not
+            # a reason to silently skip the install.
+            return f"echo '{spec.deps_file} is not valid JSON' >&2; exit 1"
         if not declared:
             return None
         return (
@@ -187,10 +187,26 @@ async def build_version(
     files: dict[str, str],
 ) -> BuildResult:
     spec = runtimes.get(runtime)
-    image = settings.runtime_image(runtime)
     volume = volume_name(function_id, version_number)
+
+    # Without its entry file the isolate has nothing to import and every
+    # invocation fails at load. The build itself would still succeed, because
+    # all it does is copy what it is given, so the version would go green while
+    # being dead. That is exactly what a function whose runtime was changed to a
+    # language its stored source is not written in ends up with. Refuse here,
+    # where there is a build log for someone to read.
+    if spec.entry_file not in files:
+        return BuildResult(
+            False,
+            f"build failed   a {spec.label} function needs {spec.entry_file}, and this "
+            f"version carries {', '.join(sorted(files)) or 'nothing'}",
+            0,
+            volume,
+        )
+
+    image = settings.runtime_image(runtime)
     install = _install_command(spec, files)
-    verb = "pip install -r" if spec.deps_file == "requirements.txt" else "npm install from"
+    verb = "pip install -r" if spec.language == "Python" else "npm install from"
     label = f"{verb} {spec.deps_file}"
 
     if install:

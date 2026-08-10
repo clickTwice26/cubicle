@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from . import runtimes
+
 #: Spelled out rather than derived, so the OpenAPI schema carries the enum and
 #: clients can see the options. `test_runtimes` asserts it matches the registry,
 #: which is what stops the two drifting apart.
@@ -25,6 +27,22 @@ Runtime = Literal[
     "node20",
     "node18",
 ]
+
+#: Carried by every function whatever it is written in: the manifest the console
+#: and the CLI both edit, and the documentation that ships with the source.
+SHARED_FILES = {"cubicle.toml", "README.md"}
+
+#: The union across every runtime. Derived rather than spelled out, because a
+#: literal set is how JavaScript came to be undeployable: `handler.js` was added
+#: to the registry and never to the deploy contract. This is only the coarse
+#: gate: a request is validated before the function it targets has been loaded,
+#: so it cannot yet know which language it is looking at. `check_bundle` below
+#: is the one that knows.
+DEPLOYABLE_FILES = (
+    {spec.entry_file for spec in runtimes.RUNTIMES.values()}
+    | {spec.deps_file for spec in runtimes.RUNTIMES.values()}
+    | SHARED_FILES
+)
 Method = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 CtxAccess = Literal["rw", "r", "w", "none"]
 #: What a function is triggered with. A label only — see `Function.function_type`.
@@ -457,6 +475,34 @@ class FunctionDetail(FunctionOut):
     stats: FunctionStats = Field(default_factory=FunctionStats)
 
 
+def bundle_files(runtime: str) -> set[str]:
+    """Everything a function of this runtime is allowed to carry."""
+    spec = runtimes.get(runtime)
+    return {spec.entry_file, spec.deps_file} | SHARED_FILES
+
+
+def check_bundle(runtime: str, files: dict[str, str]) -> None:
+    """Refuse a bundle that the given runtime could not actually run.
+
+    Kept a plain function rather than folded into `DeployRequest` because the
+    runtime lives on the function row, not in the request body: only the
+    endpoint, having loaded the function, knows which language it is judging.
+    Keeping it here and pure is also what makes it testable without a database.
+    """
+    spec = runtimes.get(runtime)
+    foreign = sorted(set(files) - bundle_files(runtime))
+    if foreign:
+        # Name the file, the runtime and the file it should have been. A bare
+        # "unsupported" tells an author nothing about which of the two they got
+        # wrong, and it is nearly always the language, not the file name.
+        raise ValueError(
+            f"{', '.join(foreign)} {'is' if len(foreign) == 1 else 'are'} not part of a "
+            f"{spec.label} function. Deploy {spec.entry_file} instead."
+        )
+    if spec.entry_file not in files:
+        raise ValueError(f"A {spec.label} function must contain {spec.entry_file}.")
+
+
 class DeployRequest(BaseModel):
     files: dict[str, str]
     message: str | None = None
@@ -464,12 +510,15 @@ class DeployRequest(BaseModel):
     @field_validator("files")
     @classmethod
     def _files(cls, v: dict[str, str]) -> dict[str, str]:
-        allowed = {"handler.py", "requirements.txt", "cubicle.toml", "README.md"}
-        unknown = set(v) - allowed
+        unknown = set(v) - DEPLOYABLE_FILES
         if unknown:
             raise ValueError(f"Unsupported files: {', '.join(sorted(unknown))}")
-        if "handler.py" not in v:
-            raise ValueError("handler.py is required.")
+        # Which entry file is required depends on the function being deployed to,
+        # and a deploy may legitimately send only the manifest and let the stored
+        # source carry over, so the endpoint checks the merged bundle instead.
+        # An empty one is still nothing to deploy.
+        if not v:
+            raise ValueError("A deploy must carry at least one file.")
         total = sum(len(c.encode()) for c in v.values())
         if total > 2_000_000:
             raise ValueError("Function bundle is larger than 2 MB.")

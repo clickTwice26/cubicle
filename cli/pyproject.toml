@@ -15,3 +15,21 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["cubicle_cli*"]
+
+[tool.ruff]
+line-length = 100
+# The API is py312, but this has to install on whatever jump host is reachable
+# from the cluster, and pyproject already promises 3.11.
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "C4", "RET", "SIM"]
+# The tests assert; nothing under cubicle_cli does.
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fake tokens in fixtures are not credentials.
+"tests/*" = ["S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

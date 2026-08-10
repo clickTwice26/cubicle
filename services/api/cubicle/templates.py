@@ -109,7 +109,7 @@ ttl    = "30m"
 """
 
 
-def default_readme(name: str, namespace: str, base_url: str) -> str:
+def default_readme(name: str, namespace: str, base_url: str, entry_file: str) -> str:
     return f"""# {name}
 
 Served at `{base_url}`.
@@ -121,7 +121,7 @@ curl -X POST {base_url} \\
   -d '{{"amount": 4200}}'
 ```
 
-Edit `handler.py` in the console or deploy from your machine with
+Edit `{entry_file}` in the console or deploy from your machine with
 `cubicle deploy` from this directory. Both write the same version.
 """
 
@@ -214,5 +214,5 @@ def scaffold(
             ctx_access=ctx_access,
             max_instances=max_instances,
         ),
-        "README.md": default_readme(name, namespace, base_url),
+        "README.md": default_readme(name, namespace, base_url, spec.entry_file),
     }

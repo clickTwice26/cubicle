@@ -40,6 +40,8 @@ from ..schemas import (
     TestInvokeRequest,
     TestInvokeResult,
     VersionOut,
+    bundle_files,
+    check_bundle,
     validate_slug,
 )
 from ..templates import RUNTIME_LABELS, scaffold
@@ -503,9 +505,19 @@ async def deploy(
         )
     ).scalar_one() or 0
 
+    # Carry the stored source forward so a deploy may send only what changed,
+    # but carry forward only what this runtime can use: a function switched from
+    # Python to JavaScript still has handler.py against it, and keeping it would
+    # make every later deploy fail the check below. Older versions keep their own
+    # copy, so nothing is lost by leaving it behind.
     previous = await current_version(db, fn)
-    files = dict(previous.files) if previous else {}
+    keep = bundle_files(fn.runtime)
+    files = {n: b for n, b in (previous.files if previous else {}).items() if n in keep}
     files.update(payload.files)
+    try:
+        check_bundle(fn.runtime, files)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
     version = FunctionVersion(function_id=fn.id, number=latest + 1, files=files, status="building")
     db.add(version)

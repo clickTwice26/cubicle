@@ -90,9 +90,14 @@ def test_function_names_are_normalised(given, expected):
     assert FunctionCreate(name=given).name == expected
 
 
-def test_deploy_requires_a_handler():
+def test_deploy_requires_at_least_one_file():
+    """Which entry file is required depends on the runtime, an empty deploy never is.
+
+    The entry-file rule itself lives in `check_bundle` and is pinned by
+    `test_deploy_bundles`.
+    """
     with pytest.raises(ValidationError):
-        DeployRequest(files={"requirements.txt": ""})
+        DeployRequest(files={})
 
 
 def test_deploy_rejects_unknown_files():

@@ -29,6 +29,19 @@ from .builder import volume_name
 from .engine import LOCAL_HOST, engines
 
 AGENT_PORT = 8080
+
+#: Weight given to the newest sample when updating a rolling mean. High enough
+#: that a function whose behaviour changes is tracked within a few requests,
+#: low enough that one slow outlier does not move the estimate far.
+EWMA_ALPHA = 0.25
+
+#: What a cold start is assumed to cost before this pool has measured one.
+#: Roughly what a container create, start and agent import takes on two cores.
+DEFAULT_BOOT_S = 0.40
+
+#: The longest a single wait may defer a request. A wrong estimate should cost
+#: milliseconds, not the request.
+MAX_DEFER_S = 0.25
 ROLE_LABEL = "cubicle.role"
 ISOLATE_ROLE = "isolate"
 
@@ -78,6 +91,9 @@ class Isolate:
     last_used: float = field(default_factory=time.monotonic)
     invocations: int = 0
     busy: bool = False
+    #: When this isolate was handed its current request. Zero when idle. The
+    #: pool uses it to estimate how soon the isolate will be free again.
+    busy_since: float = 0.0
 
 
 def _announce(kind: str, isolate: Isolate, **fields: object) -> None:
@@ -126,6 +142,10 @@ class IsolatePool:
         self._starting: dict[str, int] = {}
         #: spec key -> (highest concurrent busy count, when it was seen)
         self._peaks: dict[str, tuple[int, float]] = {}
+        #: spec key -> rolling mean of how long a request occupies an isolate.
+        self._service: dict[str, float] = {}
+        #: spec key -> rolling mean of what a cold start actually costs here.
+        self._boot: dict[str, float] = {}
         #: cluster -> memory_mb of isolates being started right now. A pending
         #: start holds its memory as surely as a running one; counting only
         #: what is already in `_isolates` let a burst of concurrent requests
@@ -146,6 +166,9 @@ class IsolatePool:
             raise ClusterFullError(impossible)
 
         deadline = time.monotonic() + settings.isolate_start_timeout + spec.timeout_s
+        #: How long this request has already spent waiting for a busy isolate
+        #: rather than starting one. Bounds the deferral to a single boot.
+        deferred = 0.0
         while True:
             async with self._cond:
                 pool = self._isolates.setdefault(spec.key, [])
@@ -157,7 +180,7 @@ class IsolatePool:
                 if idle:
                     isolate = min(idle, key=lambda i: (i.invocations, i.last_used))
                     isolate.busy = True
-                    isolate.last_used = time.monotonic()
+                    isolate.busy_since = isolate.last_used = time.monotonic()
                     self._peak(spec.key, pool)
                     _announce("isolate.busy", isolate)
                     return isolate, False
@@ -168,6 +191,19 @@ class IsolatePool:
                 ceiling = max(1, min(spec.max_instances, settings.isolate_max_per_function))
                 in_flight = self._starting.get(spec.key, 0)
                 if len(pool) + in_flight < ceiling:
+                    # There is room to grow, but room is not a reason. A burst
+                    # of short requests makes every isolate momentarily busy,
+                    # and spawning on that alone answers a five millisecond
+                    # handler with a four hundred millisecond cold start. Wait
+                    # first when a busy isolate is due back sooner than that.
+                    patience = self._worth_waiting(pool, spec.key, deferred)
+                    if patience is not None:
+                        began = time.monotonic()
+                        with contextlib.suppress(TimeoutError):
+                            await asyncio.wait_for(self._cond.wait(), timeout=patience)
+                        deferred += time.monotonic() - began
+                        continue
+
                     # The cluster's ceiling is checked here, inside the same
                     # lock that decides to start one. Checking it outside would
                     # let two concurrent requests both read "room for one" and
@@ -209,6 +245,7 @@ class IsolatePool:
 
         async with self._cond:
             isolate.busy = True
+            isolate.busy_since = time.monotonic()
             pool = self._isolates.setdefault(spec.key, [])
             pool.append(isolate)
             self._peak(spec.key, pool)
@@ -217,8 +254,14 @@ class IsolatePool:
 
     async def release(self, isolate: Isolate, *, healthy: bool = True) -> None:
         async with self._cond:
+            now = time.monotonic()
+            # How long the request actually held the isolate. This is the
+            # number that decides, next time, whether waiting beats spawning.
+            if isolate.busy_since:
+                self._observe(self._service, isolate.spec_key, now - isolate.busy_since)
             isolate.busy = False
-            isolate.last_used = time.monotonic()
+            isolate.busy_since = 0.0
+            isolate.last_used = now
             isolate.invocations += 1
             _announce("isolate.idle", isolate, invocations=isolate.invocations)
             if not healthy:
@@ -317,6 +360,48 @@ class IsolatePool:
 
         return None
 
+    @staticmethod
+    def _observe(store: dict[str, float], key: str, sample: float) -> None:
+        """Fold one measurement into a rolling mean."""
+        previous = store.get(key)
+        store[key] = sample if previous is None else previous + EWMA_ALPHA * (sample - previous)
+
+    def _worth_waiting(self, pool: list[Isolate], key: str, deferred: float) -> float | None:
+        """How long to wait for a busy isolate instead of starting another.
+
+        Starting one costs a cold start, and the pool then carries that
+        container until the reaper takes it back. If a busy isolate is going
+        to be free sooner than a new one could boot, waiting is both quicker
+        for this request and cheaper for the cluster.
+
+        Returns None when starting is the better move: nothing is running yet,
+        no handler time has been measured, every busy isolate is further away
+        than a boot, or this request has already deferred as long as a boot
+        would have taken. That last guard is what stops a steady stream of
+        slow requests from deferring forever.
+
+        Must be called with the pool condition held.
+        """
+        service = self._service.get(key)
+        if not pool or service is None:
+            return None
+
+        budget = self._boot.get(key, DEFAULT_BOOT_S) - deferred
+        if budget <= 0:
+            return None
+
+        now = time.monotonic()
+        remaining = [max(0.0, service - (now - i.busy_since)) for i in pool if i.busy]
+        if not remaining:
+            return None
+
+        soonest = min(remaining)
+        if soonest >= budget:
+            return None
+        # A small grace on top, so the wait ends just after the isolate is
+        # released rather than a moment before it.
+        return max(0.002, min(soonest + 0.005, budget, MAX_DEFER_S))
+
     def _peak(self, key: str, pool: list[Isolate]) -> None:
         """Record how many isolates of this spec are busy at once."""
         busy = sum(1 for i in pool if i.busy)
@@ -338,6 +423,7 @@ class IsolatePool:
         return 0 if now - at > settings.isolate_scaledown_window else seen
 
     async def _start(self, spec: FunctionSpec) -> Isolate:
+        boot_began = time.monotonic()
         image = settings.runtime_image(spec.runtime)
         volume = volume_name(spec.id, spec.version_number)
         name = f"cubicle-iso-{spec.namespace}-{spec.name}-{uuid.uuid4().hex[:8]}"[:60]
@@ -416,6 +502,9 @@ class IsolatePool:
             _announce("isolate.gone", isolate, reason="failed")
             await self._destroy(isolate, log_output=True)
             raise
+        # What a cold start costs on this node, for this runtime, measured
+        # rather than assumed. It is the budget _worth_waiting spends.
+        self._observe(self._boot, spec.key, time.monotonic() - boot_began)
         _announce("isolate.ready", isolate, boot_ms=round((time.monotonic() - started) * 1000))
         return isolate
 

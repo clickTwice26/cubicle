@@ -1651,10 +1651,27 @@ export const DOCS: DocPage[] = [
         {h2('bundle', 'What gets deployed')}
         {p(
           <>
-            A deploy sends four files and nothing else: {mono('handler.py')} (required),{' '}
-            {mono('requirements.txt')}, {mono('cubicle.toml')} and {mono('README.md')}. Anything
-            else in the directory is ignored, so a virtualenv or a test folder sitting next to
-            the handler costs nothing.
+            A deploy sends four files and nothing else: the function&apos;s entry file, its
+            dependency file, {mono('cubicle.toml')} and {mono('README.md')}. Which two the first
+            pair are is decided by the runtime the function is set to, not by what happens to be
+            in the directory. Anything else there is ignored, so a virtualenv or a{' '}
+            {mono('node_modules')} or a test folder sitting next to the handler costs nothing.
+          </>,
+        )}
+        {table(
+          ['Runtime', 'Entry file', 'Dependencies'],
+          [
+            ['python313 · python312 · python311 · python310', 'handler.py', 'requirements.txt'],
+            ['node22 · node20 · node18', 'handler.js', 'package.json'],
+          ],
+        )}
+        {p(
+          <>
+            The entry file is the only one that is required, and only in the sense that the
+            deployed version must end up with it: a deploy merges onto the version before it, so
+            sending {mono('cubicle.toml')} alone is a legal deploy that keeps the stored
+            handler. Sending the other language&apos;s files is refused rather than merged, and
+            the refusal names the file the function was expecting instead.
           </>,
         )}
       </>
@@ -1687,7 +1704,44 @@ export const DOCS: DocPage[] = [
           </>,
         )}
 
-        {h2('commands', 'Commands')}
+        {h2('walkthrough', 'From nothing to a live endpoint')}
+        {code(
+          <>
+            <span className="text-ink-3">$</span> cubicle init payments/create-charge{'\n'}
+            {'  '}
+            <span className="text-ok">created</span> namespace payments{'\n'}
+            {'  '}
+            <span className="text-ok">created</span> payments/create-charge{'\n'}
+            {'  '}
+            <span className="text-ink-3">wrote</span> create-charge/handler.py{'\n'}
+            {'  '}
+            <span className="text-ink-3">wrote</span> create-charge/requirements.txt{'\n'}
+            {'  '}
+            <span className="text-ink-3">wrote</span> create-charge/cubicle.toml{'\n'}
+            {'  '}
+            <span className="text-ink-3">wrote</span> create-charge/README.md{'\n\n'}
+            <span className="text-ink-3">$</span> cd create-charge &amp;&amp; cubicle deploy
+            {'\n'}
+            {'  '}bundling 4 files · 3812 B{'\n'}
+            {'  '}building 910ms{'\n'}
+            {'  '}
+            <span className="text-ok">deployed</span>{' '}
+            https://fn.example.com/prod/payments/create-charge (v1)
+          </>,
+        )}
+        {p(
+          <>
+            Add {mono('--runtime node22')} to {mono('init')} and the same four files arrive as{' '}
+            {mono('handler.js')}, {mono('package.json')}, {mono('cubicle.toml')} and{' '}
+            {mono('README.md')}. Nothing else about the walkthrough changes:{' '}
+            {mono('cubicle deploy')} reads the runtime off the function and bundles whichever
+            pair that runtime actually reads, so there is no flag to remember and no way to send
+            a directory of Python to a JavaScript function by accident.{' '}
+            {mono('cubicle runtimes')} lists the ones this instance has built.
+          </>,
+        )}
+
+        {h2('commands', 'Everyday')}
         {table(
           ['Command', 'Description'],
           [
@@ -1702,14 +1756,63 @@ export const DOCS: DocPage[] = [
               'Send a test event and print the response with timing.',
             ],
             ['cubicle logs [--follow]', 'Show or follow structured logs.'],
-            ['cubicle env ls | set KEY=value | rm KEY', 'Cluster-wide configuration.'],
+          ],
+        )}
+
+        {h2('one-function', 'One function')}
+        {table(
+          ['Command', 'Description'],
+          [
+            ['cubicle versions <ns>/<name>', 'Every build, which one serves, and its log.'],
+            ['cubicle metrics <ns>/<name>', 'Latency, errors and cold starts over a window.'],
+            ['cubicle instances <ns>/<name>', 'The containers serving it right now.'],
+            [
+              'cubicle kill <ns>/<name> <id>',
+              'Destroy one isolate and let the pool replace it.',
+            ],
+            ['cubicle scale <ns>/<name>', 'Warm floor and ceiling, --min and --max.'],
+            ['cubicle config <ns>/<name>', 'Show or change memory, timeout, auth, runtime.'],
+            ['cubicle pause | resume <ns>/<name>', 'Stop serving and drain, or serve again.'],
+            ['cubicle rm <ns>/<name>', 'Delete a function and every version of it.'],
             ['cubicle secrets ls | set KEY | rm KEY', 'Per-function secrets.'],
+            [
+              'cubicle schedule',
+              'Cron triggers: ls, add, rm, enable, disable, run now, preview.',
+            ],
+          ],
+        )}
+
+        {h2('instance', 'The instance')}
+        {table(
+          ['Command', 'Description'],
+          [
+            ['cubicle env ls | set KEY=value | rm KEY', 'Cluster-wide configuration.'],
+            [
+              'cubicle runtimes',
+              'The language images this instance can run: list, install, rebuild, rm.',
+            ],
+            [
+              'cubicle services',
+              'Managed PostgreSQL and Redis: show, url, create, start, stop, recreate, rm.',
+            ],
+            [
+              'cubicle market',
+              'Published functions: browse, show the source, install, export one of yours.',
+            ],
+            ['cubicle metering [--csv]', "This month's usage for the cluster, by namespace."],
+            [
+              'cubicle reconcile [apply]',
+              'Where the record and Docker disagree, and fixing it.',
+            ],
+            ['cubicle update [apply]', 'Whether the branch moved on, and upgrading to it.'],
           ],
         )}
         {p(
           <>
             Every command takes {mono('--cluster <slug>')}, and each of them honours{' '}
-            {mono('CUBICLE_CLUSTER')} when it is not given.
+            {mono('CUBICLE_CLUSTER')} when it is not given. {mono('--yes')} answers every
+            confirmation, which the destructive ones require when there is no terminal to ask
+            at. Each command and sub-command explains itself under {mono('--help')}.
           </>,
         )}
 
