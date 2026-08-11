@@ -32,14 +32,37 @@ To upgrade later:
 pipx upgrade cubicle-cli
 ```
 
-It re-resolves the git ref and swaps the commit, then reports "already at latest
-version 1.0.0". Read the `-` and `+` lines above that instead: the version
-string is the platform's and does not move between commits, so it is the commit
-that tells you anything. `cubicle --version` names it:
+### The commit is the version
+
+There is no separate version for the CLI. Everything in this repository shares
+one version string, and it does not move between releases: the API, the console
+and this program all report 1.0.0 whatever has changed. What moves is the
+commit, so that is what identifies a build:
 
 ```
 cubicle 1.0.0 (467648a)
 ```
+
+`pipx upgrade` re-resolves the git ref and swaps the commit, then reports
+"already at latest version 1.0.0". That line compares version strings and is
+therefore always true; read the `-` and `+` pair above it, which names the
+commit that went and the one that arrived.
+
+`cubicle update` answers the same question for both halves at once. The instance
+has already asked GitHub for the head of the branch, so comparing this copy
+against that answer costs nothing:
+
+```
+  DEPLOYED          9ca018f
+  LATEST            cefffc6
+
+  CLI               9ca018f · behind cefffc6
+    pipx upgrade cubicle-cli
+```
+
+The two move independently, so an instance can be current while the CLI is not.
+A source checkout records no commit and is left alone: the answer there is
+`git log`.
 
 If a stale copy will not budge, force it:
 

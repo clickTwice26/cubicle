@@ -22,6 +22,7 @@ from ..client import (
     Profile,
     confirm,
     confirmable,
+    installed_commit,
     load_profile,
     paint,
     poll,
@@ -40,12 +41,6 @@ ORDER = 40
 #: compares. The line to read is the `-` and `+` pair above it, which names the
 #: commit that went and the one that arrived.
 CLI_UPGRADE = "pipx upgrade cubicle-cli"
-
-#: When the version really has not moved and pipx declines to do anything, or
-#: the install came from pip rather than pipx.
-CLI_UPGRADE_FORCED = (
-    'pipx install --force "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"'
-)
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -111,19 +106,41 @@ def cmd_update(args: argparse.Namespace) -> int:
     if status["cached"]:
         print(paint("  answered from the instance's cached check; --refresh asks again", "dim"))
 
-    # This command is about the instance, and somebody reading it is often
-    # asking about this program. They are updated separately and the names are
-    # close enough that saying so once is cheaper than the confusion.
-    print(
-        paint(
-            f"\n  this updates the instance, not the CLI. To update the CLI:\n"
-            f"    {CLI_UPGRADE}\n"
-            f"  `cubicle --version` names the commit, which is what actually moves",
-            "dim",
-        )
-    )
+    _report_cli(status)
     print()
     return 0
+
+
+def _report_cli(status: dict) -> None:
+    """Whether this program is on the branch head, using the check just made.
+
+    There is no separate version for the CLI. Everything in this repository
+    shares one version string and it does not move between releases; the commit
+    is what moves. The instance has just asked GitHub what the head of the
+    branch is, so comparing this copy against that answer costs nothing and is
+    the same question the instance answered about itself.
+    """
+    commit = installed_commit()
+    latest = status.get("latest") or ""
+
+    if not commit:
+        # A source checkout, or an install whose metadata was not recorded.
+        print(paint(f"\n  the CLI is updated separately: {CLI_UPGRADE}", "dim"))
+        return
+
+    print()
+    if not latest or status.get("error"):
+        # The instance could not reach GitHub, so there is nothing to compare
+        # against and saying "up to date" would be a guess.
+        print(record([("cli", f"{commit[:7]}, and the branch head is not known")]))
+        return
+
+    if commit == latest:
+        print(record([("cli", f"{paint(commit[:7], 'green')} · current")]))
+        return
+
+    print(record([("cli", f"{paint(commit[:7], 'yellow')} · behind {latest[:7]}")]))
+    print(paint(f"    {CLI_UPGRADE}", "dim"))
 
 
 def cmd_reconcile(args: argparse.Namespace) -> int:

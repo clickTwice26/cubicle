@@ -63,6 +63,7 @@ __all__ = [
     "CubicleError",
     "Profile",
     "bounded",
+    "build_id",
     "confirm",
     "confirmable",
     "deploy_files",
@@ -70,6 +71,7 @@ __all__ = [
     "env_key",
     "find_function",
     "find_group",
+    "installed_commit",
     "list_runtimes",
     "load_profile",
     "paint",
@@ -88,6 +90,34 @@ __all__ = [
 
 class CubicleError(RuntimeError):
     pass
+
+
+def installed_commit() -> str:
+    """The commit this copy was installed from, or "" when that is not knowable.
+
+    There is no separate version for this program. The platform has one version
+    string, shared by the API, the console and this, and it does not move
+    between releases; what moves is the commit. pip records the resolved commit
+    of a VCS install in `direct_url.json`, so an install from GitHub knows
+    exactly what it is and can be compared against the branch head that the
+    instance is already checking.
+
+    A source checkout has no such record and returns "", because the answer
+    there is `git log` and not this.
+    """
+    try:
+        from importlib.metadata import Distribution
+
+        raw = Distribution.from_name("cubicle-cli").read_text("direct_url.json")
+        return json.loads(raw or "{}").get("vcs_info", {}).get("commit_id", "")
+    except Exception:  # noqa: BLE001 - any failure here just means "not known"
+        return ""
+
+
+def build_id() -> str:
+    """The version and the commit, which is what identifies a build."""
+    commit = installed_commit()
+    return f"{__version__} ({commit[:7]})" if commit else __version__
 
 
 def normalise_url(url: str) -> str:
