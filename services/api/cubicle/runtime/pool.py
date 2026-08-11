@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import hmac
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -44,6 +46,30 @@ DEFAULT_BOOT_S = 0.40
 MAX_DEFER_S = 0.25
 ROLE_LABEL = "cubicle.role"
 ISOLATE_ROLE = "isolate"
+
+
+def agent_token(function_id: str, version_id: str) -> str:
+    """The shared secret between the control plane and one isolate's agent.
+
+    Every isolate on the instance shares a Docker network, so the agent's
+    ``/invoke`` port is reachable by any function anyone has deployed. Without
+    a credential on that port, a handler in one cluster can invoke a function in
+    another directly, and the API's cluster access control never sees the
+    request.
+
+    Derived rather than random so that ``adopt`` can recompute it. After the
+    control plane restarts it finds containers it started before and re-attaches
+    to them; a token generated at creation would have been lost with the process
+    that made it, and every warm isolate would have to be thrown away.
+
+    Keyed on the version rather than the container, because that is what the
+    labels carry and what adoption reads back.
+    """
+    return hmac.new(
+        settings.secret_key.encode(),
+        f"agent:{function_id}:{version_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 @dataclass(slots=True)
@@ -272,9 +298,11 @@ class IsolatePool:
             self._cond.notify_all()
 
     async def invoke(self, isolate: Isolate, payload: dict, timeout: float) -> dict:
+        token = agent_token(isolate.function_id, isolate.version_id)
         response = await self._client.post(
             f"{isolate.address}/invoke",
             json=payload,
+            headers={"Authorization": f"Bearer {token}"},
             timeout=httpx.Timeout(5.0, read=timeout + 5.0),
         )
         response.raise_for_status()
@@ -452,6 +480,7 @@ class IsolatePool:
                     "CUBICLE_FUNCTION": spec.name,
                     "CUBICLE_NAMESPACE": spec.namespace,
                     "CUBICLE_TIMEOUT": str(spec.timeout_s),
+                    "CUBICLE_AGENT_TOKEN": agent_token(spec.id, spec.version_id),
                     "HOME": "/tmp",
                     **runtimes.get(spec.runtime).env,
                 },

@@ -190,27 +190,54 @@ async def list_keys(db: DbSession, _: CurrentPrincipal):
         .scalars()
         .all()
     )
-    return list(rows)
+    return [await _key_out(db, key) for key in rows]
 
 
 @router.post("/api-keys", response_model=ApiKeyOut, status_code=status.HTTP_201_CREATED)
 async def create_key(payload: ApiKeyCreate, db: DbSession, principal: RequireAdmin):
+    """Mint a key, optionally narrowed to one cluster and one scope.
+
+    Both narrowings are real: the scope caps the role the key carries, and the
+    cluster is checked on every request. A key cannot be given access its
+    creator does not have, so restricting one to a cluster the creator cannot
+    reach is refused rather than quietly widening their own access.
+    """
+    if payload.cluster_id is not None:
+        target = await db.get(Cluster, payload.cluster_id)
+        if target is None or not await cluster_svc.may_access(db, principal.user, target.id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No such cluster.")
+
     token, prefix, token_hash = security.generate_api_key()
     key = ApiKey(
         name=payload.name,
         prefix=prefix,
         token_hash=token_hash,
         scope=payload.scope,
+        cluster_id=payload.cluster_id,
         created_by=principal.user.id,
     )
     db.add(key)
     await db.commit()
     await db.refresh(key)
-    log.info("api key created", name=key.name, by=principal.user.email)
+    log.info(
+        "api key created",
+        name=key.name,
+        by=principal.user.email,
+        scope=key.scope,
+        cluster=str(key.cluster_id or "all"),
+    )
 
-    out = ApiKeyOut.model_validate(key)
+    out = await _key_out(db, key)
     # The only time the token is ever returned.
     out.token = token
+    return out
+
+
+async def _key_out(db, key: ApiKey) -> ApiKeyOut:
+    out = ApiKeyOut.model_validate(key)
+    if key.cluster_id is not None:
+        cluster = await db.get(Cluster, key.cluster_id)
+        out.cluster = cluster.slug if cluster else ""
     return out
 
 

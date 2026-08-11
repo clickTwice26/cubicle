@@ -77,9 +77,19 @@ Sessions last twelve hours, sliding while you work. The cookie is `HttpOnly`, so
 JavaScript cannot read it, and `SameSite=Lax`. It is marked `Secure` only when
 `CUBICLE_PUBLIC_URL` starts with `https://`.
 
-API keys are stored as an HMAC digest and shown once. A key inherits the role of
-the account that made it, can be narrowed to a single cluster, and stops working
-if its creator is deleted or deactivated.
+API keys are stored as an HMAC digest and shown once. A key carries the **lower**
+of its creator's role and its own scope, so narrowing one actually narrows it:
+
+| Scope | What the key may do |
+| --- | --- |
+| `readonly` | See functions, logs and metrics |
+| `deploy` | That, plus deploy, invoke and manage secrets |
+| `admin` | Whatever the creating account itself may do |
+
+A key can also be restricted to one cluster, and cannot be given access its
+creator does not have. It stops working if its creator is deleted or
+deactivated. Prefer the narrowest of both for anything that leaves your own
+machine.
 
 ## Authorisation
 
@@ -125,18 +135,23 @@ out of reach.
 
 ## Tenant isolation
 
-Cluster isolation is enforced thoroughly in the API. It is **not** enforced at
-the network layer. Every isolate in every cluster shares one Docker network, and
-the isolate agent does not authenticate its caller.
+Cluster isolation is enforced thoroughly in the API, and partly at the network
+layer.
 
-The consequence: code inside a function can open a connection to another
-cluster's isolate and invoke it directly, bypassing the API and everything the
-API enforces. It can also reach the control plane API without passing through
-the proxy.
+Every isolate in every cluster shares one Docker network, so a handler can
+reach another isolate's port. What it cannot do is use it: the agent requires a
+token on `/invoke` that is derived per function version from the instance
+secret, so invoking another tenant's function behind the API's back fails with
+a 401. `/healthz` stays open, because the control plane polls it before it has
+anything else to go on, but it discloses only that something is answering.
 
-For a single team running their own functions this is not much of a boundary to
-begin with. For hosting parties who do not trust each other it is the thing to
-fix first. See CUB-02 in [the audit](security-audit.md).
+What remains is that a hostile handler can still see that other isolates exist,
+and can still reach the control plane API without passing through the proxy.
+Per-cluster networks would close both. See CUB-02 in
+[the audit](security-audit.md).
+
+Rebuild the runtime images after upgrading, or the agents keep running without
+the token check.
 
 ## The Docker socket
 

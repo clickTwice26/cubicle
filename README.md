@@ -224,8 +224,15 @@ webhooks.
 
 ## CLI
 
+Install it on any machine, no clone needed:
+
 ```bash
-pipx install ./cli
+pipx install "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"
+```
+
+Then point it at your instance:
+
+```bash
 cubicle login https://fn.example.com     # token from Settings → API keys
 cubicle init payments/create-charge
 cubicle deploy

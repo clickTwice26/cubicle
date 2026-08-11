@@ -10,6 +10,7 @@ capturing anything friendly around it.
 from __future__ import annotations
 
 import argparse
+import sys
 
 from ..client import (
     BUILD_TIMEOUT,
@@ -150,15 +151,52 @@ def _show(profile: Profile, kind: str) -> int:
     return 0
 
 
+#: What each service listens on inside the cluster's network, for the tunnel
+#: hint below. The URL itself carries the port, but a hint has to say it before
+#: the operator has read the URL.
+SERVICE_PORTS = {"postgres": 5432, "redis": 6379}
+
+
 def _url(profile: Profile, kind: str) -> int:
     service = request(profile, "GET", f"/api/services/{kind}/connection")
     if not service["connection_url"]:
         state = service["status"].replace("_", " ")
         raise CubicleError(f"There is no connection URL while {kind} is {state}.")
+
     # On its own, unframed and uncommented, so `$(cubicle services url redis)`
     # is the URL and nothing else.
     print(service["connection_url"])
+
+    # The host in that URL is a container name on the cluster's own Docker
+    # network. It resolves for a function and for the control plane, and for
+    # nothing on the machine this command just ran on. Saying so on stderr
+    # keeps the substitution above clean while still answering the question
+    # every operator asks within about ten seconds of seeing the URL.
+    if not sys.stdout.isatty():
+        return 0
+    host = service.get("node") or "your server"
+    port = SERVICE_PORTS.get(kind, 5432)
+    print(
+        paint(
+            f"\n  The host in that URL is a container on the cluster network, so it\n"
+            f"  resolves from a function and not from here. To reach it from this\n"
+            f"  machine, forward the port from {host} and connect to localhost:{port}:\n",
+            "dim",
+        ),
+        file=sys.stderr,
+    )
+    print(
+        paint(f"    ssh -L {port}:{_hostname(service)}:{port} <user>@{host}\n", "dim"),
+        file=sys.stderr,
+    )
     return 0
+
+
+def _hostname(service: dict) -> str:
+    """The container name out of the connection URL, for the tunnel hint."""
+    url = service.get("connection_url") or ""
+    after_at = url.rsplit("@", 1)[-1]
+    return after_at.split(":", 1)[0] or "<container>"
 
 
 def _create(profile: Profile, args: argparse.Namespace) -> int:

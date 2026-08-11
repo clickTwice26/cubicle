@@ -293,11 +293,18 @@ export interface Instance {
   tls: boolean
 }
 
+/** A ceiling on what a key may do, applied on top of its creator's own role. */
+export type KeyScope = 'readonly' | 'deploy' | 'admin'
+
 export interface ApiKey {
   id: string
   name: string
   prefix: string
-  scope: string
+  scope: KeyScope | string
+  cluster_id: string | null
+  // The cluster's slug, or empty when the key works against every cluster its
+  // creator can reach.
+  cluster: string
   created_at: string
   last_used_at: string | null
   token?: string | null

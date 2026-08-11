@@ -783,7 +783,13 @@ class InstanceUpdate(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    #: A ceiling on what the key may do, never a promotion: it is applied on
+    #: top of the creating account's own role. ``readonly`` reads, ``deploy``
+    #: also deploys and invokes, ``admin`` is whatever the account itself is.
     scope: Literal["admin", "deploy", "readonly"] = "admin"
+    #: Restrict the key to one cluster. Null means every cluster the creating
+    #: account can reach, which is the wider default and rarely what CI wants.
+    cluster_id: UUID | None = None
 
 
 class ApiKeyOut(ORMModel):
@@ -791,6 +797,9 @@ class ApiKeyOut(ORMModel):
     name: str
     prefix: str
     scope: str
+    cluster_id: UUID | None = None
+    #: The cluster's slug, so the console can name it without a second lookup.
+    cluster: str = ""
     created_at: datetime
     last_used_at: datetime | None = None
     token: str | None = None

@@ -10,12 +10,30 @@ without a network and runs on an air gapped jump host.
 
 ## Installing
 
+Straight from GitHub, with no clone:
+
+```bash
+pipx install "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"
+```
+
+Python 3.11 or newer. `pip install` takes the same argument if you would rather
+not use pipx, though pipx is worth it here: it keeps the CLI in its own
+environment rather than in whichever one happens to be active.
+
+From a clone, if you already have the repository:
+
 ```bash
 pipx install ./cli
 ```
 
-Python 3.11 or newer. `pip install ./cli` works too if you would rather not use
-pipx.
+To upgrade later:
+
+```bash
+pipx install --force "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"
+```
+
+The `#subdirectory=cli` matters. The repository holds the whole platform and the
+CLI is one directory inside it.
 
 ## Signing in
 
@@ -29,6 +47,69 @@ file as the credential it is.
 
 For CI, set `CUBICLE_URL` and `CUBICLE_TOKEN` in the environment instead and
 skip the login step entirely.
+
+Point it at the address the console is on, which is what Caddy serves. Not the
+`api` container, which is not published.
+
+## Working from your own machine against a server
+
+This is the normal way to use it. The CLI is an ordinary HTTPS client and holds
+nothing that has to be on the server.
+
+Two things are worth knowing before you start.
+
+**Certificates are verified and there is no way around it.** A real certificate
+works, and an install with `--domain` gets one automatically. A self-signed
+certificate fails, and there is no `--insecure` flag. A local install over plain
+`http://localhost:28080` is fine, because no TLS is involved.
+
+**Sign-in protection does not get in the way.** `cubicle login` authenticates
+with the API key against `/api/auth/me`; it never touches the password form. So
+an instance with Turnstile turned on is still reachable from a terminal and from
+CI.
+
+### Two instances at once
+
+The saved profile holds one instance. To work against production and a local
+install in the same week, override per shell rather than logging in again:
+
+```bash
+CUBICLE_URL=https://fn.example.com CUBICLE_TOKEN=cbcl_… cubicle ls
+```
+
+Or keep separate profile files:
+
+```bash
+CUBICLE_CONFIG=~/.cubicle/prod.toml cubicle deploy
+```
+
+### Give the key the least it needs
+
+A key carries the lower of its creator's role and its own scope, and can be
+restricted to one cluster. Both are offered when you create one. A key that
+lives on a laptop or in CI should be `deploy` scope on one cluster, not `admin`
+across the instance.
+
+### The one thing that does not reach you
+
+`cubicle services url postgres` prints a host that is a container name on the
+cluster's own Docker network:
+
+```
+postgres://cubicle:…@cubicle-pg-a1b2c3:5432/cubicle
+```
+
+That resolves for a function and for the control plane, and for nothing on your
+machine. The command prints the tunnel you need on stderr, so the URL itself
+stays clean for `$(…)` substitution:
+
+```bash
+ssh -L 5432:cubicle-pg-a1b2c3:5432 you@your-server
+```
+
+Then connect to `localhost:5432` with the password from the URL. Everything else
+works directly: deploy, invoke, logs and its live tail, instances, scale,
+schedules, the marketplace, runtimes, update and reconcile.
 
 ## Global flags
 

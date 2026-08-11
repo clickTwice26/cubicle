@@ -13,6 +13,7 @@ Protocol
 from __future__ import annotations
 
 import base64
+import hmac
 import importlib.util
 import inspect
 import io
@@ -211,15 +212,37 @@ class Agent(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _authorised(self) -> bool:
+        """Whether this request carries the control plane's token.
+
+        Every isolate on the instance shares one Docker network, so this port
+        is reachable by any function anyone has deployed. The token is what
+        stops a handler in one cluster invoking a function in another behind
+        the API's back.
+
+        An agent started without a token does not require one. That keeps an
+        older control plane working against a freshly built image, so the two
+        can be upgraded in either order.
+        """
+        expected = os.environ.get("CUBICLE_AGENT_TOKEN", "")
+        if not expected:
+            return True
+        header = self.headers.get("Authorization", "")
+        presented = header[7:].strip() if header.lower().startswith("bearer ") else ""
+        return hmac.compare_digest(presented, expected)
+
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self.path.startswith("/healthz"):
+            # Deliberately open and deliberately empty of detail: the control
+            # plane polls it before it has anything else to go on, and a
+            # network sweep should learn nothing from it beyond "something
+            # answers here". The function's name used to be in this response.
             self._send(
                 200,
                 {
                     "ready": _handler is not None,
-                    "error": _load_error,
+                    "error": _load_error if self._authorised() else None,
                     "fatal": _handler is None and _load_error is not None,
-                    "function": os.environ.get("CUBICLE_FUNCTION", ""),
                 },
             )
         else:
@@ -228,6 +251,10 @@ class Agent(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if not self.path.startswith("/invoke"):
             self._send(404, {"error": "not_found"})
+            return
+
+        if not self._authorised():
+            self._send(401, {"error": "unauthorised"})
             return
 
         length = int(self.headers.get("Content-Length", "0") or 0)

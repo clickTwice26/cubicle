@@ -21,6 +21,21 @@ STAGING=0
 BEHIND_PROXY=0
 BIND=""
 
+# Where the CLI is fetched from, printed at the end. Read from the checkout's
+# own origin when there is one, so a fork tells its users about the fork rather
+# than sending them upstream.
+CLI_REPO="$(git config --get remote.origin.url 2>/dev/null || true)"
+CLI_REPO="${CLI_REPO:-https://github.com/clickTwice26/cubicle.git}"
+# git@host:owner/repo -> https://host/owner/repo, since pip wants a URL and the
+# person reading this may not have a deploy key.
+case "$CLI_REPO" in
+git@*) CLI_REPO="https://$(echo "$CLI_REPO" | sed 's/^git@//; s/:/\//')" ;;
+esac
+case "$CLI_REPO" in
+*.git) ;;
+*) CLI_REPO="$CLI_REPO.git" ;;
+esac
+
 usage() {
 	cat <<'EOF'
 Usage: ./install.sh [options]
@@ -299,6 +314,10 @@ $(
 )
     Back up      .env (it holds CUBICLE_MASTER_KEY — without it stored
                  secrets cannot be decrypted) and the pg_data volume.
+
+    CLI          on this or any other machine, no clone needed:
+                 pipx install "git+$CLI_REPO#subdirectory=cli"
+                 then: cubicle login $PUBLIC_URL
 
 EOF
 

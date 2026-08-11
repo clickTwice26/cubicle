@@ -14,6 +14,7 @@
 
 'use strict'
 
+const crypto = require('node:crypto')
 const http = require('node:http')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
@@ -311,19 +312,49 @@ function send(res, status, payload) {
   res.end(data)
 }
 
+/**
+ * Whether a request carries the control plane's token.
+ *
+ * Every isolate on the instance shares one Docker network, so this port is
+ * reachable by any function anyone has deployed. The token is what stops a
+ * handler in one cluster invoking a function in another behind the API's back.
+ *
+ * An agent started without a token does not require one, so an older control
+ * plane keeps working against a freshly built image and the two can be
+ * upgraded in either order.
+ */
+function authorised(req) {
+  const expected = process.env.CUBICLE_AGENT_TOKEN || ''
+  if (!expected) return true
+  const header = req.headers['authorization'] || ''
+  const presented = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
+  const a = Buffer.from(presented)
+  const b = Buffer.from(expected)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.startsWith('/healthz')) {
+    // Deliberately open and deliberately thin: the control plane polls it
+    // before it has anything else to go on, and a network sweep should learn
+    // nothing from it beyond "something answers here".
+    //
     // `fatal` tells the control plane not to keep waiting: the module threw on
     // import and no amount of patience will change that.
     send(res, handler ? 200 : 503, {
       ready: Boolean(handler),
-      error: loadError,
+      error: authorised(req) ? loadError : null,
       fatal: Boolean(loadError),
     })
     return
   }
 
   if (req.method === 'POST' && req.url.startsWith('/invoke')) {
+    if (!authorised(req)) {
+      send(res, 401, { error: 'unauthorised' })
+      return
+    }
+
     const chunks = []
     req.on('data', (chunk) => chunks.push(chunk))
     req.on('end', async () => {

@@ -1686,9 +1686,17 @@ export const DOCS: DocPage[] = [
     body: () => (
       <>
         {h2('install', 'Install')}
+        {p(
+          <>
+            Straight from GitHub, on any machine that can reach this instance. No clone, and
+            nothing outside the Python standard library comes with it.
+          </>,
+        )}
         {code(
           <>
-            <span className="text-ink-3">$</span> pipx install ./cli{'\n'}
+            <span className="text-ink-3">$</span> pipx install
+            {' "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"'}
+            {'\n'}
             <span className="text-ink-3">$</span> cubicle login http://localhost:28080{'\n'}
             <span className="text-ink-3">?</span> token:{' '}
             <span className="text-ink-3">cbcl_••••</span>
@@ -1699,8 +1707,16 @@ export const DOCS: DocPage[] = [
         )}
         {p(
           <>
-            Credentials are written to {mono('~/.cubicle/config.toml')}. Create tokens under{' '}
-            <strong>Settings → API keys</strong>; setup issues the first one for you.
+            Python 3.11 or newer. The {mono('#subdirectory=cli')} matters: the repository holds
+            the whole platform and the CLI is one directory inside it. Add {mono('--force')} to
+            the same command to upgrade later.
+          </>,
+        )}
+        {p(
+          <>
+            Credentials are written to {mono('~/.cubicle/config.toml')} at mode 600. Create tokens
+            under <strong>Settings → API keys</strong>; setup issues the first one for you. Give a
+            token that leaves your own machine the narrowest scope and a single cluster.
           </>,
         )}
 

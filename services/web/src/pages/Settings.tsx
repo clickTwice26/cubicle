@@ -46,9 +46,20 @@ import {
   useUsers,
 } from '../lib/hooks'
 import { formatDate, relativeTime } from '../lib/format'
-import type { Cluster, Role, User } from '../lib/types'
+import type { Cluster, KeyScope, Role, User } from '../lib/types'
 
 const ROLES: Role[] = ['owner', 'admin', 'developer', 'readonly']
+
+/**
+ * How to get the CLI, shown wherever a token is issued.
+ *
+ * Installed from the repository rather than from PyPI: there is no package to
+ * publish for a platform each operator runs their own copy of, and pip reads a
+ * subdirectory of a git repository perfectly well. It depends on nothing
+ * outside the standard library, so this pulls in exactly one thing.
+ */
+const CLI_INSTALL =
+  'pipx install "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"'
 
 /**
  * Settings, grouped by what the setting is about.
@@ -654,10 +665,15 @@ function SignInProtectionCard() {
 function ApiKeysCard() {
   const toast = useToast()
   const { data: keys } = useApiKeys()
+  const { data: clusters } = useClusters()
   const create = useCreateApiKey()
   const revoke = useRevokeApiKey()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  // Least privilege is the default here rather than the option: a key is
+  // usually going onto a machine the operator does not sit at.
+  const [scope, setScope] = useState<KeyScope>('deploy')
+  const [cluster, setCluster] = useState('')
   const [issued, setIssued] = useState<string | null>(null)
 
   return (
@@ -739,7 +755,11 @@ function ApiKeysCard() {
                 disabled={!name.trim()}
                 onClick={() =>
                   create.mutate(
-                    { name: name.trim(), scope: 'admin' },
+                    {
+                      name: name.trim(),
+                      scope,
+                      ...(cluster ? { cluster_id: cluster } : {}),
+                    },
                     {
                       onSuccess: (key) => setIssued(key.token ?? null),
                       onError: (error) => toast.push(error.message, 'err'),
@@ -762,16 +782,52 @@ function ApiKeysCard() {
               This is the only time the full token is shown — only a hash is stored. Use it with{' '}
               <span className="font-mono">cubicle login</span> or as a Bearer token.
             </p>
+            {/* The token is useless without the CLI, and this is the moment
+                somebody discovers they need it. Copyable, so neither line has
+                to be retyped on the machine that will hold the credential. */}
+            <div className="grid gap-1.5 border-t border-line pt-3">
+              <span className="text-[12px] text-ink-2">Do not have the CLI yet?</span>
+              <CodeBlock copyValue={CLI_INSTALL} filename="install">
+                {CLI_INSTALL}
+              </CodeBlock>
+            </div>
           </div>
         ) : (
-          <Field
-            label="Name"
-            mono={false}
-            autoFocus
-            value={name}
-            placeholder="ci-github-actions"
-            onChange={(event) => setName(event.target.value)}
-          />
+          <div className="grid gap-4">
+            <Field
+              label="Name"
+              mono={false}
+              autoFocus
+              value={name}
+              placeholder="ci-github-actions"
+              onChange={(event) => setName(event.target.value)}
+            />
+            <Select
+              label="What it may do"
+              value={scope}
+              onChange={(event) => setScope(event.target.value as KeyScope)}
+            >
+              <option value="readonly">Read only — functions, logs, metrics</option>
+              <option value="deploy">Deploy — read, plus deploy and invoke</option>
+              <option value="admin">Everything your account can do</option>
+            </Select>
+            <Select
+              label="Clusters"
+              value={cluster}
+              onChange={(event) => setCluster(event.target.value)}
+            >
+              <option value="">Every cluster you can reach</option>
+              {(clusters ?? []).map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </Select>
+            <p className="m-0 text-xs leading-relaxed text-ink-3">
+              A key can only ever narrow what your account may do, never widen it. Give a key on
+              somebody else's laptop the least of both.
+            </p>
+          </div>
         )}
       </Modal>
     </Card>

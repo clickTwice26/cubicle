@@ -19,6 +19,15 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 ROLE_RANK = {"readonly": 0, "developer": 1, "admin": 2, "owner": 3}
 
+#: What an API key's scope means in terms of the role ladder. A key can only
+#: ever narrow what its creator could do, never widen it, so this is a ceiling
+#: applied on top of the account's own role rather than a role in itself.
+#:
+#: This used to be decorative: the column was written at creation and never read
+#: again, so a key labelled "readonly" carried the full authority of whoever
+#: made it. An operator putting one in CI had every reason to believe otherwise.
+SCOPE_CEILING = {"readonly": "readonly", "deploy": "developer", "admin": "owner"}
+
 
 async def get_instance(db: DbSession) -> Instance:
     instance = await db.get(Instance, 1)
@@ -116,7 +125,19 @@ class Principal:
 
     @property
     def role(self) -> str:
-        return self.user.role
+        """What this principal may do, which is not always what its account may.
+
+        A session carries the account's own role. An API key carries the lower
+        of that role and its own scope, so a key made by an owner and scoped to
+        ``readonly`` is a readonly credential. Narrowing a key has to actually
+        narrow it, or the scope is a label that misleads the person relying on
+        it most: whoever put the token in CI.
+        """
+        role = self.user.role
+        if self.api_key is None:
+            return role
+        ceiling = SCOPE_CEILING.get(self.api_key.scope, "readonly")
+        return role if ROLE_RANK.get(role, 0) <= ROLE_RANK[ceiling] else ceiling
 
     def can(self, minimum: str) -> bool:
         return ROLE_RANK.get(self.role, 0) >= ROLE_RANK[minimum]

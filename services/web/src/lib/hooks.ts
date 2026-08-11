@@ -822,7 +822,7 @@ export const useApiKeys = () =>
 export function useCreateApiKey() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; scope: string }) =>
+    mutationFn: (body: { name: string; scope: string; cluster_id?: string }) =>
       api.post<ApiKey>('/api/settings/api-keys', body),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.apiKeys }),
   })
