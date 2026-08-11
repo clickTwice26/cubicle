@@ -29,11 +29,42 @@ pipx install ./cli
 To upgrade later:
 
 ```bash
+pipx upgrade cubicle-cli
+```
+
+It re-resolves the git ref and swaps the commit, then reports "already at latest
+version 1.0.0". Read the `-` and `+` lines above that instead: the version
+string is the platform's and does not move between commits, so it is the commit
+that tells you anything. `cubicle --version` names it:
+
+```
+cubicle 1.0.0 (467648a)
+```
+
+If a stale copy will not budge, force it:
+
+```bash
 pipx install --force "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"
 ```
 
 The `#subdirectory=cli` matters. The repository holds the whole platform and the
 CLI is one directory inside it.
+
+## Removing it
+
+```bash
+cubicle uninstall
+```
+
+This removes the program and the saved profile from the machine it runs on. It
+makes no request, so the instance, its clusters and its functions are untouched.
+It works out how the copy was installed and calls the right package manager.
+
+`--config-only` forgets the saved instance and token but leaves the program
+installed, which is what signing out of a shared machine looks like.
+`--keep-config` does the opposite. The profile is removed by default because it
+holds an API token in plain text, and a credential outliving the program that
+reads it is a file nobody will think to look at again.
 
 ## Signing in
 
@@ -236,6 +267,15 @@ and never in the list.
 | `cubicle reconcile apply` | Fix the disagreements |
 | `cubicle metering` | This month's usage for the cluster |
 | `cubicle logs [--follow] [--level L] [--limit N]` | Recent logs, or a live tail |
+
+### This machine
+
+| Command | What it does |
+| --- | --- |
+| `cubicle uninstall` | Remove the CLI and the saved profile from this computer |
+| `cubicle uninstall --config-only` | Forget the instance and token, keep the program |
+
+Neither makes a request. The instance is not involved.
 
 Destructive commands confirm before acting. `--yes` is the only way past the
 prompt, which is why it is required in CI.

@@ -13,10 +13,32 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import sys
 
 from . import __version__, commands
 from .client import CubicleError, paint
+
+
+def build_id() -> str:
+    """The version, and which commit it was installed from if that is knowable.
+
+    The version string is the platform's, and it does not move between
+    releases, so on its own it cannot answer the only question anybody asks it:
+    is this the current one. pip records the resolved commit of a VCS install in
+    `direct_url.json`, so an install from GitHub can say exactly what it is.
+
+    A source checkout has no such metadata and simply reports the version,
+    because the answer there is `git log`.
+    """
+    try:
+        from importlib.metadata import Distribution
+
+        raw = Distribution.from_name("cubicle-cli").read_text("direct_url.json")
+        commit = json.loads(raw or "{}").get("vcs_info", {}).get("commit_id", "")
+    except Exception:  # noqa: BLE001 - any failure here just means "not known"
+        return __version__
+    return f"{__version__} ({commit[:7]})" if commit else __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Answer every confirmation with yes. Required when there is no terminal.",
     )
-    parser.add_argument("--version", action="version", version=f"cubicle {__version__}")
+    parser.add_argument("--version", action="version", version=f"cubicle {build_id()}")
     # Not required: a bare `cubicle` should say what it can do, not print an
     # argparse error at somebody who is trying to find out.
     sub = parser.add_subparsers(dest="command")
@@ -105,7 +127,7 @@ def overview(known: list[str]) -> str:
     ]
     lines = [
         "",
-        f"  {paint('cubicle', 'bold')} {paint(__version__, 'dim')}"
+        f"  {paint('cubicle', 'bold')} {paint(build_id(), 'dim')}"
         f"  {paint('· self-hosted serverless functions', 'dim')}",
         "",
     ]

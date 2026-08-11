@@ -32,6 +32,21 @@ from ..client import (
 
 ORDER = 40
 
+#: How this program is updated, as opposed to the instance it talks to.
+#:
+#: `pipx upgrade` re-resolves the git ref and swaps the commit, which is what
+#: is wanted. It then reports "already at latest version 1.0.0", because the
+#: version string does not move between commits and that is the only thing it
+#: compares. The line to read is the `-` and `+` pair above it, which names the
+#: commit that went and the one that arrived.
+CLI_UPGRADE = "pipx upgrade cubicle-cli"
+
+#: When the version really has not moved and pipx declines to do anything, or
+#: the install came from pip rather than pipx.
+CLI_UPGRADE_FORCED = (
+    'pipx install --force "git+https://github.com/clickTwice26/cubicle.git#subdirectory=cli"'
+)
+
 
 def register(sub: argparse._SubParsersAction) -> None:
     update = sub.add_parser("update", help="Check whether the branch has moved on.")
@@ -95,6 +110,18 @@ def cmd_update(args: argparse.Namespace) -> int:
         print(f"\n  {paint('up to date', 'green')}")
     if status["cached"]:
         print(paint("  answered from the instance's cached check; --refresh asks again", "dim"))
+
+    # This command is about the instance, and somebody reading it is often
+    # asking about this program. They are updated separately and the names are
+    # close enough that saying so once is cheaper than the confusion.
+    print(
+        paint(
+            f"\n  this updates the instance, not the CLI. To update the CLI:\n"
+            f"    {CLI_UPGRADE}\n"
+            f"  `cubicle --version` names the commit, which is what actually moves",
+            "dim",
+        )
+    )
     print()
     return 0
 
