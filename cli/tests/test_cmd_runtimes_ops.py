@@ -10,6 +10,10 @@ has a test here.
 
 from __future__ import annotations
 
+import re
+
+from conftest import line
+
 from cubicle_cli.__main__ import build_parser
 from cubicle_cli.client import BUILD_TIMEOUT, CubicleError
 from cubicle_cli.commands import ops
@@ -75,8 +79,12 @@ def test_the_listing_marks_what_is_installed_and_what_ships_with_cubicle(api, ru
     out = capsys.readouterr().out
     assert "INSTALLED" in out
     assert "BUILT IN" in out
-    assert "python312  Python      handler.py + requirements.txt  yes        yes       4" in out
-    assert "node18     JavaScript  handler.js + package.json      no         no        0" in out
+    # One row, whatever the gutter is this month: the point is that a runtime
+    # carries its language, its file layout and its counts on one line.
+    row = next(row for row in out.splitlines() if "python312" in l)
+    assert re.search(r"python312\s+Python\s+handler\.py \+ requirements\.txt\s+yes\s+yes\s+4", row)
+    row = next(row for row in out.splitlines() if "node18" in l)
+    assert re.search(r"node18\s+JavaScript\s+handler\.js \+ package\.json\s+no\s+no\s+0", row)
 
 
 def test_a_build_in_flight_is_reported_instead_of_the_flag(api, run, capsys):
@@ -241,8 +249,8 @@ def test_update_says_what_the_branch_has_that_this_instance_does_not(api, run, c
     assert run("update") == 0
 
     out = capsys.readouterr().out
-    assert "DEPLOYED        2a1b0a6" in out
-    assert "LATEST          9f3c1d2" in out
+    assert line("deployed", "2a1b0a6") in out
+    assert line("latest", "9f3c1d2") in out
     assert "Let a runtime image be rebuilt from the console" in out
     assert "Shagato, 2026-08-09" in out
 
@@ -532,9 +540,10 @@ def test_metering_shows_the_month_and_where_it_went(api, run, capsys):
     assert run("metering") == 0
 
     out = capsys.readouterr().out
-    assert "WINDOW          2026-08-01 to 2026-09-01 (32% through)" in out
-    assert "INVOCATIONS     12,345" in out
-    assert "payments   9,000        800.1" in out
+    assert line("window", "2026-08-01 to 2026-09-01 (32% through)") in out
+    assert line("invocations", "12,345") in out
+    row = next(row for row in out.splitlines() if "payments" in l)
+    assert re.search(r"payments\s+9,000\s+800\.1", row)
     assert "$0.12 of electricity" in out
 
 

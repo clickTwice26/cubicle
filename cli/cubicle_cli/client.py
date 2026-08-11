@@ -90,6 +90,30 @@ class CubicleError(RuntimeError):
     pass
 
 
+def normalise_url(url: str) -> str:
+    """What someone typed, turned into something urllib will open.
+
+    A bare hostname is what people type, and urllib answers it with
+    ``ValueError: unknown url type``, raised from inside the request rather
+    than from anything the CLI wrote, so it reaches the terminal as a
+    traceback. Assume https, which is what any instance with a domain serves,
+    and let a local install say http itself.
+    """
+    url = url.strip().rstrip("/")
+    if not url:
+        raise CubicleError("An instance URL is required, for example https://fn.example.com.")
+    if "://" not in url:
+        # localhost is the one place a missing scheme means http: an install
+        # without a domain has no certificate to offer.
+        host = url.split("/", 1)[0].split(":", 1)[0]
+        scheme = "http" if host in ("localhost", "127.0.0.1", "::1") else "https"
+        url = f"{scheme}://{url}"
+    if not url.startswith(("http://", "https://")):
+        scheme = url.split("://", 1)[0]
+        raise CubicleError(f"{scheme}:// is not an instance URL. Use http:// or https://.")
+    return url
+
+
 @dataclass(slots=True)
 class Profile:
     url: str
@@ -98,7 +122,7 @@ class Profile:
 
     @property
     def base(self) -> str:
-        return self.url.rstrip("/")
+        return normalise_url(self.url)
 
 
 def load_profile(
@@ -264,6 +288,12 @@ def _http_send(call: Call) -> Any:
         raise CubicleError(f"{error.code}: {message}") from None
     except urllib.error.URLError as error:
         raise CubicleError(f"Could not reach {call.profile.base}: {error.reason}") from None
+    except (ValueError, OSError) as error:
+        # urllib raises a bare ValueError for a URL it cannot parse, and that
+        # is not a URLError, so without this it reaches the terminal as a
+        # traceback. Nothing this layer can fail at is the user's fault in a
+        # way a stack trace helps with.
+        raise CubicleError(f"Could not reach {call.profile.base}: {error}") from None
 
 
 def _http_stream(call: Call) -> Iterator[Any]:
@@ -297,22 +327,79 @@ def paint(text: str, colour: str) -> str:
         "blue": "\033[34m",
         "dim": "\033[2m",
         "bold": "\033[1m",
+        # Fainter than dim, for rules and separators that should be structure
+        # rather than content. 8 is the terminal's own grey, so it stays legible
+        # on a light background as well as a dark one.
+        "line": "\033[38;5;8m",
     }
     return f"{codes.get(colour, '')}{text}\033[0m"
 
 
-def table(headers: list[str], rows: list[list[str]]) -> str:
+#: Matches an ANSI escape so a coloured cell can be measured by what it prints
+#: rather than by how many bytes it takes. Without this a single painted cell
+#: shifts every column to its right by the width of the escape codes.
+ANSI = re.compile(r"\033\[[0-9;]*m")
+
+#: A cell is a number if it reads as one once the things people put around
+#: numbers are taken off. Numbers belong on the right, where their digits line
+#: up and a column can be scanned for the big one.
+NUMERIC = re.compile(r"^[+-]?[\d,]+(\.\d+)?\s*(%|ms|s|m|h|d|B|KB|MB|GB|TB|/\S+)?$")
+
+
+def visible(text: str) -> int:
+    """How wide a string prints, ignoring colour."""
+    return len(ANSI.sub("", str(text)))
+
+
+def _pad(cell: str, width: int, *, right: bool) -> str:
+    gap = " " * max(0, width - visible(cell))
+    return gap + str(cell) if right else str(cell) + gap
+
+
+def table(headers: list[str], rows: list[list[str]], *, indent: str = "  ") -> str:
+    """The CLI's one table.
+
+    Three spaces between columns rather than two: at two, a short value in a
+    wide column reads as though it belongs to its neighbour. Numeric columns
+    are right-aligned so the digits line up, and the header rule gives the eye
+    somewhere to start on a long listing.
+    """
     if not rows:
-        return paint("  (nothing to show)", "dim")
-    widths = [
-        max(len(str(headers[i])), *(len(str(row[i])) for row in rows)) for i in range(len(headers))
-    ]
-    lines = [
-        "  " + "  ".join(paint(h.upper().ljust(widths[i]), "dim") for i, h in enumerate(headers))
-    ]
+        return paint(f"{indent}(nothing to show)", "dim")
+
+    columns = len(headers)
+    widths = [max(visible(headers[i]), *(visible(row[i]) for row in rows)) for i in range(columns)]
+
+    def is_number(cell: str) -> bool | None:
+        """True, False, or None for a cell that should not get a vote.
+
+        A column of durations with one dash in it is still a column of
+        durations, so the placeholders every command uses for "nothing yet" are
+        ignored rather than counted as text.
+        """
+        text = ANSI.sub("", str(cell)).strip()
+        if text in ("", "-", "—", "n/a", "never"):
+            return None
+        return bool(NUMERIC.match(text))
+
+    right = []
+    for i in range(columns):
+        votes = [v for v in (is_number(row[i]) for row in rows) if v is not None]
+        right.append(bool(votes) and all(votes))
+
+    gutter = "   "
+    head = gutter.join(
+        paint(_pad(headers[i].upper(), widths[i], right=right[i]), "dim") for i in range(columns)
+    )
+    rule = gutter.join(paint("─" * widths[i], "line") for i in range(columns))
+    lines = [indent + head, indent + rule]
     for row in rows:
-        lines.append("  " + "  ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row)))
-    return "\n".join(lines)
+        lines.append(
+            indent + gutter.join(_pad(row[i], widths[i], right=right[i]) for i in range(columns))
+        )
+    # Padding the last column leaves trailing spaces on every line, which show
+    # up when the output is selected, piped into a diff, or pasted anywhere.
+    return "\n".join(line.rstrip() for line in lines)
 
 
 def record(rows: Sequence[tuple[str, str]], *, label_width: int = 16) -> str:
@@ -325,8 +412,10 @@ def record(rows: Sequence[tuple[str, str]], *, label_width: int = 16) -> str:
     """
     if not rows:
         return paint("  (nothing to show)", "dim")
-    width = max(label_width, *(len(label) for label, _ in rows))
-    return "\n".join(f"  {label.upper().ljust(width)}{value}" for label, value in rows)
+    width = max(label_width, *(len(label) for label, _ in rows)) + 2
+    return "\n".join(
+        f"  {paint(label.upper().ljust(width), 'dim')}{value}" for label, value in rows
+    )
 
 
 # ── shared helpers ───────────────────────────────────────────────────────────

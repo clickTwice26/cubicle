@@ -9,6 +9,8 @@ somebody having said so.
 
 from __future__ import annotations
 
+from conftest import line
+
 from cubicle_cli.client import CubicleError
 
 CATALOGUE = [
@@ -271,9 +273,9 @@ def test_config_with_no_flags_only_reads(api, run, capsys, api_function):
     assert run("config", "payments/create-charge") == 0
 
     out = capsys.readouterr().out
-    assert "  " + "MEMORY".ljust(16) + "128 MB" in out
-    assert "  " + "TIMEOUT".ljust(16) + "30s" in out
-    assert "  " + "INSTANCES".ljust(16) + "0-1" in out
+    assert line("memory", "128 MB") in out
+    assert line("timeout", "30s") in out
+    assert line("instances", "0-1") in out
     assert api.sent("PATCH", "/api/functions/fn-1") == []
 
 
@@ -440,7 +442,9 @@ def test_metrics_draws_where_in_the_window_the_traffic_was(api, run, capsys, api
     out = capsys.readouterr().out
     assert "120  ▁▁█" in out
     assert "40ms  ▁▁█" in out
-    assert "  " + "COLD STARTS".ljust(18) + "12%" in out
+    # The metrics block sets its own label column, wide enough for
+    # LAST INVOCATION, so the expectation has to be built the same way.
+    assert line("cold starts", "12%", width=18) in out
 
 
 def test_a_function_nobody_called_says_so_rather_than_drawing_a_flat_line(

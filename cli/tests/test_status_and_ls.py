@@ -7,6 +7,8 @@ can still take work, and how far a function is allowed to scale.
 
 from __future__ import annotations
 
+from conftest import line
+
 HEALTH = {
     "status": "ok",
     "version": "1.0.0",
@@ -61,8 +63,8 @@ def test_status_shows_the_ceilings_a_deploy_runs_into(api, run, capsys):
     assert run("status") == 0
 
     out = capsys.readouterr().out
-    assert "MEMORY          768/2048 MB (38%)" in out
-    assert "CPU             1.50/4.00 cores (38%)" in out
+    assert line("memory", "768/2048 MB (38%)") in out
+    assert line("cpu", "1.50/4.00 cores (38%)") in out
 
 
 def test_an_unlimited_cluster_gets_no_denominator(api, run, capsys):
@@ -73,7 +75,7 @@ def test_an_unlimited_cluster_gets_no_denominator(api, run, capsys):
 
     out = capsys.readouterr().out
     assert "MEMORY" not in out
-    assert "ISOLATES        3 warm" in out
+    assert line("isolates", "3 warm") in out
 
 
 def test_the_isolate_count_is_the_one_for_this_cluster(api, run, capsys):
@@ -82,7 +84,7 @@ def test_the_isolate_count_is_the_one_for_this_cluster(api, run, capsys):
 
     run("status")
 
-    assert "ISOLATES        7 warm" in capsys.readouterr().out
+    assert line("isolates", "7 warm") in capsys.readouterr().out
     assert api.sent("GET", "/api/cluster/isolates") == []
 
 
@@ -97,9 +99,9 @@ def test_redis_gets_its_own_line(api, run, capsys):
     run("status")
 
     out = capsys.readouterr().out
-    assert "CONTROL PLANE   down" in out
-    assert "REDIS           down" in out
-    assert "DATABASE        ready" in out
+    assert line("control plane", "down") in out
+    assert line("redis", "down") in out
+    assert line("database", "ready") in out
 
 
 def test_a_drained_node_is_not_a_ready_node(api, run, capsys):
@@ -108,7 +110,7 @@ def test_a_drained_node_is_not_a_ready_node(api, run, capsys):
 
     run("status")
 
-    assert "NODES           1/2" in capsys.readouterr().out
+    assert line("nodes", "1/2") in capsys.readouterr().out
 
 
 def test_ls_shows_the_type_and_the_instance_range(api, run, capsys, api_function):

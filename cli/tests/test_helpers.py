@@ -86,14 +86,14 @@ def test_ensure_group_reports_the_one_it_made(api, profile):
 
 
 def test_a_record_lines_the_values_up_where_status_always_had_them():
-    assert record([("control plane", "ready")]) == "  CONTROL PLANE   ready"
+    assert record([("control plane", "ready")]) == "  CONTROL PLANE     ready"
 
 
 def test_a_long_label_widens_the_column_rather_than_wrapping():
     label = "a much longer label"
     block = record([(label, "x"), ("cpu", "y")])
 
-    assert block.splitlines()[1] == "  " + "CPU".ljust(len(label)) + "y"
+    assert block.splitlines()[1] == "  " + "CPU".ljust(len(label) + 2) + "y"
 
 
 def test_an_empty_record_says_so_like_an_empty_table():

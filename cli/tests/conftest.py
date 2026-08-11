@@ -155,3 +155,26 @@ def api_function():
         return {**record, **overrides}
 
     return _make
+
+
+# ── layout ───────────────────────────────────────────────────────────────────
+
+
+def line(label: str, value: str, *, width: int = 16) -> str:
+    """One rendered line of a `record()` block, padding and all.
+
+    Tests care that a label carries a value, not how wide the gutter happens to
+    be this month. Building the expectation with the renderer keeps them
+    honest about the first and silent about the second, so the spacing can be
+    adjusted in one place without a dozen assertions failing.
+    """
+    from cubicle_cli.client import record
+
+    return record([(label, value)], label_width=width)
+
+
+def cells(*values: str) -> str:
+    """One rendered row of a `table()`, with whatever gutter it currently uses."""
+    from cubicle_cli.client import table
+
+    return table([""] * len(values), [list(values)]).splitlines()[-1]
