@@ -16,6 +16,7 @@ from ..client import (
     CubicleError,
     Profile,
     confirm,
+    confirmable,
     load_profile,
     paint,
     record,
@@ -80,11 +81,13 @@ def register(sub: argparse._SubParsersAction) -> None:
     stop.add_argument("kind", choices=KINDS)
 
     recreate = services_sub.add_parser(
-        "recreate", help="Replace the container, keeping the volume."
+        "recreate", parents=[confirmable()], help="Replace the container, keeping the volume."
     )
     recreate.add_argument("kind", choices=KINDS)
 
-    remove = services_sub.add_parser("rm", help="Delete a service and, by default, its data.")
+    remove = services_sub.add_parser(
+        "rm", parents=[confirmable()], help="Delete a service and, by default, its data."
+    )
     remove.add_argument("kind", choices=KINDS)
     remove.add_argument(
         "--keep-data",

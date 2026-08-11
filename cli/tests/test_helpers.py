@@ -32,6 +32,11 @@ class _Stdin:
         return self._tty
 
 
+def _ctrl_d(prompt: str = "") -> str:
+    """What `input` does when the terminal is closed under it."""
+    raise EOFError
+
+
 def test_a_target_splits_into_namespace_and_function():
     assert split_target("payments/create-charge") == ("payments", "create-charge")
 
@@ -118,6 +123,14 @@ def test_a_terminal_is_asked_and_believed(monkeypatch):
 def test_anything_but_yes_is_no(monkeypatch):
     monkeypatch.setattr("sys.stdin", _Stdin(tty=True))
     monkeypatch.setattr("builtins.input", lambda prompt: "")
+
+    assert confirm("Delete everything?") is False
+
+
+def test_ctrl_d_is_no_rather_than_a_traceback(monkeypatch):
+    """End of input is nothing typed, and nothing typed is already an answer."""
+    monkeypatch.setattr("sys.stdin", _Stdin(tty=True))
+    monkeypatch.setattr("builtins.input", _ctrl_d)
 
     assert confirm("Delete everything?") is False
 

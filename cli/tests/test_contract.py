@@ -24,7 +24,7 @@ CANONICAL = [
     ["init", "payments/create-charge"],
     ["init", "payments/create-charge", "--runtime", "node22", "--method", "PATCH"],
     ["deploy"],
-    ["deploy", "./service", "-m", "why"],
+    ["deploy", "./service"],
     ["invoke", "payments/create-charge", "-d", '{"amount": 4200}', "--session", "sess_1"],
     ["logs"],
     ["logs", "--follow", "--level", "DEBUG"],
@@ -109,3 +109,37 @@ def test_the_global_flags_reach_every_command():
     )
 
     assert (args.cluster, args.url, args.token, args.yes) == ("staging", "https://x", "t", True)
+
+
+# Every command that asks a question before doing something, and the shortest
+# invocation of each. The refusals all say "pass --yes to go ahead", so --yes
+# has to be accepted where a person types it, which is at the end.
+CONFIRMS = [
+    ["kill", "payments/create-charge", "a1b2c3d4e5f6"],
+    ["rm", "payments/create-charge"],
+    ["runtimes", "rm", "node18"],
+    ["services", "rm", "postgres"],
+    ["services", "recreate", "redis"],
+    ["market", "install", "https://example.com/p.json", "--namespace", "payments"],
+    ["update", "apply"],
+    ["reconcile", "apply"],
+]
+
+
+@pytest.mark.parametrize("argv", CONFIRMS, ids=" ".join)
+def test_yes_is_taken_after_the_command_as_well(argv):
+    """`cubicle rm ns/fn --yes` is the spelling the error message asks for."""
+    assert build_parser().parse_args([*argv, "--yes"]).yes is True
+    assert build_parser().parse_args([*argv, "-y"]).yes is True
+
+
+@pytest.mark.parametrize("argv", CONFIRMS, ids=" ".join)
+def test_the_global_yes_still_survives_the_subparser(argv):
+    """A subparser copies its namespace outwards, so its default must not exist.
+
+    This is what SUPPRESS buys: without it the per-command flag would default to
+    False on every run and overwrite a --yes given before the command name,
+    breaking the one spelling that used to work.
+    """
+    assert build_parser().parse_args(["--yes", *argv]).yes is True
+    assert build_parser().parse_args(argv).yes is False

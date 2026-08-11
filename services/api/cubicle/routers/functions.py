@@ -751,11 +751,17 @@ async def reveal_secret(
 async def delete_secret(
     function_id: uuid.UUID, key: str, db: DbSession, _: RequireDeveloper
 ) -> Response:
-    await db.execute(
+    result = await db.execute(
         delete(FunctionSecret).where(
             FunctionSecret.function_id == function_id, FunctionSecret.key == key
         )
     )
+    # A key that matched nothing is worth saying out loud, the way deleting an
+    # env var already does. Secrets are written under a normalised name, so the
+    # usual reason a delete matches nothing is that the caller sent the name as
+    # it was typed, and answering 204 tells them a live secret is gone.
+    if result.rowcount == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such secret.")
     await db.commit()
     invoker.invalidate_secret_cache(str(function_id))
     await invoker.bump_env_revision()

@@ -27,6 +27,11 @@ class _Stdin:
         return self._tty
 
 
+def _ctrl_d(prompt: str = "") -> str:
+    """What `input` does when the terminal is closed under it."""
+    raise EOFError
+
+
 def _typed(monkeypatch, answer: str) -> list[str]:
     """Sit somebody at a terminal who types one thing, and keep every prompt."""
     prompts: list[str] = []
@@ -500,3 +505,27 @@ def test_yes_deletes_without_asking(api, run, capsys, api_function):
     assert run("--yes", "rm", "payments/create-charge") == 0
 
     assert "removed payments/create-charge and every version of it" in capsys.readouterr().out
+
+
+def test_yes_is_taken_after_the_command_too(api, run, capsys, api_function):
+    """The spelling the no-terminal refusal asks for, which argparse used to reject."""
+    api.on("GET", "/api/functions", [api_function()])
+    api.on("DELETE", "/api/functions/fn-1", None)
+
+    assert run("rm", "payments/create-charge", "--yes") == 0
+
+    assert "removed payments/create-charge and every version of it" in capsys.readouterr().out
+
+
+def test_ctrl_d_at_the_prompt_cancels_rather_than_crashing(
+    api, run, capsys, api_function, monkeypatch
+):
+    """Walking away from the question leaves the function where it was."""
+    api.on("GET", "/api/functions", [api_function()])
+    monkeypatch.setattr("sys.stdin", _Stdin(tty=True))
+    monkeypatch.setattr("builtins.input", _ctrl_d)
+
+    assert run("rm", "payments/create-charge") == 1
+
+    assert "cancelled" in capsys.readouterr().out
+    assert api.sent("DELETE", "/api/functions/fn-1") == []

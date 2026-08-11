@@ -21,8 +21,10 @@ from ..client import (
     BUILD_TIMEOUT,
     CubicleError,
     Profile,
+    bounded,
     deploy_files,
     ensure_group,
+    env_key,
     find_function,
     list_runtimes,
     load_profile,
@@ -60,9 +62,13 @@ def register(sub: argparse._SubParsersAction) -> None:
         help="HTTP method the function answers on.",
     )
 
+    # No --message here. DeployRequest has a `message` field, but the endpoint
+    # never reads it and FunctionVersion has no column to keep it in, so a note
+    # typed here would be accepted and dropped, and `cubicle versions` could
+    # never show it back. A flag that reads as an audit trail and is not one is
+    # worse than no flag.
     deploy = sub.add_parser("deploy", help="Deploy the function in a directory.")
     deploy.add_argument("directory", nargs="?", default=".", help="Defaults to the current one.")
-    deploy.add_argument("--message", "-m", default=None, help="Note to record with the deploy.")
 
     invoke = sub.add_parser("invoke", help="Invoke a function and print the response.")
     invoke.add_argument("target", help="<namespace>/<function>")
@@ -280,20 +286,32 @@ def cmd_deploy(args: argparse.Namespace) -> int:
         profile,
         "POST",
         f"/api/functions/{fn['id']}/deploy",
-        body={"files": files, "message": args.message},
+        body={"files": files},
         # The build runs inside this request, so the client has to be willing
         # to wait for a cold dependency install rather than abandon a build
         # that is going to succeed without it.
         timeout=BUILD_TIMEOUT,
     )
 
-    if result["version_status"] == "ready":
-        print(f"  building       {result['build_ms']}ms")
-        print(f"  {paint('deployed', 'green')}       {result['url']} (v{result['version']})")
+    # The deploy answers with the function, and a function's version is the one
+    # currently serving traffic: a build that fails leaves the previous version
+    # in place and untouched. So reading the outcome off this response reports
+    # the last good build as though it were the one just pushed, and a broken
+    # deploy exits 0. The version that was just built is the newest row of the
+    # listing, which is ordered newest first.
+    built = request(profile, "GET", f"/api/functions/{fn['id']}/versions")[0]
+
+    if built["status"] == "ready":
+        print(f"  building       {built['build_ms']}ms")
+        print(f"  {paint('deployed', 'green')}       {result['url']} (v{built['number']})")
         return 0
 
-    print(paint("  build failed", "red"))
-    print(result.get("build_log", ""))
+    print(paint(f"  build failed   v{built['number']} was not deployed", "red"))
+    print(built["build_log"] or paint("  (this build wrote no log)", "dim"))
+    # Nothing went out of service, which is the second thing worth knowing when
+    # a deploy fails and the reason the exit code is the only sign of it.
+    if result["version_status"] == "ready":
+        print(paint(f"  v{result['version']} is still serving", "dim"))
     return 1
 
 
@@ -357,8 +375,14 @@ def cmd_logs(args: argparse.Namespace) -> int:
             "level": args.level,
             "function": wanted,
             "search": args.search,
-            "limit": args.limit,
-            "offset": args.offset,
+            # Checked against the endpoint's own bounds so a number outside
+            # them is a sentence rather than FastAPI's list of validation
+            # errors. The ceiling on lines used to be a thousand and is now
+            # five hundred, so `--limit 1000` is a number people already have
+            # in scripts. Upstream puts no ceiling on the offset at all, and a
+            # page of logs a billion lines in is a typo as well.
+            "limit": bounded(args.limit, "--limit", 1, 500),
+            "offset": bounded(args.offset, "--offset", 0, 1_000_000_000),
         },
     )
     # /api/logs answers with a page, not a list. Its rows come newest first so
@@ -393,11 +417,15 @@ def cmd_env(args: argparse.Namespace) -> int:
         request(
             profile, "POST", "/api/env", body={"key": key, "value": value, "is_secret": args.secret}
         )
-        print(f"  {paint('set', 'green')} {key.upper()}")
+        # The API decides the name it is filed under, so this echoes what it
+        # stored rather than what was typed: `stripe-key` is STRIPE_KEY there,
+        # and printing STRIPE-KEY would teach a name that removes nothing.
+        print(f"  {paint('set', 'green')} {env_key(key)}")
         return 0
 
-    request(profile, "DELETE", f"/api/env/{args.key}")
-    print(f"  {paint('removed', 'green')} {args.key}")
+    key = env_key(args.key)
+    request(profile, "DELETE", f"/api/env/{key}")
+    print(f"  {paint('removed', 'green')} {key}")
     return 0
 
 
@@ -423,11 +451,17 @@ def cmd_secrets(args: argparse.Namespace) -> int:
             f"/api/functions/{fn['id']}/secrets",
             body={"key": args.key, "value": value},
         )
-        print(f"  {paint('sealed', 'green')} {args.key.upper()}")
+        print(f"  {paint('sealed', 'green')} {env_key(args.key)}")
         return 0
 
-    request(profile, "DELETE", f"/api/functions/{fn['id']}/secrets/{args.key}")
-    print(f"  {paint('removed', 'green')} {args.key}")
+    # The same normalisation the write path applies, because a secret is
+    # addressed by name in the path and the name in the store is the upper-case
+    # one. Without it `secrets rm stripe_key` deletes nothing while printing
+    # that it did, which used to be entirely silent: the endpoint answered 204
+    # whether or not a row matched.
+    key = env_key(args.key)
+    request(profile, "DELETE", f"/api/functions/{fn['id']}/secrets/{key}")
+    print(f"  {paint('removed', 'green')} {key}")
     return 0
 
 

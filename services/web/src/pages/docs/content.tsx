@@ -1652,9 +1652,9 @@ export const DOCS: DocPage[] = [
         {p(
           <>
             A deploy sends four files and nothing else: the function&apos;s entry file, its
-            dependency file, {mono('cubicle.toml')} and {mono('README.md')}. Which two the first
-            pair are is decided by the runtime the function is set to, not by what happens to be
-            in the directory. Anything else there is ignored, so a virtualenv or a{' '}
+            dependency file, {mono('cubicle.toml')} and {mono('README.md')}. Which files the
+            first two are is decided by the runtime the function is set to, not by what happens
+            to be in the directory. Anything else there is ignored, so a virtualenv or a{' '}
             {mono('node_modules')} or a test folder sitting next to the handler costs nothing.
           </>,
         )}
@@ -1713,20 +1713,24 @@ export const DOCS: DocPage[] = [
             {'  '}
             <span className="text-ok">created</span> payments/create-charge{'\n'}
             {'  '}
-            <span className="text-ink-3">wrote</span> create-charge/handler.py{'\n'}
+            <span className="text-ink-3">wrote</span>
+            {'   '}create-charge/handler.py{'\n'}
             {'  '}
-            <span className="text-ink-3">wrote</span> create-charge/requirements.txt{'\n'}
+            <span className="text-ink-3">wrote</span>
+            {'   '}create-charge/requirements.txt{'\n'}
             {'  '}
-            <span className="text-ink-3">wrote</span> create-charge/cubicle.toml{'\n'}
+            <span className="text-ink-3">wrote</span>
+            {'   '}create-charge/cubicle.toml{'\n'}
             {'  '}
-            <span className="text-ink-3">wrote</span> create-charge/README.md{'\n\n'}
+            <span className="text-ink-3">wrote</span>
+            {'   '}create-charge/README.md{'\n\n'}
             <span className="text-ink-3">$</span> cd create-charge &amp;&amp; cubicle deploy
             {'\n'}
-            {'  '}bundling 4 files · 3812 B{'\n'}
-            {'  '}building 910ms{'\n'}
+            {'  bundling       '}4 files · 3812 B{'\n'}
+            {'  building       '}910ms{'\n'}
             {'  '}
-            <span className="text-ok">deployed</span>{' '}
-            https://fn.example.com/prod/payments/create-charge (v1)
+            <span className="text-ok">deployed</span>
+            {'       '}https://fn.example.com/prod/payments/create-charge (v1)
           </>,
         )}
         {p(

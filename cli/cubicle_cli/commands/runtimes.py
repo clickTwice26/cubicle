@@ -19,6 +19,7 @@ from ..client import (
     CubicleError,
     Profile,
     confirm,
+    confirmable,
     list_runtimes,
     load_profile,
     paint,
@@ -41,7 +42,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     rebuild = runtimes_sub.add_parser("rebuild", help="Build the image again, stale agent and all.")
     rebuild.add_argument("key", help="Runtime key, e.g. node22.")
 
-    remove = runtimes_sub.add_parser("rm", help="Remove a runtime's image from this instance.")
+    remove = runtimes_sub.add_parser(
+        "rm", parents=[confirmable()], help="Remove a runtime's image from this instance."
+    )
     remove.add_argument("key", help="Runtime key, e.g. node22.")
 
 

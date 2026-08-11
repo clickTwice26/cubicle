@@ -16,6 +16,7 @@ from ..client import (
     CubicleError,
     Profile,
     confirm,
+    confirmable,
     ensure_group,
     find_function,
     load_profile,
@@ -42,7 +43,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     show = market_sub.add_parser("show", help="Print a package and the whole of its source.")
     show.add_argument("package", metavar="url", help="The package URL from the listing.")
 
-    install = market_sub.add_parser("install", help="Create a function from a package.")
+    install = market_sub.add_parser(
+        "install", parents=[confirmable()], help="Create a function from a package."
+    )
     install.add_argument("package", metavar="url", help="The package URL from the listing.")
     install.add_argument("--namespace", required=True, help="Namespace to create the function in.")
     install.add_argument("--name", default=None, help="Function name. Defaults to the slug.")

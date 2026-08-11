@@ -11,8 +11,10 @@ them at once, so a change here breaks work that is already in flight.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import re
 import ssl
 import sys
 import time
@@ -60,9 +62,12 @@ __all__ = [
     "Call",
     "CubicleError",
     "Profile",
+    "bounded",
     "confirm",
+    "confirmable",
     "deploy_files",
     "ensure_group",
+    "env_key",
     "find_function",
     "find_group",
     "list_runtimes",
@@ -335,6 +340,32 @@ def split_target(target: str) -> tuple[str, str]:
     return namespace.strip("/"), name.strip("/")
 
 
+def env_key(key: str) -> str:
+    """A variable or a secret name as the API stores it.
+
+    EnvVarIn and SecretIn upper-case the name and replace everything that is
+    not a letter, a digit or an underscore, so `stripe-key` is written down as
+    STRIPE_KEY. A delete names the row in the URL path rather than in a body,
+    so the same rule has to be applied here or the request goes looking for a
+    key nobody wrote: the env endpoint answers that with a 404 and the secrets
+    endpoint used to answer it with silence. Normalising here is also what
+    keeps the path free of anything that would need escaping.
+    """
+    return re.sub(r"[^A-Z0-9_]", "_", key.strip().upper())
+
+
+def bounded(value: int, flag: str, low: int, high: int) -> int:
+    """A number the API would accept, refused here when it would not.
+
+    Sending it anyway costs a round trip and comes back as FastAPI's list of
+    validation errors, which names the field by its schema name rather than by
+    the flag that was typed.
+    """
+    if not low <= value <= high:
+        raise CubicleError(f"{flag} takes {low} to {high}, and {value} is outside that.")
+    return value
+
+
 def find_function(profile: Profile, target: str) -> dict:
     """Resolve `<namespace>/<function>` to the function record.
 
@@ -412,6 +443,30 @@ def deploy_files(
     return (entry, deps, *SHARED_FILES)
 
 
+def confirmable() -> argparse.ArgumentParser:
+    """A parent parser that gives one command its own --yes.
+
+    --yes is also a global flag, so `cubicle --yes rm ns/fn` has always worked,
+    but argparse hands everything after the command name to the subparser and a
+    subparser that has never heard of --yes rejects it outright. That is the
+    spelling the refusal below tells people to type, so both positions have to
+    mean the same thing.
+
+    The default is SUPPRESS rather than False because a subparser copies its
+    whole finished namespace over the outer one, and a False default here would
+    erase a --yes that was typed before the command name.
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Answer this command's confirmation with yes.",
+    )
+    return parser
+
+
 def confirm(question: str, *, assume_yes: bool = False) -> bool:
     """Ask before something destructive, unless --yes said not to.
 
@@ -423,7 +478,13 @@ def confirm(question: str, *, assume_yes: bool = False) -> bool:
         return True
     if not sys.stdin.isatty():
         raise CubicleError(f"{question} There is no terminal to ask; pass --yes to go ahead.")
-    return input(f"  {question} [y/N] ").strip().lower() in {"y", "yes"}
+    try:
+        answer = input(f"  {question} [y/N] ")
+    except EOFError:
+        # ctrl-d is the end of the input, which is nothing typed, which is the
+        # same answer as a bare return. A traceback is not an answer at all.
+        return False
+    return answer.strip().lower() in {"y", "yes"}
 
 
 def poll(

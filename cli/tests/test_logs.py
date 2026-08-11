@@ -92,6 +92,25 @@ def test_every_filter_reaches_the_endpoint(api, run):
     }
 
 
+def test_a_limit_outside_the_endpoint_s_range_is_refused_here(api, run, capsys):
+    """The ceiling used to be a thousand lines, so `--limit 1000` is in scripts.
+
+    Sent anyway it comes back as FastAPI's list of validation error objects,
+    which names `limit` as a query field rather than as the flag that was typed.
+    """
+    assert run("logs", "--limit", "1000") == 1
+
+    assert "--limit takes 1 to 500" in capsys.readouterr().err
+    assert api.sent("GET", "/api/logs") == []
+
+
+def test_a_negative_offset_never_leaves_the_machine(api, run, capsys):
+    assert run("logs", "--offset", "-5") == 1
+
+    assert "--offset takes 0 to" in capsys.readouterr().err
+    assert api.sent("GET", "/api/logs") == []
+
+
 def test_a_deeper_page_is_offered_when_the_total_says_there_is_one(api, run, capsys):
     """`total` counts every match, so it is the only way to know more is there."""
     api.on("GET", "/api/logs", _page(["only"], total=61))

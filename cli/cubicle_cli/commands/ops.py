@@ -21,6 +21,7 @@ from ..client import (
     CubicleError,
     Profile,
     confirm,
+    confirmable,
     load_profile,
     paint,
     poll,
@@ -40,11 +41,17 @@ def register(sub: argparse._SubParsersAction) -> None:
         help="Ask GitHub again rather than reuse the instance's cached answer.",
     )
     update_sub = update.add_subparsers(dest="update_command")
-    update_sub.add_parser("apply", help="Rebuild and restart this instance from the branch.")
+    update_sub.add_parser(
+        "apply",
+        parents=[confirmable()],
+        help="Rebuild and restart this instance from the branch.",
+    )
 
     reconcile = sub.add_parser("reconcile", help="Show where the record and Docker disagree.")
     reconcile_sub = reconcile.add_subparsers(dest="reconcile_command")
-    reconcile_apply = reconcile_sub.add_parser("apply", help="Fix findings. Safe ones by default.")
+    reconcile_apply = reconcile_sub.add_parser(
+        "apply", parents=[confirmable()], help="Fix findings. Safe ones by default."
+    )
     reconcile_apply.add_argument(
         "ids",
         nargs="*",

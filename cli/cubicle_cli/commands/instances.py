@@ -27,7 +27,9 @@ from collections.abc import Sequence
 from ..client import (
     CubicleError,
     Profile,
+    bounded,
     confirm,
+    confirmable,
     find_function,
     list_runtimes,
     load_profile,
@@ -50,7 +52,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     instances = sub.add_parser("instances", help="Show the containers serving a function.")
     instances.add_argument("target", help="<namespace>/<function>")
 
-    kill = sub.add_parser("kill", help="Destroy one isolate.")
+    kill = sub.add_parser("kill", parents=[confirmable()], help="Destroy one isolate.")
     kill.add_argument("target", help="<namespace>/<function>")
     kill.add_argument("isolate", help="Container id, as `cubicle instances` prints it.")
 
@@ -107,7 +109,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     metrics.add_argument("target", help="<namespace>/<function>")
     metrics.add_argument("--hours", type=int, default=24, help="Window in hours, 1 to 720.")
 
-    rm = sub.add_parser("rm", help="Delete a function and every version of it.")
+    rm = sub.add_parser(
+        "rm", parents=[confirmable()], help="Delete a function and every version of it."
+    )
     rm.add_argument("target", help="<namespace>/<function>")
 
 
@@ -184,9 +188,9 @@ def cmd_scale(args: argparse.Namespace) -> int:
     fn = find_function(profile, args.target)
     changes: dict[str, int] = {}
     if args.min_instances is not None:
-        changes["min_instances"] = _bounded(args.min_instances, "--min", 0, 20)
+        changes["min_instances"] = bounded(args.min_instances, "--min", 0, 20)
     if args.max_instances is not None:
-        changes["max_instances"] = _bounded(args.max_instances, "--max", 1, 32)
+        changes["max_instances"] = bounded(args.max_instances, "--max", 1, 32)
 
     # The API refuses this too, but it can only refuse the pair it ends up
     # with, and half of that pair is whatever the function already had.
@@ -307,7 +311,7 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     profile = load_profile(args.url, args.token, args.cluster)
     # The API declares no bounds on `hours` at all, so an accidental 0 or a
     # negative reaches the query as it was typed.
-    hours = _bounded(args.hours, "--hours", 1, 720)
+    hours = bounded(args.hours, "--hours", 1, 720)
     fn = find_function(profile, args.target)
     data = request(profile, "GET", f"/api/functions/{fn['id']}/metrics", params={"hours": hours})
     stats = data["stats"]
@@ -347,18 +351,6 @@ def cmd_rm(args: argparse.Namespace) -> int:
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _bounded(value: int, flag: str, low: int, high: int) -> int:
-    """A number the API would accept, refused here when it would not.
-
-    Sending it anyway costs a round trip and comes back as FastAPI's list of
-    validation errors, which names the field by its schema name rather than by
-    the flag that was typed.
-    """
-    if not low <= value <= high:
-        raise CubicleError(f"{flag} takes {low} to {high}, and {value} is outside that.")
-    return value
-
-
 def _changes(args: argparse.Namespace) -> dict[str, object]:
     """The FunctionUpdate body for whichever flags were given.
 
@@ -368,11 +360,11 @@ def _changes(args: argparse.Namespace) -> dict[str, object]:
     """
     changes: dict[str, object] = {}
     if args.memory is not None:
-        changes["memory_mb"] = _bounded(args.memory, "--memory", 32, 8192)
+        changes["memory_mb"] = bounded(args.memory, "--memory", 32, 8192)
     if args.timeout is not None:
-        changes["timeout_s"] = _bounded(args.timeout, "--timeout", 1, 900)
+        changes["timeout_s"] = bounded(args.timeout, "--timeout", 1, 900)
     if args.idle is not None:
-        changes["idle_timeout_s"] = _bounded(args.idle, "--idle", 0, 86400)
+        changes["idle_timeout_s"] = bounded(args.idle, "--idle", 0, 86400)
     if args.auth is not None:
         changes["auth_required"] = args.auth == "true"
     if args.method:
@@ -451,7 +443,12 @@ def _confirm_name(target: str, *, assume_yes: bool) -> bool:
             "There is no terminal to ask; pass --yes to go ahead."
         )
     print(paint(f"  This deletes {target}, its versions, its secrets and its schedules.", "yellow"))
-    return input(f"  Type {target} to confirm: ").strip() == target
+    try:
+        typed = input(f"  Type {target} to confirm: ")
+    except EOFError:
+        # ctrl-d typed nothing, and nothing is not the name.
+        return False
+    return typed.strip() == target
 
 
 def _duration(seconds: float) -> str:

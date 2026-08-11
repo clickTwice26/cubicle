@@ -29,8 +29,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--cluster",
         help="Cluster slug to act on. Defaults to the instance's default cluster.",
     )
-    # Global rather than per-command: a script that has decided it is not
-    # being supervised has decided it for the whole invocation.
+    # Global as well as per-command: a script that has decided it is not being
+    # supervised has decided it for the whole invocation, and a person typing
+    # one command puts the flag after it. `client.confirmable()` is the other
+    # half of that, and every command that asks a question carries it.
     parser.add_argument(
         "--yes",
         "-y",
@@ -51,7 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     except CubicleError as error:
         print(paint(f"✗ {error}", "red"), file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
+        # ctrl-c and ctrl-d are the two ways a person walks away from a prompt,
+        # and a traceback is not the right answer to either. The confirmations
+        # read ctrl-d as "no" themselves; this is for the ones that read a
+        # value, `login` and `secrets set`, where there is nothing to assume.
         return 130
 
 
