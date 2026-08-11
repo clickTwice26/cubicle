@@ -38,6 +38,19 @@ export interface SetupStatus {
   public_url: string
   domain: string
   tls: boolean
+  // The sign-in page reads its challenge configuration from here, because this
+  // is the one endpoint it can call before anyone has signed in. The site key
+  // is public by construction; the secret key is never sent to a browser.
+  turnstile_enabled: boolean
+  turnstile_site_key: string
+}
+
+export interface TurnstileSettings {
+  enabled: boolean
+  site_key: string
+  secret_set: boolean
+  verified?: boolean
+  message?: string
 }
 
 export interface JoinableNode {

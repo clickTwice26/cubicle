@@ -39,6 +39,8 @@ import {
   useInstance,
   useMe,
   useRevokeApiKey,
+  useSaveTurnstile,
+  useTurnstileSettings,
   useUpdateInstance,
   useUpdateUser,
   useUsers,
@@ -113,6 +115,7 @@ export default function Settings() {
 
       {tab === 'access' ? (
         <>
+          <SignInProtectionCard />
           <ApiKeysCard />
           <PasswordCard />
         </>
@@ -529,6 +532,121 @@ function PasswordCard() {
       >
         Change password
       </Button>
+    </Card>
+  )
+}
+
+function SignInProtectionCard() {
+  const toast = useToast()
+  const { data: status } = useTurnstileSettings()
+  const save = useSaveTurnstile()
+
+  const [siteKey, setSiteKey] = useState('')
+  const [secret, setSecret] = useState('')
+  const [enabled, setEnabled] = useState(false)
+
+  useEffect(() => {
+    if (!status) return
+    setSiteKey(status.site_key)
+    setEnabled(status.enabled)
+  }, [status])
+
+  if (!status) return <Skeleton className="mb-5 h-40 w-full" />
+
+  const dirty =
+    secret.trim().length > 0 || siteKey !== status.site_key || enabled !== status.enabled
+  // Turning it on is verified against Cloudflare, so both halves must be present.
+  const missing = enabled && (!siteKey.trim() || (!secret.trim() && !status.secret_set))
+
+  const apply = () =>
+    save.mutate(
+      {
+        enabled,
+        site_key: siteKey.trim(),
+        ...(secret.trim() ? { secret_key: secret.trim() } : {}),
+      },
+      {
+        onSuccess: (result) => {
+          setSecret('')
+          toast.push(result.message || 'Saved', result.enabled ? 'ok' : undefined)
+        },
+        onError: (error) => toast.push(error.message, 'err'),
+      },
+    )
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <CardHeader
+        title="Sign-in protection"
+        subtitle="Cloudflare Turnstile on the sign-in form, so an anonymous caller cannot spend this machine's CPU guessing passwords"
+        action={status.enabled ? <Badge tone="accent">on</Badge> : <Badge tone="warn">off</Badge>}
+      />
+
+      <div className="grid gap-4 px-5 py-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Site key"
+            value={siteKey}
+            placeholder="0x4AAAAAAA…"
+            autoComplete="off"
+            onChange={(event) => setSiteKey(event.target.value)}
+            hint="Public. It is rendered into the sign-in page, where any visitor can read it."
+          />
+          <Field
+            label="Secret key"
+            type="password"
+            autoComplete="off"
+            value={secret}
+            placeholder={status.secret_set ? 'stored · leave blank to keep it' : '0x4AAAAAAA…'}
+            onChange={(event) => setSecret(event.target.value)}
+            hint="Stored envelope-encrypted and never shown again. It only ever leaves this machine to reach Cloudflare."
+          />
+        </div>
+
+        <Checkbox
+          checked={enabled}
+          onChange={setEnabled}
+          label="Challenge visitors on the sign-in form"
+        />
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant="primary"
+            size="sm"
+            loading={save.isPending}
+            disabled={!dirty || missing}
+            onClick={apply}
+          >
+            {enabled ? 'Verify and apply' : 'Save'}
+          </Button>
+          {status.enabled ? (
+            <ConfirmButton
+              label="Turn off"
+              confirmLabel="Click again to turn off"
+              onConfirm={() =>
+                save.mutate(
+                  { enabled: false, site_key: siteKey.trim() },
+                  {
+                    onSuccess: () => toast.push('Sign-in protection is off'),
+                    onError: (error) => toast.push(error.message, 'err'),
+                  },
+                )
+              }
+            />
+          ) : null}
+          <span className="ml-auto text-[12.5px] text-ink-3">
+            {missing
+              ? 'Both keys are needed before this can be turned on.'
+              : 'Applies on the next sign-in. No rebuild or restart.'}
+          </span>
+        </div>
+
+        <p className="m-0 border-t border-line pt-4 text-[12.5px] leading-relaxed text-ink-3">
+          Get a key pair from the Cloudflare dashboard under Turnstile. Turning this on is checked
+          against Cloudflare before it is saved, so a mistyped secret cannot lock you out of your
+          own instance. Nothing contacts Cloudflare until you turn it on.
+        </p>
+      </div>
     </Card>
   )
 }

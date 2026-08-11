@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     domain: str = "localhost"
     public_url: str = "http://localhost:7000"
     trust_proxy: bool = True
+    #: How many proxies of our own sit in front of this process. A default
+    #: install has one, Caddy. Raise it only if you put another in front, and
+    #: see ``security.client_ip`` for why the number has to be right: it decides
+    #: how far into ``X-Forwarded-For`` the trusted portion begins.
+    proxy_hops: int = 1
+    #: The browsable API reference and its OpenAPI document. Off by default
+    #: because an instance that answers on the internet has no reason to hand an
+    #: anonymous visitor the shape of every administrative endpoint it serves.
+    expose_api_docs: bool = False
 
     data_dir: Path = Path("/var/lib/cubicle")
 

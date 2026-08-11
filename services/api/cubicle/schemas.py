@@ -290,6 +290,11 @@ class SetupStatus(BaseModel):
     public_url: str
     domain: str
     tls: bool
+    #: What the sign-in page needs to render a Turnstile challenge. The site key
+    #: is public by construction: it ends up in the page's markup either way.
+    #: The secret key is never part of this response.
+    turnstile_enabled: bool = False
+    turnstile_site_key: str = ""
 
 
 class SetupNodeSelection(BaseModel):
@@ -316,6 +321,32 @@ class SetupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    #: The Turnstile token the widget produced, when the instance asks for one.
+    #: Optional in the schema rather than required, so that turning Turnstile on
+    #: does not make every older client send a 422 instead of a readable 403.
+    turnstile_token: str | None = Field(default=None, max_length=4096)
+
+
+class TurnstileSettings(BaseModel):
+    """What an operator sets. The secret key is write-only."""
+
+    enabled: bool = False
+    site_key: str = Field(default="", max_length=120)
+    #: Omitted on an update to keep the stored key unchanged, which is how the
+    #: console can save the other fields without ever holding the secret.
+    secret_key: str | None = Field(default=None, max_length=200)
+
+
+class TurnstileOut(BaseModel):
+    """What the console is told back. Never the secret key itself."""
+
+    enabled: bool
+    site_key: str
+    #: Whether a secret is stored, so the console can say "configured" without
+    #: having anything to leak.
+    secret_set: bool
+    verified: bool = False
+    message: str = ""
 
 
 class PasswordChange(BaseModel):

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Logo, ThemeToggle } from '../components/Layout'
 import { Button, Card, Field } from '../components/ui'
 import { Lock, Server, Shield, XCircle } from '../components/Icons'
-import { useLogin } from '../lib/hooks'
+import { Turnstile } from '../components/Turnstile'
+import { useLogin, useSetupStatus } from '../lib/hooks'
 
 /**
  * The sign-in screen.
@@ -34,15 +35,38 @@ const POINTS = [
 export default function Login() {
   const navigate = useNavigate()
   const login = useLogin()
+  const { data: setup } = useSetupStatus()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [reveal, setReveal] = useState(false)
+  const [token, setToken] = useState('')
+  // A Turnstile token is single use, so a rejected sign-in has to run the
+  // challenge again. Bumping this remounts the widget.
+  const [challenge, setChallenge] = useState(0)
+
+  const protectedSignIn = Boolean(setup?.turnstile_enabled && setup.turnstile_site_key)
+  const blocked = protectedSignIn && !token
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
+    if (blocked) return
     login.mutate(
-      { email: email.trim(), password },
-      { onSuccess: () => navigate('/console', { replace: true }) },
+      {
+        email: email.trim(),
+        password,
+        ...(protectedSignIn ? { turnstile_token: token } : {}),
+      },
+      {
+        onSuccess: () => navigate('/console', { replace: true }),
+        onError: () => {
+          // The server consumed the token whether or not the password was
+          // right, so the page is holding one that will now be refused.
+          if (protectedSignIn) {
+            setToken('')
+            setChallenge((n) => n + 1)
+          }
+        },
+      },
     )
   }
 
@@ -137,14 +161,28 @@ export default function Login() {
                 </div>
               ) : null}
 
+              {protectedSignIn ? (
+                <div className="grid gap-2">
+                  <Turnstile
+                    siteKey={setup!.turnstile_site_key}
+                    onToken={setToken}
+                    resetKey={challenge}
+                  />
+                  <p className="m-0 text-center text-[11.5px] text-ink-3">
+                    Protected by Cloudflare Turnstile
+                  </p>
+                </div>
+              ) : null}
+
               <Button
                 type="submit"
                 variant="primary"
                 size="lg"
                 loading={login.isPending}
+                disabled={blocked}
                 className="mt-1 w-full"
               >
-                Sign in
+                {blocked ? 'Waiting for verification' : 'Sign in'}
               </Button>
             </form>
 

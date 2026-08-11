@@ -9,16 +9,29 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import clusters as cluster_svc
-from .. import security
+from .. import security, turnstile
 from ..config import settings
-from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin, RequireOwner
+from ..deps import (
+    CurrentCluster,
+    CurrentPrincipal,
+    DbSession,
+    RequireAdmin,
+    RequireOwner,
+)
+from ..deps import (
+    # Aliased: this module already has an endpoint called get_instance, and
+    # that one returns the active cluster's settings, not the singleton row.
+    get_instance as get_instance_row,
+)
 from ..logging_setup import log
-from ..models import ApiKey, Cluster, User, UserCluster
+from ..models import ApiKey, Cluster, Instance, User, UserCluster
 from ..schemas import (
     ApiKeyCreate,
     ApiKeyOut,
     InstanceOut,
     InstanceUpdate,
+    TurnstileOut,
+    TurnstileSettings,
     UserCreate,
     UserOut,
     UserUpdate,
@@ -76,6 +89,91 @@ async def update_instance(
         changed=list(data),
     )
     return await _instance_out(db, cluster)
+
+
+# ── sign-in protection ───────────────────────────────────────────────────────
+
+
+def _turnstile_out(instance: Instance, **extra) -> TurnstileOut:
+    return TurnstileOut(
+        enabled=instance.turnstile_enabled,
+        site_key=instance.turnstile_site_key,
+        secret_set=bool(instance.turnstile_secret_ciphertext),
+        **extra,
+    )
+
+
+@router.get("/turnstile", response_model=TurnstileOut)
+async def get_turnstile(db: DbSession, _: RequireAdmin) -> TurnstileOut:
+    """The current configuration, without the secret key.
+
+    The secret is never returned, not even to an owner. There is nothing an
+    operator can do with it here that rotating it in Cloudflare would not do
+    better, and a settings page that can display it is a settings page that can
+    leak it.
+    """
+    instance = await get_instance_row(db)
+    return _turnstile_out(instance)
+
+
+@router.put("/turnstile", response_model=TurnstileOut)
+async def set_turnstile(
+    payload: TurnstileSettings, db: DbSession, principal: RequireAdmin
+) -> TurnstileOut:
+    """Save the keys, after checking them against Cloudflare.
+
+    Checking first matters more than it usually would: these credentials guard
+    the sign-in form, so a typo saved without verification locks every operator
+    out of the instance until someone edits the database by hand. The check
+    costs one request and removes that failure mode entirely.
+
+    Omitting ``secret_key`` keeps the stored one, so the enabled flag and the
+    site key can be edited without the console ever holding the secret.
+    """
+    instance = await get_instance_row(db)
+
+    site_key = (payload.site_key or "").strip()
+    secret = payload.secret_key.strip() if payload.secret_key is not None else None
+
+    # Turning it on is the only case that must be right. Saving keys while it
+    # is off is how an operator stages the configuration before enabling it.
+    if payload.enabled:
+        candidate = secret if secret else turnstile.unseal(instance)
+        if not candidate:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "A secret key is needed before sign-in protection can be turned on.",
+            )
+        verdict = await turnstile.check_credentials(site_key, candidate)
+        if not verdict.ok:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, verdict.reason)
+
+    instance.turnstile_enabled = payload.enabled
+    instance.turnstile_site_key = site_key
+    if secret:
+        instance.turnstile_secret_ciphertext = turnstile.seal(secret)
+    elif secret == "":
+        # An explicit empty string clears it. Omitting the field does not.
+        instance.turnstile_secret_ciphertext = None
+
+    await db.commit()
+    await db.refresh(instance)
+
+    log.info(
+        "sign-in protection updated",
+        by=principal.user.email,
+        enabled=instance.turnstile_enabled,
+        secret_changed=bool(secret),
+    )
+    return _turnstile_out(
+        instance,
+        verified=payload.enabled,
+        message=(
+            "Verified with Cloudflare. The sign-in page will challenge visitors immediately."
+            if payload.enabled
+            else "Saved. Sign-in protection is off."
+        ),
+    )
 
 
 # ── API keys ─────────────────────────────────────────────────────────────────

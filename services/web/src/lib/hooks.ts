@@ -31,6 +31,7 @@ import type {
   SchedulePreview,
   Secret,
   SetupStatus,
+  TurnstileSettings,
   TestResult,
   Trigger,
   UpdateProgress,
@@ -101,7 +102,7 @@ export const useMe = (options: Q<User> = {}) =>
 export function useLogin() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (body: { email: string; password: string }) =>
+    mutationFn: (body: { email: string; password: string; turnstile_token?: string }) =>
       api.post<User>('/api/auth/login', body),
     onSuccess: (user) => {
       client.setQueryData(keys.me, user)
@@ -787,6 +788,28 @@ export function useUpdateInstance() {
     mutationFn: (body: Record<string, string>) =>
       api.patch<Instance>('/api/settings/instance', body),
     onSuccess: (data) => client.setQueryData([...keys.instance, scope], data),
+  })
+}
+
+// ── sign-in protection ───────────────────────────────────────────────────────
+
+export const useTurnstileSettings = () =>
+  useQuery({
+    queryKey: ['settings', 'turnstile'],
+    queryFn: () => api.get<TurnstileSettings>('/api/settings/turnstile'),
+  })
+
+export function useSaveTurnstile() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { enabled: boolean; site_key: string; secret_key?: string }) =>
+      api.put<TurnstileSettings>('/api/settings/turnstile', body),
+    onSuccess: (data) => {
+      client.setQueryData(['settings', 'turnstile'], data)
+      // The sign-in page reads the site key from the setup status, so that
+      // query is now stale for anyone who lands on it next.
+      void client.invalidateQueries({ queryKey: keys.setup })
+    },
   })
 }
 

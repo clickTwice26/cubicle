@@ -48,6 +48,12 @@ configuration, to `.env`:
 | `CUBICLE_PUBLIC_URL` | What the platform believes its own address is |
 | `CUBICLE_HTTP_PORT`, `CUBICLE_HTTPS_PORT` | Published ports, 28080 and 28443 by default |
 | `CUBICLE_BIND` | Empty normally, `127.0.0.1:` behind a proxy |
+| `CUBICLE_PROXY_HOPS` | How many proxies sit in front. 1 by default, for Caddy |
+| `CUBICLE_EXPOSE_API_DOCS` | Off by default. Turns on `/api/docs` and the OpenAPI document |
+
+`CUBICLE_PROXY_HOPS` decides which entry of `X-Forwarded-For` is treated as the
+caller. Raise it only if you put your own proxy in front of Caddy, and see
+[the security model](security.md) for why the number has to be right.
 
 **Back up `.env` before you do anything else.** Losing `CUBICLE_MASTER_KEY`
 means losing every stored secret and every environment variable, permanently.

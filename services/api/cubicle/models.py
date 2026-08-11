@@ -65,6 +65,16 @@ class Instance(Base, TimestampMixin):
     ai_base_url: Mapped[str] = mapped_column(String(200), default="")
     ai_model: Mapped[str] = mapped_column(String(80), default="")
 
+    #: Cloudflare Turnstile on the sign-in form. Instance-wide rather than
+    #: per-cluster because signing in happens before a cluster is chosen.
+    #:
+    #: The site key is public by design: it is rendered into the login page and
+    #: any visitor can read it. The secret key is envelope-encrypted like the AI
+    #: key, and only ever leaves the database to be posted to Cloudflare.
+    turnstile_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    turnstile_site_key: Mapped[str] = mapped_column(String(120), default="")
+    turnstile_secret_ciphertext: Mapped[str | None] = mapped_column(Text)
+
 
 class Cluster(Base, TimestampMixin):
     """One scheduling domain: its own nodes, namespaces, config and data services.

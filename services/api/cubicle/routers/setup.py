@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
 from .. import clusters as cluster_svc
-from .. import security
+from .. import security, turnstile
 from ..config import settings
 from ..db import get_redis, session_scope
 from ..deps import DbSession, InstanceDep
@@ -56,6 +56,10 @@ async def setup_status(instance: InstanceDep, db: DbSession) -> SetupStatus:
         public_url=settings.public_url,
         domain=settings.domain,
         tls=settings.public_url.startswith("https://"),
+        # The sign-in page reads its challenge configuration from here, because
+        # this is the one endpoint it can call before anyone has signed in.
+        turnstile_enabled=turnstile.configured(instance),
+        turnstile_site_key=instance.turnstile_site_key if turnstile.configured(instance) else "",
     )
 
 
@@ -172,7 +176,17 @@ async def run_setup(
 
 
 @router.get("/progress")
-async def progress_stream() -> StreamingResponse:
+async def progress_stream(instance: InstanceDep) -> StreamingResponse:
+    """The wizard's live progress.
+
+    Closed once setup is complete, like every other endpoint in this router.
+    It was not, and that left an unauthenticated request able to hold a
+    connection and a task for two and a half minutes at no cost to the caller,
+    for the whole life of the instance rather than the minute setup takes.
+    """
+    if instance.setup_complete:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This instance is already set up.")
+
     async def events() -> AsyncIterator[str]:
         last = None
         for _ in range(600):

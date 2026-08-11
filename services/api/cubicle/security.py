@@ -170,8 +170,29 @@ def bearer_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request) -> str:
+    """The caller's address, as far as it can be trusted.
+
+    ``X-Forwarded-For`` grows left to right: each proxy appends the address it
+    received the request from. So the entries on the right are the ones written
+    by proxies we run, and the entries on the left are whatever the client
+    chose to send. Reading the leftmost entry, which is the obvious way to do
+    this, hands an attacker a fresh identity per request and defeats every
+    control keyed on the address, login throttling included.
+
+    ``proxy_hops`` is how many proxies sit in front of this process. A default
+    install has exactly one, Caddy, so the address it recorded is the last
+    entry. Anything further left is untrusted and is ignored.
+    """
     if settings.trust_proxy:
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            hops = [part.strip() for part in forwarded.split(",") if part.strip()]
+            if hops:
+                # Count in from the right, but never past the start of the list:
+                # a request that arrived with fewer hops than configured is
+                # either misconfiguration or someone stripping headers, and in
+                # both cases the leftmost entry we actually received is the
+                # closest thing to the truth that exists.
+                index = max(0, len(hops) - settings.proxy_hops)
+                return hops[index]
     return request.client.host if request.client else "unknown"

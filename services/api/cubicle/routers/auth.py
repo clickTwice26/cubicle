@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 
-from .. import security
+from .. import security, turnstile
 from ..config import settings
 from ..deps import CurrentPrincipal, DbSession
 from ..logging_setup import log
-from ..models import User
+from ..models import Instance, User
 from ..schemas import LoginRequest, PasswordChange, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -25,6 +25,18 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
             status.HTTP_429_TOO_MANY_REQUESTS,
             "Too many failed attempts. Try again in a few minutes.",
         )
+
+    # Before the password is touched, because verifying one costs argon2id at
+    # 64 MB and that is the work an unauthenticated caller would otherwise be
+    # able to spend freely. A failed challenge counts as a failed attempt: an
+    # attacker who can defeat Turnstile should still meet the throttle.
+    instance = await db.get(Instance, 1)
+    if instance is not None and turnstile.configured(instance):
+        verdict = await turnstile.verify(instance, payload.turnstile_token, remote_ip=ip)
+        if not verdict.ok:
+            await security.register_login_failure(identifier)
+            log.warning("turnstile blocked a sign-in", email=payload.email, ip=ip)
+            raise HTTPException(status.HTTP_403_FORBIDDEN, verdict.reason)
 
     user = (
         await db.execute(select(User).where(User.email == payload.email.lower()))

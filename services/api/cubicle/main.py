@@ -15,6 +15,7 @@ from sqlalchemy import delete, select
 from . import metrics
 from .config import settings
 from .db import engine, get_redis, session_scope
+from .deps import CurrentPrincipal
 from .logging_setup import configure_logging, log
 from .models import Cluster, Function, FunctionVersion, Group, LogEntry, Node
 from .routers import ROUTERS
@@ -30,6 +31,16 @@ LOG_RETENTION_DAYS = 14
 async def lifespan(app: FastAPI):
     configure_logging()
     log.info("cubicle control plane starting", version=settings.version, url=settings.public_url)
+
+    # The session cookie is marked Secure from this one value, so an instance
+    # serving real traffic with it left at the default hands out cookies a
+    # browser will happily send over plain HTTP. Localhost is the exception
+    # rather than the oversight, so it is not worth a warning.
+    if not settings.secure_cookies and "localhost" not in settings.public_url:
+        log.warning(
+            "CUBICLE_PUBLIC_URL is not https, so session cookies are not marked Secure",
+            public_url=settings.public_url,
+        )
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,9 +81,13 @@ app = FastAPI(
         "another client of this API, and so is the `cubicle` CLI."
     ),
     default_response_class=ORJSONResponse,
-    docs_url="/api/docs",
+    # Both are unauthenticated by construction, so they are opt-in rather than
+    # on: publishing the full administrative surface to anonymous callers is
+    # reconnaissance handed over for free. Set CUBICLE_EXPOSE_API_DOCS=1 on an
+    # instance that is not reachable from the internet.
+    docs_url="/api/docs" if settings.expose_api_docs else None,
     redoc_url=None,
-    openapi_url="/api/openapi.json",
+    openapi_url="/api/openapi.json" if settings.expose_api_docs else None,
     lifespan=lifespan,
 )
 
@@ -109,7 +124,13 @@ async def healthz() -> dict:
 
 
 @app.get("/metrics", include_in_schema=False)
-async def prometheus_metrics() -> Response:
+async def prometheus_metrics(_: CurrentPrincipal) -> Response:
+    """Invocation volumes, error rates and warm isolate counts.
+
+    Authenticated, unlike the convention for a metrics endpoint, because this
+    one answers on the same public address as the console. A scraper should be
+    given a read-only API key rather than the endpoint being opened up.
+    """
     metrics.WARM_ISOLATES.set(pool.count())
     return Response(metrics.render(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
