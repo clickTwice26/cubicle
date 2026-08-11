@@ -36,3 +36,4 @@ services/api/services/
 # Coursework, not part of the product
 docs/report/
 docs/proposal/
+docs/security-audit.md

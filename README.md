@@ -10,8 +10,6 @@ domain at it, and nothing that calls home.
 
 Apache-2.0 · Python and JavaScript runtimes · entirely Docker-based
 
-<img src="docs/screenshots/02-overview.png" alt="The Cubicle console overview, showing invocation KPIs, an invocations chart and the function table" width="900">
-
 </div>
 
 ---
@@ -63,52 +61,22 @@ never rotated.
 | **Settings** | Instance configuration, API keys, and local user accounts with roles |
 | **Docs** | Installation, quickstart, the handler contract, secrets, `cubicle.toml`, and the CLI |
 
-### Screenshots
+### Documentation
 
-<table>
-<tr>
-<td width="50%">
-<a href="docs/screenshots/03-playground.png"><img src="docs/screenshots/03-playground.png" alt="Function playground with the code editor" width="100%"></a>
-<sub><b>Function playground</b> — namespaces, a real editor, and a test console that runs the function on the cluster.</sub>
-</td>
-<td width="50%">
-<a href="docs/screenshots/04-cluster-metering.png"><img src="docs/screenshots/04-cluster-metering.png" alt="Cluster and metering page" width="100%"></a>
-<sub><b>Cluster &amp; metering</b> — node allocation, GB-seconds, chargeback, and what the same workload would cost hosted.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<a href="docs/screenshots/05-settings-clusters.png"><img src="docs/screenshots/05-settings-clusters.png" alt="Settings page showing cluster management" width="100%"></a>
-<sub><b>Clusters</b> — several isolated scheduling domains on one instance, switchable from the sidebar.</sub>
-</td>
-<td width="50%">
-<a href="docs/screenshots/06-logs.png"><img src="docs/screenshots/06-logs.png" alt="Logs and monitoring page with a live tail" width="100%"></a>
-<sub><b>Logs &amp; monitoring</b> — handler output and control-plane events, streamed live over SSE.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<a href="docs/screenshots/08-database.png"><img src="docs/screenshots/08-database.png" alt="The database manager browsing a table" width="100%"></a>
-<sub><b>Database manager</b> — browse and edit the managed PostgreSQL: rows, structure, and a SQL console.</sub>
-</td>
-<td width="50%">
-<a href="docs/screenshots/01-landing.png"><img src="docs/screenshots/01-landing.png" alt="The landing page" width="100%"></a>
-<sub><b>Landing</b> — served by the same instance, no marketing site to host.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<a href="docs/screenshots/07-docs.png"><img src="docs/screenshots/07-docs.png" alt="Built-in documentation" width="100%"></a>
-<sub><b>Docs</b> — bundled and versioned with the instance, so they match what you are running.</sub>
-</td>
-<td width="50%"></td>
-</tr>
-</table>
+The full documentation lives in [docs/](docs/README.md):
 
-> **How it all works.** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) walks the
-> whole platform with use-case, sequence, activity and state diagrams — what
-> happens on a deploy, what happens on an invocation, the isolate lifecycle,
-> the trust boundaries and the failure modes.
+| Page | What it covers |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Containers, networks, runtimes, the deploy and invoke paths, the isolate lifecycle |
+| [Installation](docs/install.md) | Local, with a domain, or behind your own proxy |
+| [Writing functions](docs/functions.md) | The handler contract, context, env, data services, `cubicle.toml` |
+| [The CLI](docs/cli.md) | Every command |
+| [Clusters and access control](docs/clusters.md) | Tenants, roles, grants, API keys |
+| [Data services](docs/data-services.md) | Managed PostgreSQL and Redis |
+| [Marketplace](docs/marketplace.md) | Installing and publishing packages |
+| [Operations](docs/operations.md) | Health, logs, scaling, upgrades, backups, common failures |
+| [Security model](docs/security.md) | What protects what, and the hardening checklist |
+| [Security audit](docs/security-audit.md) | Findings from a source review, with fixes |
 
 ---
 
@@ -337,9 +305,9 @@ boundary even when two clusters sit on the same engine.
 
 | | |
 | --- | --- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the platform runs: actors and use cases, deployment view, data model, sequence diagrams for setup / deploy / invoke, the request pipeline, isolate lifecycle, trust boundaries, failure modes |
+| [docs/](docs/README.md) | Architecture, installation, writing functions, the CLI, clusters and access control, data services, the marketplace, operations, the security model and a security audit |
 | The console's **Docs** section | Writing functions, env and secrets, data services, `cubicle.toml`, the CLI — bundled with the instance so they match what you are running |
-| `/api/docs` | Browsable OpenAPI for the whole control-plane API |
+| `/api/docs` | Browsable OpenAPI for the whole control-plane API. Note that it is currently served without authentication; see [the security audit](docs/security-audit.md) |
 
 ---
 
