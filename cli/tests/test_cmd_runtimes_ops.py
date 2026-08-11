@@ -81,9 +81,9 @@ def test_the_listing_marks_what_is_installed_and_what_ships_with_cubicle(api, ru
     assert "BUILT IN" in out
     # One row, whatever the gutter is this month: the point is that a runtime
     # carries its language, its file layout and its counts on one line.
-    row = next(row for row in out.splitlines() if "python312" in l)
+    row = next(row for row in out.splitlines() if "python312" in row)
     assert re.search(r"python312\s+Python\s+handler\.py \+ requirements\.txt\s+yes\s+yes\s+4", row)
-    row = next(row for row in out.splitlines() if "node18" in l)
+    row = next(row for row in out.splitlines() if "node18" in row)
     assert re.search(r"node18\s+JavaScript\s+handler\.js \+ package\.json\s+no\s+no\s+0", row)
 
 
@@ -542,7 +542,7 @@ def test_metering_shows_the_month_and_where_it_went(api, run, capsys):
     out = capsys.readouterr().out
     assert line("window", "2026-08-01 to 2026-09-01 (32% through)") in out
     assert line("invocations", "12,345") in out
-    row = next(row for row in out.splitlines() if "payments" in l)
+    row = next(row for row in out.splitlines() if "payments" in row)
     assert re.search(r"payments\s+9,000\s+800\.1", row)
     assert "$0.12 of electricity" in out
 

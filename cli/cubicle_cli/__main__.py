@@ -137,15 +137,15 @@ def command_index(argv: list[str]) -> int | None:
     the first token that is neither a flag nor a flag's value.
     """
     skip = False
-    for i, token in enumerate(argv):
+    for i, word in enumerate(argv):
         if skip:
             skip = False
             continue
-        if token == "--":
+        if word == "--":
             return i + 1 if i + 1 < len(argv) else None
-        if token.startswith("-"):
+        if word.startswith("-"):
             # `--url=x` carries its value; `--url x` takes the next token.
-            skip = token in VALUE_FLAGS
+            skip = word in VALUE_FLAGS
             continue
         return i
     return None
