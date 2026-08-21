@@ -65,6 +65,13 @@
 		path_regexp fn ^/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?/?$
 	}
 	handle @invoke {
+		# Refused here rather than in the control plane, which is the only
+		# place that can refuse it before the bytes are on this machine. The
+		# API enforces the same ceiling itself, because this file is not the
+		# only way in: anything on the function network reaches it directly.
+		request_body {
+			max_size 6MB
+		}
 		rewrite * /api/invoke{uri}
 		reverse_proxy api:8000 {
 			# Functions may legitimately run to their configured timeout.

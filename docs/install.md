@@ -50,6 +50,8 @@ configuration, to `.env`:
 | `CUBICLE_BIND` | Empty normally, `127.0.0.1:` behind a proxy |
 | `CUBICLE_PROXY_HOPS` | How many proxies sit in front. 1 by default, for Caddy |
 | `CUBICLE_EXPOSE_API_DOCS` | Off by default. Turns on `/api/docs` and the OpenAPI document |
+| `CUBICLE_MARKETPLACE_ALLOW_PRIVATE` | Off by default. Lets a registry live on a private address |
+| `CUBICLE_API_MEMORY` | Memory ceiling for the control plane container, `1g` by default |
 
 `CUBICLE_PROXY_HOPS` decides which entry of `X-Forwarded-For` is treated as the
 caller. Raise it only if you put your own proxy in front of Caddy, and see

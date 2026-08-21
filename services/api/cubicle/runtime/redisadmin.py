@@ -36,7 +36,9 @@ SOCKET_TIMEOUT = 5
 # Commands that never return on a request/response connection, or that take the
 # instance away from under the operator. Everything else is allowed: it is their
 # own cache, and a browser that cannot run CONFIG or FLUSHDB is a toy.
-BLOCKED_COMMANDS = {
+#: Commands that would hang this connection or stop the server. Blocking these
+#: keeps the console usable; it has nothing to do with what a caller may reach.
+BLOCKING_COMMANDS = {
     "blmove",
     "blmpop",
     "blpop",
@@ -55,6 +57,50 @@ BLOCKED_COMMANDS = {
     "sync",
     "wait",
 }
+
+#: Commands that reach past the data and out of Redis.
+#:
+#: The console was compared in its own docstring to the SQL console, which is
+#: deliberately unrestricted. The comparison does not hold. Arbitrary SQL stays
+#: inside Postgres; these do not stay inside Redis:
+#:
+#:   CONFIG SET dir + CONFIG SET dbfilename + SAVE writes a file of the
+#:   caller's choosing anywhere the Redis process can write.
+#:
+#:   REPLICAOF against a host the caller controls, then MODULE LOAD, is the
+#:   standard route to running code inside the container.
+#:
+#: That container sits on the function network beside every tenant's isolates,
+#: so leaving these open turned the admin role on one cluster into a process on
+#: a network the platform otherwise defends. An operator who wants them has
+#: `docker exec` and a shell, which is the honest way to ask for that.
+ESCALATING_COMMANDS = {
+    "acl",
+    "bgrewriteaof",
+    "bgsave",
+    "config",
+    "eval",
+    "eval_ro",
+    "evalsha",
+    "evalsha_ro",
+    "failover",
+    "fcall",
+    "fcall_ro",
+    "function",
+    "lastsave",
+    "migrate",
+    "module",
+    "replicaof",
+    "restore",
+    "restore-asking",
+    "save",
+    "script",
+    "slaveof",
+    "slowlog",
+}
+
+#: Kept for anything still importing the old name.
+BLOCKED_COMMANDS = BLOCKING_COMMANDS | ESCALATING_COMMANDS
 
 COLLECTION_TYPES = ("hash", "list", "set", "zset", "stream")
 
@@ -484,9 +530,11 @@ async def set_ttl(service: ManagedService, key: str, ttl: int) -> dict:
 async def run_command(service: ManagedService, raw: str) -> dict:
     """Run one Redis command and return its reply.
 
-    The same bargain as the SQL console: unrestricted apart from the commands
-    that would hang the connection or stop the server, because the guards that
-    matter are the admin role and the fact that this is the operator's own cache.
+    Free over the data, closed over the server. Anything that reads or writes
+    keys is allowed, because this is the operator's own cache and a browser that
+    cannot run commands is a toy. Anything that reconfigures the server, loads a
+    module, replicates from elsewhere or writes a file is refused: see
+    ESCALATING_COMMANDS for why those are not the same thing.
     """
     statement = raw.strip()
     if not statement:
@@ -499,10 +547,16 @@ async def run_command(service: ManagedService, raw: str) -> dict:
         raise RedisAdminError("nothing to run")
 
     name = parts[0].lower()
-    if name in BLOCKED_COMMANDS:
+    if name in BLOCKING_COMMANDS:
         raise RedisAdminError(
             f"{parts[0].upper()} is not available here — it blocks the connection "
             f"or stops the server."
+        )
+    if name in ESCALATING_COMMANDS:
+        raise RedisAdminError(
+            f"{parts[0].upper()} is not available here — it reaches outside the "
+            f"data, and this console is for the data. Use a shell on the server "
+            f"if you need it."
         )
 
     async def work(client: aioredis.Redis) -> dict:

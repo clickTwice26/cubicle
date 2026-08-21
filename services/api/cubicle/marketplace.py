@@ -16,9 +16,12 @@ package managers put you in, and the console leans on it.
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -49,9 +52,70 @@ ALLOWED_FILES = {"handler.py", "requirements.txt", "handler.js", "package.json",
 
 TIMEOUT = httpx.Timeout(10.0, read=20.0)
 
+#: How many redirects to follow. Each one is checked like the first, because a
+#: registry that is allowed to redirect is allowed to redirect anywhere.
+MAX_REDIRECTS = 3
+
 
 class MarketplaceError(RuntimeError):
     """The registry could not be read, or gave us something unusable."""
+
+
+class BlockedAddress(MarketplaceError):
+    """The URL resolves somewhere this instance will not fetch from."""
+
+
+def _reachable(url: str) -> None:
+    """Refuse a URL that points back inside the deployment.
+
+    The control plane joins every network Cubicle has: the edge, the one
+    Postgres and Redis are on, and the one every isolate and managed data
+    service is on. It also usually sits somewhere with a cloud metadata service
+    a request away. So "fetch this URL for me" is a request to reach all of
+    that, and the only reason it was ever safe is that nobody had asked.
+
+    Every address the hostname resolves to is checked, not just the first, and
+    the caller is told nothing except that the address is not allowed: which
+    range it fell in is itself information about the network.
+
+    This does not close DNS rebinding. The name is resolved here and resolved
+    again by the connection, and a name that answers differently between the
+    two gets through. Pinning the address through the transport would close it
+    and is the next step if this feature ever faces a hostile tenant.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        raise MarketplaceError("A registry URL must be http or https.")
+    host = parts.hostname
+    if not host:
+        raise MarketplaceError("That URL has no host in it.")
+
+    if settings.marketplace_allow_private:
+        return
+
+    try:
+        resolved = socket.getaddrinfo(host, parts.port or (443 if parts.scheme == "https" else 80))
+    except socket.gaierror as exc:
+        raise MarketplaceError(f"Could not resolve {host}: {exc}") from exc
+
+    for family, _type, _proto, _canon, sockaddr in resolved:
+        if family not in (socket.AF_INET, socket.AF_INET6):
+            continue
+        address = ipaddress.ip_address(sockaddr[0])
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        ):
+            log.warning("marketplace url refused", host=host, address=str(address))
+            raise BlockedAddress(
+                f"{host} resolves to an address inside this network, which is not "
+                "somewhere a registry may be. Set CUBICLE_MARKETPLACE_ALLOW_PRIVATE=1 "
+                "if you host your own registry on this network."
+            )
 
 
 @dataclass
@@ -262,11 +326,26 @@ def _bounded(value: Any, fallback: int, low: int, high: int) -> int:
 
 
 async def _fetch(url: str, *, limit: int) -> Any:
-    if not url.startswith(("http://", "https://")):
-        raise MarketplaceError("A registry URL must be http or https.")
+    """Fetch a registry document, refusing anything pointed back inside.
+
+    Redirects are followed here rather than by httpx, because each hop has to
+    be checked like the first: validating only the URL that was typed and then
+    letting the transport chase a 302 into the private network checks nothing
+    at all.
+    """
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-            response = await client.get(url, headers={"Accept": "application/json"})
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False) as client:
+            for _ in range(MAX_REDIRECTS + 1):
+                _reachable(url)
+                response = await client.get(url, headers={"Accept": "application/json"})
+                if response.status_code not in (301, 302, 303, 307, 308):
+                    break
+                location = response.headers.get("location")
+                if not location:
+                    raise MarketplaceError(f"{url} redirected without saying where.")
+                url = str(response.url.join(location))
+            else:
+                raise MarketplaceError("Too many redirects.")
     except httpx.HTTPError as exc:
         raise MarketplaceError(f"Could not reach {url}: {exc}") from exc
 

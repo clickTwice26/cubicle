@@ -30,6 +30,11 @@ and reading it would hand an attacker a fresh identity per request.
 Raise `CUBICLE_PROXY_HOPS` if you put another proxy in front of Caddy. Setting
 it too high reads an entry the caller controls; too low reads your own proxy.
 
+`client_ip` is the only place that header is read. uvicorn is deliberately run
+without `--proxy-headers`: with a wildcard trust list it rewrites
+`request.client` from the leftmost entry, which is the half the caller wrote,
+and that is the value `CUBICLE_TRUST_PROXY=false` falls back to.
+
 ## Sign-in protection
 
 An instance can put Cloudflare Turnstile on the sign-in form. It is off by
@@ -153,6 +158,45 @@ Per-cluster networks would close both. See CUB-02 in
 Rebuild the runtime images after upgrading, or the agents keep running without
 the token check.
 
+## Fetching on your behalf
+
+The marketplace is the one feature where a caller names a URL and the control
+plane fetches it. That matters because the control plane joins every network
+Cubicle has, so an unguarded fetcher is a way to reach Postgres, Redis, every
+isolate, and the cloud metadata service.
+
+So the host is resolved before the request and every address it answers with is
+checked. Loopback, link-local, private, multicast and reserved addresses are
+refused. Redirects are followed by Cubicle rather than by the HTTP client, three
+at most, with the same check on each hop, because a registry allowed to redirect
+is a registry allowed to redirect anywhere. Browsing a registry needs the
+developer role.
+
+`CUBICLE_MARKETPLACE_ALLOW_PRIVATE=1` turns the address check off, for an
+operator who hosts a registry inside their own network. It reopens that path to
+everyone with a developer account, which is the trade.
+
+One gap worth knowing: this does not stop DNS rebinding. The name is resolved by
+the check and resolved again by the connection, and a name that answers
+differently between the two gets through.
+
+## The Redis console
+
+The Redis command console is free over the data and closed over the server. Any
+command that reads or writes keys is allowed, including `FLUSHDB`, because it is
+the operator's own cache.
+
+Refused: `CONFIG`, `MODULE`, `REPLICAOF`, `SAVE`, `SCRIPT`, `EVAL`, `ACL`,
+`MIGRATE` and the rest of that family. These are not restricted for tidiness.
+`CONFIG SET dir` with `SAVE` writes a file anywhere Redis can write, and
+`REPLICAOF` with `MODULE LOAD` runs code inside the container, which sits on the
+function network beside every tenant's isolates. That would turn the admin role
+on one cluster into a process on a network the platform otherwise defends.
+
+This is the one place the SQL console and the Redis console differ, and the
+reason is that arbitrary SQL stays inside Postgres and these do not stay inside
+Redis. An operator who needs them has a shell on the server.
+
 ## The Docker socket
 
 The control plane mounts `/var/run/docker.sock` because starting containers is
@@ -164,6 +208,11 @@ would reduce it, and both are real work.
 
 Four things answer without a credential: the login endpoint, the setup
 endpoints before setup completes, `/healthz`, and the function invoke path.
+
+A function URL answers the same way whether the function does not exist or
+exists and needs a key, so the invoke path cannot be used to enumerate what is
+deployed. Request bodies are capped at 6 MB by the proxy and again by the
+control plane, which stops reading rather than measuring afterwards.
 
 `/metrics` requires a principal, so give a scraper a read-only API key rather
 than opening the endpoint. The browsable API reference at `/api/docs` and its
@@ -185,6 +234,7 @@ URL public, which is correct for a webhook and a mistake for anything else.
 - [ ] Scope API keys to one cluster where you can
 - [ ] Leave `auth_required` on unless the URL is meant to be public
 - [ ] Review anything installed from the marketplace before installing it
+- [ ] Leave `CUBICLE_MARKETPLACE_ALLOW_PRIVATE` off unless you host a registry
 - [ ] If you host mutually untrusting tenants, fix CUB-02 first
 
 ## Reporting a problem

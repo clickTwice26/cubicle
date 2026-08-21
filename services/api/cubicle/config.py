@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     marketplace_url: str = (
         "https://raw.githubusercontent.com/clickTwice26/cubicle/main/marketplace/index.json"
     )
+    #: Let a registry live on a private address. Off, because the registry URL
+    #: is a request parameter: without this the lowest-privilege account on the
+    #: instance can have the control plane fetch anything it can reach, and the
+    #: control plane can reach Postgres, Redis, every isolate and the cloud
+    #: metadata service. Turn it on only if you host your own registry inside
+    #: the network, and know that it re-opens that path to everyone with an
+    #: account.
+    marketplace_allow_private: bool = False
     runtime_image_py312: str = ""
     runtime_image_py311: str = ""
     isolate_idle_ttl: int = 900

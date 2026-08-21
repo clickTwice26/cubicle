@@ -107,6 +107,44 @@ async def _candidates(db: DbSession, namespace: str, name: str) -> list[str]:
     return [f"/{slug}/{namespace}/{name}" for slug in rows]
 
 
+#: The largest body a function may be handed. Anything past this is refused,
+#: and refused without being kept.
+MAX_BODY_BYTES = 6 * 1024 * 1024
+
+
+class _TooLarge(Exception):
+    """The body went past MAX_BODY_BYTES, so reading it was abandoned."""
+
+
+async def _read_body(request: Request) -> bytes:
+    """The request body, or nothing at all if it is too big.
+
+    Read in chunks and abandoned the moment it goes past the limit. Calling
+    ``request.body()`` and measuring afterwards describes what is accepted
+    without bounding what is read: a caller who sends ten gigabytes gets a 413,
+    and the control plane holds ten gigabytes to produce it. This path is
+    reachable without a credential on any function whose ``auth_required`` is
+    off, which is the documented setting for a webhook.
+
+    A declared Content-Length is checked first, which refuses the ordinary case
+    before a single byte arrives. It is not trusted on its own, because it is a
+    header and a body can be longer than it claims or arrive chunked with no
+    length at all.
+    """
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        raise _TooLarge
+
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_BODY_BYTES:
+            raise _TooLarge
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 async def _invoke(
     cluster: Cluster, namespace: str, name: str, request: Request, db: DbSession
 ) -> Response:
@@ -125,6 +163,22 @@ async def _invoke(
             )
         )
     ).scalar_one_or_none()
+
+    # The credential is checked before anything else is disclosed, including
+    # whether the function exists. Answering 404 for "no such function" and 401
+    # for "exists, but you did not authenticate" tells an anonymous caller which
+    # names are real, and the 405 and 503 below narrow it further. Everything a
+    # caller without a credential may learn is decided here.
+    #
+    # A function that does not exist is treated as though it required a key, so
+    # the two are indistinguishable from outside. The cost is a worse message
+    # for somebody who forgot theirs, which is the right way round.
+    if (fn is None or fn.auth_required) and not await _authorised(request, db, cluster):
+        return JSONResponse(
+            {"error": "unauthorized", "message": "This endpoint requires an API key."},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     if fn is None:
         return JSONResponse(
@@ -146,13 +200,6 @@ async def _invoke(
             headers={"Allow": fn.method},
         )
 
-    if fn.auth_required and not await _authorised(request, db, cluster):
-        return JSONResponse(
-            {"error": "unauthorized", "message": "This endpoint requires an API key."},
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     version = (
         await db.get(FunctionVersion, fn.current_version_id) if fn.current_version_id else None
     )
@@ -162,9 +209,12 @@ async def _invoke(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    raw = await request.body()
-    if len(raw) > 6 * 1024 * 1024:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Request body is too large.")
+    try:
+        raw = await _read_body(request)
+    except _TooLarge:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Request body is too large."
+        ) from None
 
     content_type = request.headers.get("content-type", "")
     body: object

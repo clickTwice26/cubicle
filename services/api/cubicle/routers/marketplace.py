@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .. import marketplace, runtimes
 from ..config import settings
-from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireDeveloper
+from ..deps import CurrentCluster, DbSession, RequireDeveloper
 from ..logging_setup import log
 from ..models import Function, FunctionVersion
 from ..runtime import images
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 
 
 @router.get("", response_model=dict)
-async def browse(_: CurrentPrincipal, url: str | None = Query(default=None)):
+async def browse(_: RequireDeveloper, url: str | None = Query(default=None)):
     """Everything a registry lists, plus which runtimes are here to run it.
 
     The registry is read live rather than cached: it is one small file, and an
@@ -46,7 +46,7 @@ async def browse(_: CurrentPrincipal, url: str | None = Query(default=None)):
 
 
 @router.get("/package", response_model=dict)
-async def show(_: CurrentPrincipal, url: str = Query(...)):
+async def show(_: RequireDeveloper, url: str = Query(...)):
     """One package in full, including its source, before anything is created.
 
     Installing runs this code on your cluster, so the console shows every line

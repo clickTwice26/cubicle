@@ -42,4 +42,13 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
     CMD curl -fsS http://127.0.0.1:8000/healthz || exit 1
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["uvicorn", "cubicle.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Deliberately no --proxy-headers. With --forwarded-allow-ips "*" uvicorn
+# trusts every peer and rewrites request.client from the LEFTMOST entry of
+# X-Forwarded-For, which is the half the caller wrote. That made
+# request.client.host attacker-controlled, and it is exactly the value
+# security.client_ip falls back to when CUBICLE_TRUST_PROXY is off — so the
+# one setting that means "do not trust forwarded headers" did not.
+#
+# client_ip parses the header itself and counts in from the right by
+# CUBICLE_PROXY_HOPS, so this middleware was redundant as well as harmful.
+CMD ["uvicorn", "cubicle.main:app", "--host", "0.0.0.0", "--port", "8000"]

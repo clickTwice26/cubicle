@@ -84,6 +84,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - cubicle_data:/var/lib/cubicle
     networks: [edge, core, fn]
+    # Every isolate has a limit and the control plane had none, which made the
+    # one process that must survive the only one that could take the host down
+    # with it. This is a backstop, not a sizing decision: the request paths cap
+    # what they read, and this bounds what a path that forgot to would cost.
+    mem_limit: ${CUBICLE_API_MEMORY:-1g}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"]
       interval: 10s
