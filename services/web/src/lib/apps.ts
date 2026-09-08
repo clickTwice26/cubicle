@@ -150,6 +150,9 @@ export interface Hosting {
   /** Detected on the machine itself, not looked up from outside. */
   server_ip: string
   server_ip_private: boolean
+  /** 'caddy' — this instance owns 80/443. 'proxy' — something else does. */
+  edge_mode: 'caddy' | 'proxy'
+  proxy_snippet: string
   wildcard_record: { type: string; name: string; value: string }
   example_hostname: string
   configured: boolean

@@ -166,8 +166,11 @@ function AddressGuide() {
                   <span className="mt-2 block">
                     Then a new app is at{' '}
                     <span className="font-mono">{hosting.example_hostname}</span> — the app's own
-                    name under this instance's hostname — and Caddy gets it a certificate on the
-                    first request. Behind Cloudflare, set the record to{' '}
+                    name under this instance's hostname
+                    {hosting.edge_mode === 'caddy'
+                      ? ', and Caddy gets it a certificate on the first request'
+                      : ''}
+                    . Behind Cloudflare, set the record to{' '}
                     <strong>DNS only</strong>: their universal certificate does not cover a
                     second-level wildcard, so a proxied record serves a certificate warning.
                   </span>
@@ -190,8 +193,41 @@ function AddressGuide() {
             />
           )}
 
+          {hosting.edge_mode === 'proxy' && hosting.proxy_snippet ? (
+            <Step
+              n="3"
+              title="Your own web server needs to know about them"
+              body={
+                <>
+                  <span className="block">
+                    This instance was installed behind an existing server, so that server owns
+                    ports 80 and 443 and Cubicle never sees a request it has not been told to
+                    forward. An app hostname it has no block for is its 404, not ours — and the
+                    certificate is its to obtain, because Cubicle is not the thing being asked
+                    for one.
+                  </span>
+                  <span className="mt-2 block">
+                    Add this once, reload, and every app that will ever exist here is covered:
+                  </span>
+                  <span className="mt-2 block">
+                    <pre className="m-0 max-h-[280px] overflow-auto rounded-[9px] border border-line bg-bg px-3.5 py-3 font-mono text-[11.5px] leading-[1.6] whitespace-pre">
+                      {hosting.proxy_snippet}
+                    </pre>
+                  </span>
+                  <span className="mt-2 flex items-center gap-2">
+                    <CopyButton value={hosting.proxy_snippet} />
+                    <span className="text-ink-3">
+                      The wildcard certificate is the part that cannot be skipped — a name with
+                      no certificate is a browser warning, not a slower page.
+                    </span>
+                  </span>
+                </>
+              }
+            />
+          ) : null}
+
           <Step
-            n="3"
+            n={hosting.edge_mode === 'proxy' && hosting.proxy_snippet ? '4' : '3'}
             title="Custom domains — anything you already own"
             body={
               <>

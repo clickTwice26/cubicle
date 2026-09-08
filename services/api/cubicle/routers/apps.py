@@ -300,6 +300,48 @@ async def link_env(db, cluster: Cluster, app: App) -> dict[str, str]:
 # ── git credentials ──────────────────────────────────────────────────────────
 
 
+NGINX_SNIPPET = """\
+# Applications on this Cubicle instance. One block covers every app that will
+# ever run here — Cubicle routes by hostname behind it — so nothing in nginx
+# changes when you add one.
+
+server {{
+    listen 80;
+    server_name *.{base};
+    return 301 https://$host$request_uri;
+}}
+
+server {{
+    listen 443 ssl;
+    server_name *.{base};
+
+    # A wildcard certificate cannot be issued over HTTP-01. With DNS at
+    # Cloudflare that is:
+    #   certbot certonly --dns-cloudflare -d '*.{base}'
+    ssl_certificate     /etc/letsencrypt/live/{base}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{base}/privkey.pem;
+
+    location / {{
+        proxy_pass         http://127.0.0.1:{port};
+        proxy_http_version 1.1;
+
+        # Host is what Cubicle routes on. Without it every app hostname
+        # arrives looking like the same request.
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # Server-sent events: no buffering, and long enough to outlive a
+        # function's timeout.
+        proxy_buffering    off;
+        proxy_cache        off;
+        proxy_read_timeout 15m;
+    }}
+}}
+"""
+
+
 @router.get("/hosting")
 async def hosting(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     """What an app's addresses look like on this instance, with real values.
@@ -315,6 +357,16 @@ async def hosting(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
         "base_domain": base,
         "instance_url": instance,
         "tls": instance.startswith("https://"),
+        # "caddy" — this instance owns 80/443 and issues its own certificates.
+        # "proxy" — something else does, and app hostnames need a server block
+        # and a certificate there. Getting this wrong is the difference between
+        # a working guide and one that explains someone else's install.
+        "edge_mode": "proxy" if settings.behind_proxy else "caddy",
+        "proxy_snippet": (
+            NGINX_SNIPPET.format(base=base, port=settings.http_port)
+            if settings.behind_proxy and base
+            else ""
+        ),
         "server_ip": address,
         # True when the machine is behind NAT, so the console can say that the
         # record wants the address in front of it rather than this one.

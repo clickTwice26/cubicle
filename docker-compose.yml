@@ -78,6 +78,10 @@ services:
       CUBICLE_ISOLATE_IDLE_TTL: ${CUBICLE_ISOLATE_IDLE_TTL:-900}
       CUBICLE_LOG_LEVEL: ${CUBICLE_LOG_LEVEL:-info}
       CUBICLE_TRUST_PROXY: "1"
+      # How this instance is exposed, so the console can tell an operator what
+      # their own setup needs rather than what a default install would.
+      CUBICLE_SITE_ADDRESS: ${CUBICLE_SITE_ADDRESS:-:80}
+      CUBICLE_HTTP_PORT: ${CUBICLE_HTTP_PORT:-28080}
       # Cubicle AI. Empty key = the assistant stays off and the console says so.
       CUBICLE_AI_API_KEY: ${CUBICLE_AI_API_KEY:-}
       CUBICLE_AI_BASE_URL: ${CUBICLE_AI_BASE_URL:-https://api.openai.com/v1}

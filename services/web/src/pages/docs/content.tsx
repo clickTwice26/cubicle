@@ -1555,10 +1555,20 @@ export const DOCS: DocPage[] = [
         )}
         {p(
           <>
-            On an instance with a domain configured, Caddy obtains a certificate for the
+            On an instance that owns ports 80 and 443, Caddy obtains a certificate for the
             hostname on its first request, exactly as it does for the console. On a local
             install there is nothing that can issue one, so app hostnames are served over plain
             HTTP instead — the routing is the same either way.
+          </>,
+        )}
+        {note(
+          <>
+            <strong>Installed behind an existing web server?</strong> Then that server owns 80
+            and 443, and Cubicle only ever sees what it forwards. An app hostname it has no
+            block for is its 404, and the certificate is its to obtain — Cubicle is not the
+            thing being asked for one. One wildcard block covers every app that will ever run
+            here; the <strong>Applications</strong> page prints it with your own domain and port
+            already in it, under <strong>How apps are reached</strong>.
           </>,
         )}
         {note(

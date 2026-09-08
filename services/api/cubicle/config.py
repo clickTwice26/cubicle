@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     domain: str = "localhost"
     public_url: str = "http://localhost:7000"
     trust_proxy: bool = True
+    #: What Caddy binds to. A hostname means Caddy owns 80/443 and issues its
+    #: own certificates; a bare port means something else terminates TLS in
+    #: front of it, and app hostnames are that server's business rather than
+    #: ours. Written by install.sh; the two modes need different instructions.
+    site_address: str = ":80"
+    http_port: int = 28080
     #: How many proxies of our own sit in front of this process. A default
     #: install has one, Caddy. Raise it only if you put another in front, and
     #: see ``security.client_ip`` for why the number has to be right: it decides
@@ -107,6 +113,13 @@ class Settings(BaseSettings):
     @classmethod
     def _expand(cls, v: str | Path) -> Path:
         return Path(v).expanduser()
+
+    @property
+    def behind_proxy(self) -> bool:
+        """True when another server owns 80/443 and forwards to Caddy."""
+        return self.site_address.strip().startswith(":") and self.public_url.startswith(
+            "https://"
+        )
 
     @property
     def secure_cookies(self) -> bool:
