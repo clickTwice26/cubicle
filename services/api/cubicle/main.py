@@ -27,6 +27,30 @@ from .runtime.pool import pool
 LOG_RETENTION_DAYS = 14
 
 
+async def _publish_app_routes() -> None:
+    """Rebuild the edge's application routing from the database, at every boot.
+
+    The routing files are derived state: the database says which app owns which
+    hostname and which token, and the fragments are only a rendering of that.
+    Writing them solely when something changes leaves them missing after an
+    upgrade that introduced a new one, or after anything that emptied the
+    volume — the app is up, the console shows its address, and the edge has
+    never heard of it.
+
+    So it is reconciled once on the way up, which is the same reasoning that
+    already has isolates adopted here rather than trusted.
+    """
+    try:
+        from .routers.apps import republish_routes
+
+        async with session_scope() as db:
+            clusters = (await db.execute(select(Cluster))).scalars().all()
+        for cluster in clusters:
+            await republish_routes(cluster.id)
+    except Exception as exc:  # noqa: BLE001 - the console must still come up
+        log.warning("could not publish application routes at boot", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
@@ -53,6 +77,7 @@ async def lifespan(app: FastAPI):
         log.error("docker engine unavailable at boot", error=str(exc))
 
     await _adopt_isolates()
+    await _publish_app_routes()
     tasks = [
         asyncio.create_task(_reconcile_loop()),
         asyncio.create_task(scheduler.run_forever()),
