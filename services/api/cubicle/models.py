@@ -71,6 +71,14 @@ class Instance(Base, TimestampMixin):
     #: The site key is public by design: it is rendered into the login page and
     #: any visitor can read it. The secret key is envelope-encrypted like the AI
     #: key, and only ever leaves the database to be posted to Cloudflare.
+    #: DNS credentials for obtaining certificates, used only when something
+    #: else terminates TLS in front of this instance. A wildcard cannot be
+    #: issued over HTTP, so the only way to ask for one is to prove control of
+    #: the zone — which means a token that can write a record in it.
+    acme_provider: Mapped[str] = mapped_column(String(20), default="cloudflare")
+    acme_token_ciphertext: Mapped[str | None] = mapped_column(Text)
+    acme_email: Mapped[str] = mapped_column(String(255), default="")
+
     turnstile_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     turnstile_site_key: Mapped[str] = mapped_column(String(120), default="")
     turnstile_secret_ciphertext: Mapped[str | None] = mapped_column(Text)
@@ -603,3 +611,35 @@ class AppDomain(Base, TimestampMixin):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
 
     app: Mapped[App] = relationship(back_populates="domains")
+
+
+class Certificate(Base, TimestampMixin):
+    """A TLS certificate Cubicle obtains and renews on the operator's behalf.
+
+    Only needed when something else terminates TLS in front of this instance.
+    When Caddy owns the ports it does this itself, on first request, and there
+    is nothing here to manage.
+
+    The private key and chain live on disk where the front-end server can read
+    them; this row is the record of what was asked for and how it went.
+    """
+
+    __tablename__ = "certificates"
+    __table_args__ = (UniqueConstraint("name", name="uq_certificate_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    #: The certbot lineage, which is also the directory it writes into.
+    name: Mapped[str] = mapped_column(String(253), index=True)
+    #: Every name on the certificate. A wildcard is one entry like
+    #: ``*.apps.example.com``.
+    hostnames: Mapped[list] = mapped_column(JSONB, default=list)
+    provider: Mapped[str] = mapped_column(String(20), default="cloudflare")
+
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    #: The transcript of the last attempt, kept because a failed issuance is
+    #: almost always explained by one line certbot printed.
+    last_log: Mapped[str] = mapped_column(Text, default="")
+    renewals: Mapped[int] = mapped_column(Integer, default=0)

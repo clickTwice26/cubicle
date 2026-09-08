@@ -27,6 +27,22 @@ from .runtime.pool import pool
 LOG_RETENTION_DAYS = 14
 
 
+async def _certificate_loop() -> None:
+    """Renew certificates this instance obtained, once a day.
+
+    Only instances behind another web server have any: where Caddy owns the
+    ports it renews its own, and this loop finds nothing to do.
+    """
+    from .routers.certificates import renew_due
+
+    while True:
+        await asyncio.sleep(24 * 60 * 60)
+        try:
+            await renew_due()
+        except Exception as exc:  # noqa: BLE001 - a failed renewal is not fatal
+            log.warning("certificate renewal pass failed", error=str(exc))
+
+
 async def _publish_app_routes() -> None:
     """Rebuild the edge's application routing from the database, at every boot.
 
@@ -80,6 +96,7 @@ async def lifespan(app: FastAPI):
     await _publish_app_routes()
     tasks = [
         asyncio.create_task(_reconcile_loop()),
+        asyncio.create_task(_certificate_loop()),
         asyncio.create_task(scheduler.run_forever()),
     ]
 

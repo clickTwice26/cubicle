@@ -82,6 +82,11 @@ services:
       # their own setup needs rather than what a default install would.
       CUBICLE_SITE_ADDRESS: ${CUBICLE_SITE_ADDRESS:-:80}
       CUBICLE_HTTP_PORT: ${CUBICLE_HTTP_PORT:-28080}
+      # Certificates for an instance behind another web server. The host path
+      # is what the certbot container is mounted with, and what the front-end
+      # server reads the result from.
+      CUBICLE_CERT_DIR: /etc/letsencrypt
+      CUBICLE_CERT_HOST_DIR: ${PWD}/deploy/certs
       # Cubicle AI. Empty key = the assistant stays off and the console says so.
       CUBICLE_AI_API_KEY: ${CUBICLE_AI_API_KEY:-}
       CUBICLE_AI_BASE_URL: ${CUBICLE_AI_BASE_URL:-https://api.openai.com/v1}
@@ -90,6 +95,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - cubicle_data:/var/lib/cubicle
       - caddy_apps:/etc/caddy/apps
+      # Certificates obtained for a front-end server. A bind mount rather than
+      # a volume, because nginx on the host has to read the result.
+      - ./deploy/certs:/etc/letsencrypt
     networks: [edge, core, fn]
     # Every isolate has a limit and the control plane had none, which made the
     # one process that must survive the only one that could take the host down

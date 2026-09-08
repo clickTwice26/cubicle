@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     #: front of it, and app hostnames are that server's business rather than
     #: ours. Written by install.sh; the two modes need different instructions.
     site_address: str = ":80"
+    #: Host path holding certificates this instance obtains for a front-end
+    #: server. Empty means it does not manage any — which is the normal case,
+    #: because an instance that owns 80 and 443 gets its own.
+    cert_dir: str = ""
+    cert_host_dir: str = ""
     http_port: int = 28080
     #: How many proxies of our own sit in front of this process. A default
     #: install has one, Caddy. Raise it only if you put another in front, and
@@ -117,9 +122,7 @@ class Settings(BaseSettings):
     @property
     def behind_proxy(self) -> bool:
         """True when another server owns 80/443 and forwards to Caddy."""
-        return self.site_address.strip().startswith(":") and self.public_url.startswith(
-            "https://"
-        )
+        return self.site_address.strip().startswith(":") and self.public_url.startswith("https://")
 
     @property
     def secure_cookies(self) -> bool:

@@ -22,6 +22,7 @@ import {
 import { NewClusterModal } from '../components/ClusterSwitcher'
 import { ClusterQuotaCard } from '../components/ClusterQuota'
 import { ResourceSync } from '../components/ResourceSync'
+import { CertificatesCard } from '../components/CertificatesCard'
 import { RuntimesCard } from '../components/RuntimesCard'
 import { UpdateCard } from '../components/UpdateCard'
 import { activeCluster } from '../lib/cluster'
@@ -129,6 +130,7 @@ export default function Settings() {
       {tab === 'access' ? (
         <>
           <SignInProtectionCard />
+          <CertificatesCard />
           <ApiKeysCard />
           <PasswordCard />
         </>
