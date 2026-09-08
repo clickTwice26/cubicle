@@ -1563,9 +1563,21 @@ export const DOCS: DocPage[] = [
         )}
         {note(
           <>
-            An app created on an instance with a domain gets{' '}
-            {mono('<app>.<domain>')} for free. It only resolves if that name — or a wildcard —
-            points here, which is a DNS record, not something Cubicle can do for you.
+            An app's own subdomain hangs off the hostname the console is served on, not off the
+            registered domain: an instance at {mono('cubicle.example.com')} gives its apps{' '}
+            {mono('<app>.cubicle.example.com')}. So one wildcard —{' '}
+            {mono('*.cubicle.example.com')} — covers every app that will ever exist here, for a
+            name you already point at this machine. Renaming an app moves that hostname with it
+            and leaves custom domains alone.
+          </>,
+        )}
+        {p(
+          <>
+            The record itself, with your instance's real values in it, is on the{' '}
+            <strong>Applications</strong> page under <strong>How apps are reached</strong>.
+            Behind Cloudflare set it to <strong>DNS only</strong>: a universal certificate does
+            not cover a second-level wildcard, so a proxied record serves a warning instead of
+            the app.
           </>,
         )}
 

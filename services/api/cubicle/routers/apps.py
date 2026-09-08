@@ -44,6 +44,27 @@ router = APIRouter(prefix="/api/apps", tags=["apps"])
 RESERVED_NAMES = {"api", "console", "docs", "setup", "assets", "fonts", "healthz", "metrics"}
 
 
+def apps_base_domain(cluster: Cluster) -> str:
+    """What an app's own subdomain hangs off.
+
+    The hostname the console itself is served on, so an instance at
+    ``cubicle.example.com`` gives its apps ``<app>.cubicle.example.com`` — one
+    wildcard record covers every app that will ever exist here, and it is a
+    record for a name the operator already owns and already points at this
+    machine. Deriving it from the cluster's domain instead would put apps on
+    ``<app>.example.com`` the moment someone set that to an apex, which is a
+    different zone with different consequences.
+    """
+    host = settings.public_url.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if host and host != "localhost" and "." in host:
+        return host
+    if cluster.ingress_domain and cluster.ingress_domain != "localhost":
+        return cluster.ingress_domain
+    if settings.domain and settings.domain != "localhost":
+        return settings.domain
+    return ""
+
+
 # ── payloads ─────────────────────────────────────────────────────────────────
 
 
@@ -70,6 +91,9 @@ class AppCreate(BaseModel):
 
 
 class AppUpdate(BaseModel):
+    #: Renaming moves the app's own subdomain and the name other apps reach it
+    #: by. Custom domains and the instant link are unaffected.
+    name: str | None = Field(default=None, min_length=1, max_length=63)
     branch: str | None = Field(default=None, max_length=120)
     repo_url: str | None = Field(default=None, max_length=500)
     credential_id: uuid.UUID | None = None
@@ -276,6 +300,26 @@ async def link_env(db, cluster: Cluster, app: App) -> dict[str, str]:
 # ── git credentials ──────────────────────────────────────────────────────────
 
 
+@router.get("/hosting")
+async def hosting(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
+    """What an app's addresses look like on this instance, with real values.
+
+    The console renders the DNS record from this rather than from a placeholder,
+    because a guide that says example.com is a guide people have to translate.
+    """
+    base = apps_base_domain(cluster)
+    instance = settings.public_url.rstrip("/")
+    return {
+        "base_domain": base,
+        "instance_url": instance,
+        "tls": instance.startswith("https://"),
+        # The one record that covers every app that will ever exist here.
+        "wildcard_record": {"type": "A", "name": f"*.{base}" if base else "", "value": ""},
+        "example_hostname": f"my-app.{base}" if base else "",
+        "configured": bool(base),
+    }
+
+
 @router.get("/credentials")
 async def list_credentials(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     rows = (
@@ -394,8 +438,8 @@ async def create_app(
 
     # A hostname of its own from the start, so the app has an address before it
     # has a release. On an install with a domain this resolves for free.
-    if settings.domain and settings.domain != "localhost":
-        base = cluster.ingress_domain or settings.domain
+    base = apps_base_domain(cluster)
+    if base:
         db.add(AppDomain(app_id=app.id, hostname=f"{name}.{base}", is_primary=True))
 
     await db.commit()
@@ -428,9 +472,45 @@ async def update_app(
     changes = payload.model_dump(exclude_unset=True)
     scale_only = set(changes) <= {"replicas"}
 
+    old_name = app.name
+    renamed = False
+    if "name" in changes:
+        new_name = slugify(str(changes.pop("name")))[:63]
+        if not new_name or new_name in RESERVED_NAMES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{new_name}' is not a usable name.")
+        if new_name != old_name:
+            taken = (
+                await db.execute(
+                    select(App).where(App.cluster_id == cluster.id, App.name == new_name)
+                )
+            ).scalar_one_or_none()
+            if taken is not None:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, f"This cluster already has an app '{new_name}'."
+                )
+            base = apps_base_domain(cluster)
+            for domain in app.domains:
+                # Only the hostname this app was given; a custom domain is the
+                # operator's and is not ours to rewrite.
+                if base and domain.hostname == f"{old_name}.{base}":
+                    domain.hostname = f"{new_name}.{base}"
+            app.name = new_name
+            renamed = True
+
     for field, value in changes.items():
         setattr(app, field, value)
     await db.commit()
+
+    if renamed:
+        # The containers carry the old name, and nothing finds them by the new
+        # one — so they go, and the current release comes back up renamed.
+        node = await pick_node(db, cluster, app.node_pool)
+        await runtime.remove_app_containers(node.docker_host, old_name)
+        if app.current_deployment_id:
+            asyncio.create_task(_release_current(cluster.id, app.id))  # noqa: RUF006
+        else:
+            await republish_routes(cluster.id)
+        log.info("app renamed", was=old_name, now=app.name, by=principal.user.email)
 
     # Replicas take effect without a rebuild: the image is already there, so
     # this is starting or stopping containers, not deploying.

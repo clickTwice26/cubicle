@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Github, Layers, Plus, Server } from '../components/Icons'
+import { ArrowRight, ChevronDown, Github, Layers, Plus, Server } from '../components/Icons'
 import {
   Badge,
   Button,
@@ -16,7 +16,13 @@ import {
   cx,
   useToast,
 } from '../components/ui'
-import { useApps, useCreateApp, useGitCredentials, type Application } from '../lib/apps'
+import {
+  useApps,
+  useCreateApp,
+  useGitCredentials,
+  useHosting,
+  type Application,
+} from '../lib/apps'
 import { relativeTime } from '../lib/format'
 
 const TONE: Record<string, 'ok' | 'warn' | 'err' | 'idle'> = {
@@ -51,6 +57,8 @@ export default function Apps() {
         }
       />
 
+      <AddressGuide />
+
       {isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : apps && apps.length > 0 ? (
@@ -73,6 +81,142 @@ export default function Apps() {
 
       <NewAppModal open={creating} onClose={() => setCreating(false)} />
     </div>
+  )
+}
+
+/**
+ * How an app is reached, with this instance's real values in it.
+ *
+ * Three addresses that arrive at different times, and the DNS record that
+ * unlocks the middle one. Open by default until a wildcard is plausibly in
+ * place, because the first app someone deploys is the one where a hostname
+ * that does not resolve looks like a broken deploy.
+ */
+function AddressGuide() {
+  const { data: hosting } = useHosting()
+  const [open, setOpen] = useState(false)
+
+  if (!hosting) return null
+
+  const record = hosting.wildcard_record
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2.5 px-5 py-3.5 text-left transition hover:bg-panel-2"
+      >
+        <span className="text-sm font-semibold">How apps are reached</span>
+        <span className="text-[12.5px] text-ink-3">
+          {hosting.configured
+            ? `Instant link now · ${hosting.example_hostname} once DNS points here`
+            : 'Instant links only — this instance has no domain configured'}
+        </span>
+        <ChevronDown
+          size={14}
+          className={cx('ml-auto flex-none text-ink-3 transition', open && 'rotate-180')}
+        />
+      </button>
+
+      {open ? (
+        <div className="grid gap-4 border-t border-line px-5 py-4">
+          <Step
+            n="1"
+            title="Instant link — works right now"
+            body={
+              <>
+                Every app answers at{' '}
+                <span className="font-mono">{hosting.instance_url}/&lt;token&gt;</span> the moment
+                it is live. No DNS, no certificate, and the token never changes. This is the
+                address to check a deploy with. The path is stripped before the request reaches
+                the container, so an app that builds absolute URLs will want a hostname instead.
+              </>
+            }
+          />
+
+          {hosting.configured ? (
+            <Step
+              n="2"
+              title="One wildcard record — every app gets a subdomain"
+              body={
+                <>
+                  <span className="block">
+                    Add this to the DNS for{' '}
+                    <span className="font-mono">{hosting.base_domain}</span>, pointing at the IP
+                    this instance runs on:
+                  </span>
+                  <span className="mt-2 grid gap-2 sm:grid-cols-[70px_minmax(0,1fr)_120px]">
+                    <Cell label="Type" value={record.type} />
+                    <Cell label="Name" value={record.name} />
+                    <Cell label="Value" value="this server's IP" />
+                  </span>
+                  <span className="mt-2 block">
+                    Then a new app is at{' '}
+                    <span className="font-mono">{hosting.example_hostname}</span> — the app's own
+                    name under this instance's hostname — and Caddy gets it a certificate on the
+                    first request. Behind Cloudflare, set the record to{' '}
+                    <strong>DNS only</strong>: their universal certificate does not cover a
+                    second-level wildcard, so a proxied record serves a certificate warning.
+                  </span>
+                </>
+              }
+            />
+          ) : (
+            <Step
+              n="2"
+              title="Subdomains need a domain on this instance"
+              body={
+                <>
+                  This instance is served from{' '}
+                  <span className="font-mono">{hosting.instance_url}</span>, so there is nothing
+                  to hang app subdomains off. Re-run the installer with{' '}
+                  <span className="font-mono">--domain</span> to change that. Instant links work
+                  either way.
+                </>
+              }
+            />
+          )}
+
+          <Step
+            n="3"
+            title="Custom domains — anything you already own"
+            body={
+              <>
+                Add a hostname on an app's Overview tab and point its own record here. It is
+                routed as soon as it resolves, and gets its own certificate. Use this for
+                anything the public sees.
+              </>
+            }
+          />
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
+function Step({ n, title, body }: { n: string; title: string; body: React.ReactNode }) {
+  return (
+    <div className="grid gap-2.5 sm:grid-cols-[26px_minmax(0,1fr)]">
+      <span className="grid h-[26px] w-[26px] place-items-center rounded-full border border-line-strong font-mono text-[11.5px] text-ink-2">
+        {n}
+      </span>
+      <div>
+        <div className="text-[13.5px] font-semibold">{title}</div>
+        <div className="mt-1 text-[13px] leading-relaxed text-ink-2">{body}</div>
+      </div>
+    </div>
+  )
+}
+
+function Cell({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="block rounded-[8px] border border-line bg-bg px-2.5 py-1.5">
+      <span className="block text-[10.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
+        {label}
+      </span>
+      <span className="block truncate font-mono text-[12px]">{value}</span>
+    </span>
   )
 }
 

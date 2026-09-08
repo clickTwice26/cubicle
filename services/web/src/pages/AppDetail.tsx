@@ -703,6 +703,7 @@ function SettingsTab({
   const toast = useToast()
   const update = useUpdateApp(app.id)
   const [form, setForm] = useState({
+    name: app.name,
     replicas: String(app.replicas),
     memory_mb: String(app.memory_mb),
     cpus: String(app.cpus),
@@ -721,6 +722,9 @@ function SettingsTab({
   const save = () =>
     update.mutate(
       {
+        ...(form.name.trim() && form.name.trim() !== app.name
+          ? { name: form.name.trim() }
+          : {}),
         replicas: Number(form.replicas) || 0,
         memory_mb: Number(form.memory_mb) || 512,
         cpus: Number(form.cpus) || 1,
@@ -738,6 +742,25 @@ function SettingsTab({
 
   return (
     <div className="grid gap-5">
+      <Card className="overflow-hidden">
+        <CardHeader
+          title="Name"
+          subtitle="Moves this app's own subdomain and the name other apps reach it by"
+        />
+        <div className="px-5 py-5">
+          <Field
+            label="Name"
+            value={form.name}
+            onChange={patch('name')}
+            hint={
+              app.domains.length
+                ? `Its own hostname follows. Custom domains and the instant link do not change.`
+                : 'The instant link does not change.'
+            }
+          />
+        </div>
+      </Card>
+
       <Card className="overflow-hidden">
         <CardHeader
           title="Scale and resources"

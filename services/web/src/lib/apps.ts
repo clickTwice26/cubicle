@@ -143,6 +143,24 @@ export function useAppEnv(id: string) {
   })
 }
 
+export interface Hosting {
+  base_domain: string
+  instance_url: string
+  tls: boolean
+  wildcard_record: { type: string; name: string; value: string }
+  example_hostname: string
+  configured: boolean
+}
+
+export function useHosting() {
+  const scope = useActiveCluster()
+  return useQuery({
+    queryKey: ['apps', 'hosting', scope],
+    queryFn: () => api.get<Hosting>(`${ROOT}/hosting`),
+    staleTime: 300_000,
+  })
+}
+
 export function useGitCredentials() {
   const scope = useActiveCluster()
   return useQuery({

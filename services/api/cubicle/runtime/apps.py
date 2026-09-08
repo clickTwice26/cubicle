@@ -735,6 +735,30 @@ async def remove_other_deployments(
         log.warning("could not sweep old app containers", error=str(exc))
 
 
+async def remove_app_containers(host: str, app_name: str) -> int:
+    """Every container belonging to an app, by label rather than by name.
+
+    A rename changes the names its containers are derived from, so the old ones
+    can only be found by what they were labelled with when they started.
+    """
+
+    def _sweep(client: docker.DockerClient) -> int:
+        removed = 0
+        for container in client.containers.list(
+            all=True, filters={"label": f"cubicle.app={app_name}"}
+        ):
+            with contextlib.suppress(DockerException):
+                container.remove(force=True)
+                removed += 1
+        return removed
+
+    try:
+        return await engines.call(host, _sweep)
+    except DockerException as exc:
+        log.warning("could not remove app containers", app=app_name, error=str(exc))
+        return 0
+
+
 async def running_containers(host: str, cluster_slug: str, app_name: str) -> list[dict]:
     prefix = container_prefix(cluster_slug, app_name)
 
