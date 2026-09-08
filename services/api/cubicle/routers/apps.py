@@ -315,9 +315,20 @@ server {{
     listen 443 ssl;
     server_name *.{base};
 
-    # A wildcard certificate cannot be issued over HTTP-01. With DNS at
-    # Cloudflare that is:
-    #   certbot certonly --dns-cloudflare -d '*.{base}'
+    # A wildcard certificate cannot be issued over HTTP-01 - it has to be
+    # DNS-01. With DNS at Cloudflare: make a token with Zone:DNS:Edit on the
+    # zone, put it where only root can read it, then ask for the certificate.
+    #
+    #   sudo mkdir -p /root/.secrets
+    #   sudo nano /root/.secrets/cloudflare.ini
+    #        one line:  dns_cloudflare_api_token = YOUR_TOKEN
+    #   sudo chmod 600 /root/.secrets/cloudflare.ini
+    #   sudo certbot certonly --dns-cloudflare \\
+    #     --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \\
+    #     --dns-cloudflare-propagation-seconds 30 -d '*.{base}'
+    #
+    # Then check where it landed - the directory is not always the domain:
+    #   sudo certbot certificates
     ssl_certificate     /etc/letsencrypt/live/{base}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{base}/privkey.pem;
 
