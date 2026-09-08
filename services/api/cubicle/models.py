@@ -525,6 +525,11 @@ class App(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="created")
     last_error: Mapped[str | None] = mapped_column(Text)
 
+    #: The instant link. Assigned once, never changes, and needs no DNS at all:
+    #: the app is reachable at `<instance>/<path_token>` from the moment it is
+    #: live, which is what makes a deploy checkable before a record exists.
+    path_token: Mapped[str] = mapped_column(String(32), default="", index=True)
+
     auto_deploy: Mapped[bool] = mapped_column(Boolean, default=True)
     #: Shared secret in the webhook URL, and the HMAC key the provider signs
     #: its payload with.

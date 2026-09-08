@@ -92,7 +92,7 @@ function AppCard({ app }: { app: Application }) {
               {app.status === 'failed' ? <Badge tone="err">failed</Badge> : null}
             </div>
             <div className="mt-0.5 truncate font-mono text-[11.5px] text-ink-3">
-              {app.url || (app.domains[0]?.hostname ?? 'no hostname yet')}
+              {app.url ? app.url.replace(/^https?:\/\//, '') : app.instant_url.replace(/^https?:\/\//, '')}
             </div>
           </div>
           <ArrowRight size={14} className="mt-1 flex-none text-ink-3" />

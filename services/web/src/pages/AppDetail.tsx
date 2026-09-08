@@ -114,19 +114,30 @@ export default function AppDetail() {
                 </span>
               ) : null}
             </div>
-            {app.url ? (
-              <a
-                href={app.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-[12.5px] text-ink-2 transition hover:text-ink"
-              >
-                {app.url}
-                <ArrowRight size={12} />
-              </a>
-            ) : (
-              <div className="mt-1.5 text-[12.5px] text-ink-3">No hostname yet</div>
-            )}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              {app.instant_url ? (
+                <a
+                  href={app.instant_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 font-mono text-[12.5px] text-ink-2 transition hover:text-ink"
+                >
+                  {app.instant_url.replace(/^https?:\/\//, '')}
+                  <ArrowRight size={12} />
+                </a>
+              ) : null}
+              {app.url ? (
+                <a
+                  href={app.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 font-mono text-[12.5px] text-ink-3 transition hover:text-ink"
+                >
+                  {app.url.replace(/^https?:\/\//, '')}
+                  <ArrowRight size={12} />
+                </a>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -226,6 +237,32 @@ function Overview({ app }: { app: Application }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr] lg:items-start">
       <div className="grid gap-5">
+        <Card className="overflow-hidden">
+          <CardHeader
+            title="Instant link"
+            subtitle="On this instance's own hostname · no DNS, no certificate, never changes"
+          />
+          <div className="px-5 py-4">
+            <div className="flex items-center gap-2 rounded-[9px] border border-accent bg-accent-soft px-3 py-2.5">
+              <a
+                href={app.instant_url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 flex-1 truncate font-mono text-[12.5px] font-semibold"
+              >
+                {app.instant_url}
+              </a>
+              <CopyButton value={app.instant_url} label="" />
+            </div>
+            <p className="mt-2.5 mb-0 text-[12.5px] leading-relaxed text-ink-2">
+              Works the moment the app is live, which makes it the address to check a deploy
+              with. The path is stripped before the request reaches your app, so an app that
+              builds absolute URLs needs its own base path set — use a hostname below for
+              anything you are handing to other people.
+            </p>
+          </div>
+        </Card>
+
         <Card className="overflow-hidden">
           <CardHeader title="Domains" subtitle="Each gets a certificate on its first request" />
           {app.domains.length ? (

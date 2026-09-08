@@ -141,6 +141,12 @@ def serialize(app: App, *, containers: list[dict] | None = None) -> dict:
         "webhook_path": f"/api/apps/{app.id}/webhook/{app.webhook_secret}",
         "definition": app.definition or {},
         "url": f"https://{primary.hostname}" if primary else "",
+        # Works from the moment the app is live: no record, no certificate, no
+        # wildcard. The other two addresses are things you arrange elsewhere.
+        "instant_url": f"{settings.public_url.rstrip('/')}/{app.path_token}"
+        if app.path_token
+        else "",
+        "path_token": app.path_token,
         "domains": [
             {"id": str(d.id), "hostname": d.hostname, "primary": d.is_primary} for d in app.domains
         ],
@@ -209,8 +215,25 @@ async def routing_table(db, cluster: Cluster) -> list[dict]:
             f"{runtime.container_name(cluster.slug, app.name, deployment.number, index)}:{app.port}"
             for index in range(max(1, app.replicas))
         ]
+        # One entry carries both addresses: the hostnames are rendered as site
+        # blocks, the token as a path handle on the instance's own site.
+        table.append(
+            {
+                "hostname": "",
+                "token": app.path_token,
+                "upstreams": upstreams,
+                "app": app.name,
+            }
+        )
         for domain in app.domains:
-            table.append({"hostname": domain.hostname, "upstreams": upstreams, "app": app.name})
+            table.append(
+                {
+                    "hostname": domain.hostname,
+                    "token": "",
+                    "upstreams": upstreams,
+                    "app": app.name,
+                }
+            )
     return table
 
 
@@ -362,6 +385,7 @@ async def create_app(
         cpus=payload.cpus,
         node_pool=cluster.default_node_pool,
         webhook_secret=runtime.new_secret(),
+        path_token=runtime.new_path_token(),
         status="created",
     )
     db.add(app)

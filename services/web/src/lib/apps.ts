@@ -59,6 +59,9 @@ export interface Application {
   webhook_path: string
   definition: Record<string, unknown>
   url: string
+  /** Works with no DNS at all, from the moment the app is live. */
+  instant_url: string
+  path_token: string
   domains: AppDomain[]
   deployment: Deployment | null
   deployment_count: number

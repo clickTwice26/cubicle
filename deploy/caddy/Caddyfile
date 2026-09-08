@@ -50,6 +50,13 @@ import /etc/caddy/apps/*.caddyfile
 		-Server
 	}
 
+	# Instant links: every application is reachable at /<token> on this host
+	# without any DNS at all. Written by the control plane, one handle_path per
+	# app, and imported first so a token wins before anything else is tried.
+	# handle_path sorts ahead of handle in Caddy's directive order, so this is
+	# about which file the block lives in, not about who wins.
+	import /etc/caddy/apps/paths/*.caddyfile
+
 	# Control plane API, health and Prometheus metrics.
 	handle /api/* {
 		reverse_proxy api:8000

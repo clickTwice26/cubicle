@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import secrets
 import shutil
 import subprocess
 import time
@@ -778,3 +779,13 @@ async def destroy(host: str, cluster_slug: str, app_name: str, *, keep_volumes: 
 
 def new_secret() -> str:
     return uuid.uuid4().hex
+
+
+#: Unambiguous in a URL read aloud or copied out of a terminal: no look-alikes
+#: and nothing that needs escaping.
+TOKEN_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # noqa: S105 - an alphabet, not a secret
+
+
+def new_path_token(length: int = 16) -> str:
+    """The permanent path an app answers on. Assigned once, never rotated."""
+    return "".join(secrets.choice(TOKEN_ALPHABET) for _ in range(length))

@@ -1511,6 +1511,40 @@ export const DOCS: DocPage[] = [
     lede: 'Getting an app onto a hostname with a certificate, and getting a push to deploy it.',
     body: () => (
       <>
+        {h2('three', 'Three ways to reach an app')}
+        {p('They arrive at different times, and the first one needs nothing from you at all.')}
+        {table(
+          ['Address', 'Needs', 'Good for'],
+          [
+            [
+              'Instant link',
+              'Nothing. Assigned at creation, never changes.',
+              'Checking a deploy the moment it goes live.',
+            ],
+            [
+              'Subdomain',
+              'A wildcard DNS record for the instance domain.',
+              'Everything internal, without a record per app.',
+            ],
+            [
+              'Custom domain',
+              'A record pointing here, and its own certificate.',
+              'Anything the public sees.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            The instant link is {mono('<instance>/<token>')} on the console's own hostname — a
+            random path assigned when the app is created and never rotated. The prefix is
+            stripped before the request reaches the container, so the app is asked for{' '}
+            {mono('/')} and does not need to know where it is mounted. An app that builds
+            absolute URLs still needs its own base path configured; {mono('X-Forwarded-Prefix')}{' '}
+            is passed for the frameworks that read it, and a hostname is the answer when that is
+            not enough.
+          </>,
+        )}
+
         {h2('domains', 'Hostnames')}
         {p(
           <>
