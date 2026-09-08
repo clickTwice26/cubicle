@@ -147,6 +147,9 @@ export interface Hosting {
   base_domain: string
   instance_url: string
   tls: boolean
+  /** Detected on the machine itself, not looked up from outside. */
+  server_ip: string
+  server_ip_private: boolean
   wildcard_record: { type: string; name: string; value: string }
   example_hostname: string
   configured: boolean

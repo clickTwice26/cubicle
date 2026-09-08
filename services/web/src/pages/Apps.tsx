@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Chip,
+  CopyButton,
   EmptyState,
   Field,
   Modal,
@@ -149,8 +150,19 @@ function AddressGuide() {
                   <span className="mt-2 grid gap-2 sm:grid-cols-[70px_minmax(0,1fr)_120px]">
                     <Cell label="Type" value={record.type} />
                     <Cell label="Name" value={record.name} />
-                    <Cell label="Value" value="this server's IP" />
+                    <Cell
+                      label="Value"
+                      value={hosting.server_ip || "this server's IP"}
+                      copy={Boolean(hosting.server_ip)}
+                    />
                   </span>
+                  {hosting.server_ip_private ? (
+                    <span className="mt-2 block text-ink-3">
+                      That is the address this machine has on its own network. Behind a router
+                      or a cloud load balancer, the record wants the public address in front of
+                      it instead.
+                    </span>
+                  ) : null}
                   <span className="mt-2 block">
                     Then a new app is at{' '}
                     <span className="font-mono">{hosting.example_hostname}</span> — the app's own
@@ -209,13 +221,16 @@ function Step({ n, title, body }: { n: string; title: string; body: React.ReactN
   )
 }
 
-function Cell({ label, value }: { label: string; value: string }) {
+function Cell({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
   return (
-    <span className="block rounded-[8px] border border-line bg-bg px-2.5 py-1.5">
-      <span className="block text-[10.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
-        {label}
+    <span className="flex items-center gap-1.5 rounded-[8px] border border-line bg-bg px-2.5 py-1.5">
+      <span className="min-w-0 flex-1">
+        <span className="block text-[10.5px] font-bold tracking-[0.05em] text-ink-3 uppercase">
+          {label}
+        </span>
+        <span className="block truncate font-mono text-[12px]">{value}</span>
       </span>
-      <span className="block truncate font-mono text-[12px]">{value}</span>
+      {copy ? <CopyButton value={value} label="" /> : null}
     </span>
   )
 }

@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import docker
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..logging_setup import log
 from ..models import Cluster, Node
 from .engine import LOCAL_HOST, EngineError, engines
@@ -177,3 +179,65 @@ def allocation_by_node() -> dict[str, dict[str, float]]:
 def format_spec(node: Node) -> str:
     gb = node.memory_bytes / 1024**3
     return f"{node.cpus} vCPU · {gb:.0f} GB · {node.arch}"
+
+
+# ── the address a DNS record should point at ─────────────────────────────────
+
+#: Detected once per process. A machine's primary address does not change
+#: without a restart of something more significant than this.
+_ADDRESS_CACHE: dict[str, str] = {}
+
+PRIVATE_PREFIXES = ("10.", "192.168.", "127.", "169.254.")
+
+
+def is_private(address: str) -> bool:
+    if address.startswith(PRIVATE_PREFIXES):
+        return True
+    if address.startswith("172."):
+        second = address.split(".")[1] if address.count(".") >= 1 else "0"
+        return second.isdigit() and 16 <= int(second) <= 31
+    return False
+
+
+async def public_address(host: str = LOCAL_HOST) -> str:
+    """The IP a wildcard record for this instance should point at.
+
+    Asked of the machine itself rather than of an address-reflecting service on
+    the internet: a throwaway container on the host's own network stack, reading
+    the source address the kernel would use to reach the internet. No packets
+    are sent — connecting a UDP socket only picks a route — and nothing outside
+    this machine is contacted, which is the point.
+
+    Behind NAT this is the private address, which is the honest answer to "what
+    is this machine's IP" and is labelled as such where it is shown.
+    """
+    if host in _ADDRESS_CACHE:
+        return _ADDRESS_CACHE[host]
+
+    probe = (
+        "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);"
+        "s.connect(('1.1.1.1',53));print(s.getsockname()[0])"
+    )
+
+    def _detect(client: docker.DockerClient) -> str:
+        output = client.containers.run(
+            f"cubicle/api:{settings.version}",
+            command=["-c", probe],
+            entrypoint=["python"],
+            network_mode="host",
+            remove=True,
+            stdout=True,
+            stderr=False,
+        )
+        return output.decode("utf-8", "replace").strip().splitlines()[-1].strip()
+
+    try:
+        address = await engines.call(host, _detect)
+    except Exception as exc:  # noqa: BLE001 - the guide falls back to prose
+        log.info("could not detect the host address", error=str(exc))
+        return ""
+
+    if address.count(".") != 3:
+        return ""
+    _ADDRESS_CACHE[host] = address
+    return address

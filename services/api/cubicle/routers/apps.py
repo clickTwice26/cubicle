@@ -37,7 +37,7 @@ from ..logging_setup import log
 from ..models import App, AppDeployment, AppDomain, Cluster, GitCredential
 from ..runtime import apps as runtime
 from ..runtime import edge, services
-from ..runtime.nodes import pick_node
+from ..runtime.nodes import is_private, pick_node, public_address
 
 router = APIRouter(prefix="/api/apps", tags=["apps"])
 
@@ -309,12 +309,22 @@ async def hosting(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     """
     base = apps_base_domain(cluster)
     instance = settings.public_url.rstrip("/")
+    node = await pick_node(db, cluster, cluster.default_node_pool)
+    address = await public_address(node.docker_host)
     return {
         "base_domain": base,
         "instance_url": instance,
         "tls": instance.startswith("https://"),
+        "server_ip": address,
+        # True when the machine is behind NAT, so the console can say that the
+        # record wants the address in front of it rather than this one.
+        "server_ip_private": bool(address) and is_private(address),
         # The one record that covers every app that will ever exist here.
-        "wildcard_record": {"type": "A", "name": f"*.{base}" if base else "", "value": ""},
+        "wildcard_record": {
+            "type": "A",
+            "name": f"*.{base}" if base else "",
+            "value": address,
+        },
         "example_hostname": f"my-app.{base}" if base else "",
         "configured": bool(base),
     }
