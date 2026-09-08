@@ -443,3 +443,158 @@ class Trigger(Base, TimestampMixin):
     last_status: Mapped[str] = mapped_column(String(20), default="")
     last_error: Mapped[str | None] = mapped_column(Text)
     run_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ── applications ─────────────────────────────────────────────────────────────
+
+
+class GitCredential(Base, TimestampMixin):
+    """A token Cubicle uses to clone private repositories.
+
+    A token, not an OAuth login: the operator creates a personal access token
+    with the scope they are willing to give, pastes it once, and it is stored
+    envelope-encrypted like every other secret here. Nothing about this install
+    needs to be registered anywhere, and revoking access is something the
+    operator does at the provider without asking us.
+    """
+
+    __tablename__ = "git_credentials"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_git_credential_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    provider: Mapped[str] = mapped_column(String(20), default="github")
+    #: GitHub ignores the username on token auth; other hosts do not.
+    username: Mapped[str] = mapped_column(String(120), default="x-access-token")
+    token_ciphertext: Mapped[str] = mapped_column(Text)
+    #: Set after a successful clone, so the console can show it as verified.
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class App(Base, TimestampMixin):
+    """A long-running container Cubicle builds, runs and routes traffic to.
+
+    Functions are the platform's short-lived half: one request, one isolate,
+    scale to zero. An app is the other half — a Next.js site, an API server,
+    anything with a Dockerfile — that stays up, holds a hostname and is
+    reachable by name from every other app on the cluster.
+    """
+
+    __tablename__ = "apps"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_app_name_per_cluster"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), index=True)
+
+    #: "git" builds from a repository, "image" runs a published image as-is.
+    source_kind: Mapped[str] = mapped_column(String(10), default="git")
+    repo_url: Mapped[str] = mapped_column(String(500), default="")
+    branch: Mapped[str] = mapped_column(String(120), default="main")
+    credential_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("git_credentials.id", ondelete="SET NULL")
+    )
+    image_ref: Mapped[str] = mapped_column(String(400), default="")
+
+    #: The cubicle.json the last successful build resolved, whether it came
+    #: from the repository or was inferred from what was in it.
+    definition: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    #: The whole env map, encrypted as one blob. Values are frequently
+    #: credentials and there is no case for storing them in the clear.
+    env_ciphertext: Mapped[str] = mapped_column(Text, default="")
+
+    port: Mapped[int] = mapped_column(Integer, default=3000)
+    replicas: Mapped[int] = mapped_column(Integer, default=1)
+    memory_mb: Mapped[int] = mapped_column(Integer, default=512)
+    cpus: Mapped[float] = mapped_column(Float, default=1.0)
+    health_path: Mapped[str] = mapped_column(String(200), default="")
+    node_pool: Mapped[str] = mapped_column(String(40), default="general")
+
+    #: Managed services and other apps whose connection details are injected
+    #: into this app's environment at start.
+    links: Mapped[list] = mapped_column(JSONB, default=list)
+    #: [{"path": "/data", "name": "..."}] — named volumes that survive deploys.
+    volumes: Mapped[list] = mapped_column(JSONB, default=list)
+
+    status: Mapped[str] = mapped_column(String(20), default="created")
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+    auto_deploy: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Shared secret in the webhook URL, and the HMAC key the provider signs
+    #: its payload with.
+    webhook_secret: Mapped[str] = mapped_column(String(64), default="")
+
+    current_deployment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("app_deployments.id", ondelete="SET NULL", use_alter=True)
+    )
+
+    credential: Mapped[GitCredential | None] = relationship(lazy="joined")
+    deployments: Mapped[list[AppDeployment]] = relationship(
+        back_populates="app",
+        cascade="all, delete-orphan",
+        foreign_keys="AppDeployment.app_id",
+        order_by="AppDeployment.number.desc()",
+    )
+    domains: Mapped[list[AppDomain]] = relationship(
+        back_populates="app", cascade="all, delete-orphan", order_by="AppDomain.hostname"
+    )
+
+
+class AppDeployment(Base):
+    """One build and release of an app. Immutable once it finishes."""
+
+    __tablename__ = "app_deployments"
+    __table_args__ = (UniqueConstraint("app_id", "number", name="uq_app_deployment_number"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    app_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"))
+    number: Mapped[int] = mapped_column(Integer, default=1)
+
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    #: manual · webhook · cli — how this deploy was asked for.
+    trigger: Mapped[str] = mapped_column(String(20), default="manual")
+    triggered_by: Mapped[str] = mapped_column(String(200), default="")
+
+    commit_sha: Mapped[str] = mapped_column(String(80), default="")
+    commit_message: Mapped[str] = mapped_column(String(500), default="")
+    image_tag: Mapped[str] = mapped_column(String(300), default="")
+
+    #: The whole build transcript. Streamed live while it runs and kept
+    #: afterwards, because the log of the deploy that broke is the one people
+    #: actually go looking for.
+    build_log: Mapped[str] = mapped_column(Text, default="")
+    build_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    app: Mapped[App] = relationship(back_populates="deployments", foreign_keys=[app_id])
+
+
+class AppDomain(Base, TimestampMixin):
+    """A hostname the edge routes to an app.
+
+    Caddy obtains a certificate for it on the first request, so adding a
+    hostname here is the whole of "put this app on the internet" — provided
+    the DNS points at this machine.
+    """
+
+    __tablename__ = "app_domains"
+    __table_args__ = (UniqueConstraint("hostname", name="uq_app_domain_hostname"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    app_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), index=True)
+    hostname: Mapped[str] = mapped_column(String(253))
+    #: The one shown as the app's address in the console.
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    app: Mapped[App] = relationship(back_populates="domains")

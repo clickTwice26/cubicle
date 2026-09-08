@@ -49,6 +49,9 @@ class Settings(BaseSettings):
 
     # ── isolate runtime ──────────────────────────────────────────────────
     function_network: str = "cubicle_fn"
+    #: Apps join this one as well, because the edge lives here and has to be
+    #: able to reach them by container name.
+    edge_network: str = "cubicle_edge"
     #: Kept for instances that set them in .env before runtimes became a
     #: registry. Anything not named here is tagged `<repository>:<version>`.
     #: Where the function marketplace is read from. A registry is a JSON index

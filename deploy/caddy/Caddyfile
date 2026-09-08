@@ -1,5 +1,10 @@
 {
-	admin off
+	# On a unix socket rather than off: the control plane reloads this config
+	# every time an application's routing changes, and a reload goes through
+	# the admin API. A socket inside the container has no port, is not on any
+	# network, and is reachable only by an exec in this container — which is
+	# what the control plane does over the Docker socket it already owns.
+	admin unix//run/caddy-admin.sock
 	# Written by install.sh: either an `email <address>` line for the ACME
 	# account, or nothing at all. Certificates are issued either way.
 	import /etc/caddy/conf.d/*.caddyfile
@@ -7,6 +12,11 @@
 		trusted_proxies static private_ranges
 	}
 }
+
+# Applications. Written by the control plane on every deploy — one site block
+# per hostname, each with its own certificate. The file may not exist yet on a
+# fresh install, and an import that matches nothing is not an error.
+import /etc/caddy/apps/*.caddyfile
 
 # CUBICLE_SITE_ADDRESS is `:80` for a local install and the bare hostname
 # (e.g. cubicle.example.com) when a domain is configured — in that case Caddy

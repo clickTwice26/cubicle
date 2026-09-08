@@ -21,6 +21,8 @@ const Cluster = lazy(() => import('./pages/Cluster'))
 const DataService = lazy(() => import('./pages/DataService'))
 const DatabaseBrowser = lazy(() => import('./pages/DatabaseBrowser'))
 const RedisBrowser = lazy(() => import('./pages/RedisBrowser'))
+const Apps = lazy(() => import('./pages/Apps'))
+const AppDetail = lazy(() => import('./pages/AppDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 function Loading() {
@@ -101,6 +103,22 @@ export default function App() {
           element={
             <Guarded>
               <FunctionWorkbench />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/apps"
+          element={
+            <Guarded>
+              <Apps />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/apps/:appId"
+          element={
+            <Guarded>
+              <AppDetail />
             </Guarded>
           }
         />

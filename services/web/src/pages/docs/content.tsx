@@ -1237,6 +1237,363 @@ export const DOCS: DocPage[] = [
     ),
   },
   {
+    id: 'apps',
+    group: 'Applications',
+    label: 'Deploying an app',
+    title: 'Applications',
+    lede: 'The long-running half of the platform: a container the cluster keeps up, built from your repository and reachable on a hostname of its own.',
+    body: () => (
+      <>
+        {h2('what', 'What an app is')}
+        {p(
+          <>
+            A {docLink('functions', 'function')} is an isolate the cluster keeps warm for one
+            request and reclaims when the traffic stops. An app is the other half: a Next.js
+            site, an API server, a queue worker — anything with a Dockerfile — that stays up,
+            holds a hostname, and is reachable by name from everything else on the cluster.
+          </>,
+        )}
+        {index([
+          {
+            to: '/docs/app-definition',
+            title: 'cubicle.json',
+            body: 'The definition file: how to build, what port, what to check. CapRover files work too.',
+          },
+          {
+            to: '/docs/app-delivery',
+            title: 'Domains and auto deploy',
+            body: 'Hostnames with certificates, a git token, and push-to-deploy webhooks.',
+          },
+        ])}
+
+        {h2('create', 'Creating one')}
+        {p(
+          <>
+            <strong>Applications → New app</strong>. Give it a name, point it at a repository or
+            a published image, and it is built and started. There is nothing to install on the
+            machine first: the control plane clones, builds and runs it with the Docker engine it
+            already uses for functions.
+          </>,
+        )}
+        {table(
+          ['Source', 'What happens'],
+          [
+            [
+              'git repository',
+              'Cloned at the branch you name, built, and started. Private repos need a token.',
+            ],
+            [
+              'published image',
+              'Pulled and started as-is. Nothing is built — useful for anything you already publish to a registry.',
+            ],
+          ],
+        )}
+
+        {h2('build', 'How it is built')}
+        {p(
+          <>
+            If the repository has a {mono('cubicle.json')} it is followed exactly. Otherwise the
+            tree is inspected, and the layouts below are recognised without one. Either way, the
+            build log records which of these happened, so it is never a guess.
+          </>,
+        )}
+        {table(
+          ['Found in the repository', 'Built as'],
+          [
+            ['A Dockerfile', 'Your Dockerfile, unchanged.'],
+            ['package.json with next', 'Next.js: install, build, npm start on port 3000.'],
+            [
+              'package.json with vite, react-scripts, angular or parcel',
+              'Built, then the output served by nginx on port 80.',
+            ],
+            ['package.json with a start script', 'Node: install, npm start on port 3000.'],
+            ['index.html at the root', 'A static site on nginx.'],
+            ['requirements.txt and a Procfile', 'Python, running the Procfile web command.'],
+          ],
+        )}
+        {note(
+          <>
+            Nothing here is magic and none of it is required. If the detection is wrong, or the
+            project is not one of these, add a Dockerfile — or a{' '}
+            {docLink('app-definition', 'cubicle.json')} that names one — and it is used instead.
+          </>,
+        )}
+
+        {h2('deploy', 'What a deploy does')}
+        {p('In order, and stopping at the first thing that fails:')}
+        {table(
+          ['Step', 'On failure'],
+          [
+            ['Clone the branch', 'The deploy fails. Nothing that is running is touched.'],
+            ['Resolve the definition', 'The deploy fails, and the log says what it could not work out.'],
+            ['Build the image', 'The deploy fails with the build output kept.'],
+            ['Start the new containers', 'The deploy fails; the previous release keeps serving.'],
+            [
+              'Wait for them to answer',
+              'The deploy fails and the new containers are removed at the next deploy.',
+            ],
+            ['Move the traffic, then remove the old containers', '—'],
+          ],
+        )}
+        {p(
+          <>
+            Traffic moves only after the new release answers, so a broken build is a red row in
+            the deployments list rather than an outage. Every build transcript is kept: the log
+            of the deploy that broke is the one people actually go looking for.
+          </>,
+        )}
+
+        {h2('scale', 'Instances, resources and environment')}
+        {table(
+          ['Setting', 'When it applies'],
+          [
+            [
+              'Instances',
+              'Immediately. Containers start or stop, and the edge load-balances across them round-robin.',
+            ],
+            ['Memory and CPU', 'On the next release, since a container is sized when it starts.'],
+            ['Environment', 'On the next release or restart — Restart to apply is on the tab.'],
+            ['Port and health path', 'On the next release.'],
+          ],
+        )}
+        {p(
+          <>
+            The environment is stored encrypted, like{' '}
+            {docLink('secrets', 'every other secret here')}, and injected when the container
+            starts. Nothing is written to the image, so rotating a value is an environment change
+            and a restart rather than a rebuild.
+          </>,
+        )}
+
+        {h2('links', 'Linking to the data services')}
+        {p(
+          <>
+            An app linked to this cluster's {docLink('services', 'managed Postgres or Redis')}{' '}
+            gets {mono('DATABASE_URL')} and {mono('REDIS_URL')} in its environment
+            automatically — the same connection the functions use, without a credential to copy.
+          </>,
+        )}
+        {p(
+          <>
+            Apps also reach each other by name on the internal network:{' '}
+            {mono('http://api:3000')} from a front end in the same cluster works, and keeps
+            working across deploys, because the name is an alias rather than a container.
+          </>,
+        )}
+
+        {h2('logs', 'Watching it run')}
+        {table(
+          ['Tab', 'Shows'],
+          [
+            ['Deployments', 'Every build, with its transcript. A running build streams live.'],
+            ['Logs', 'A live tail across every replica, tagged with which one wrote each line.'],
+            ['Overview', 'What is actually running right now, and on which release.'],
+          ],
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'app-definition',
+    group: 'Applications',
+    label: 'cubicle.json',
+    title: 'cubicle.json',
+    lede: 'One file at the root of the repository saying how to build it and what to run. Optional — but it is the difference between a guess and an instruction.',
+    body: () => (
+      <>
+        {h2('shape', 'The file')}
+        {p(
+          <>
+            Put it at the root of the repository. Exactly one of{' '}
+            {mono('dockerfilePath')}, {mono('dockerfileLines')} or {mono('imageName')} may be
+            set — they are three answers to the same question, and setting two is refused rather
+            than silently resolved.
+          </>,
+        )}
+        {code(
+          <>
+            {'{'}
+            {'\n'}
+            {'  '}
+            <span className="text-ok">&quot;schemaVersion&quot;</span>:{' '}
+            <span className="text-warn">1</span>,{'\n'}
+            {'  '}
+            <span className="text-ok">&quot;dockerfilePath&quot;</span>:{' '}
+            <span className="text-ok">&quot;./Dockerfile&quot;</span>,{'\n'}
+            {'  '}
+            <span className="text-ok">&quot;port&quot;</span>:{' '}
+            <span className="text-warn">3000</span>,{'\n'}
+            {'  '}
+            <span className="text-ok">&quot;healthCheckPath&quot;</span>:{' '}
+            <span className="text-ok">&quot;/healthz&quot;</span>,{'\n'}
+            {'  '}
+            <span className="text-ok">&quot;env&quot;</span>: {'{'}{' '}
+            <span className="text-ok">&quot;NODE_ENV&quot;</span>:{' '}
+            <span className="text-ok">&quot;production&quot;</span> {'}'},{'\n'}
+            {'  '}
+            <span className="text-ok">&quot;buildArgs&quot;</span>: {'{'}{' '}
+            <span className="text-ok">&quot;NEXT_PUBLIC_API&quot;</span>:{' '}
+            <span className="text-ok">&quot;https://api.example.com&quot;</span> {'}'}
+            {'\n'}
+            {'}'}
+          </>,
+          'cubicle.json',
+        )}
+        {table(
+          ['Key', 'Means'],
+          [
+            ['dockerfilePath', 'A Dockerfile in the repository to build. Must stay inside it.'],
+            [
+              'dockerfileLines',
+              'The Dockerfile itself, as an array of strings, for repositories that would rather not carry one.',
+            ],
+            ['imageName', 'Skip building entirely and run this published image.'],
+            ['port', 'What the container listens on. Overrides the port set in the console.'],
+            ['healthCheckPath', 'Probed before traffic moves. A non-2xx keeps the old release.'],
+            ['env', 'Defaults, overridden by anything set on the app itself.'],
+            ['buildArgs', 'Passed to docker build as --build-arg.'],
+          ],
+        )}
+
+        {h2('caprover', 'captain-definition works too')}
+        {p(
+          <>
+            A repository that already carries a CapRover{' '}
+            {mono('captain-definition')} is read as-is: the two files say the same things with
+            the same key names, so a project that deploys there deploys here without a second
+            file to keep in step. {mono('cubicle.json')} wins when both are present.
+          </>,
+        )}
+        {code(
+          <>
+            {'{'}
+            {'\n'}
+            {'  '}
+            <span className="text-ok">&quot;schemaVersion&quot;</span>:{' '}
+            <span className="text-warn">2</span>,{'\n'}
+            {'  '}
+            <span className="text-ok">&quot;dockerfileLines&quot;</span>: [{'\n'}
+            {'    '}
+            <span className="text-ok">&quot;FROM node:22-alpine&quot;</span>,{'\n'}
+            {'    '}
+            <span className="text-ok">&quot;WORKDIR /app&quot;</span>,{'\n'}
+            {'    '}
+            <span className="text-ok">&quot;COPY . .&quot;</span>,{'\n'}
+            {'    '}
+            <span className="text-ok">&quot;RUN npm ci --omit=dev&quot;</span>,{'\n'}
+            {'    '}
+            <span className="text-ok">&quot;CMD [\\&quot;node\\&quot;, \\&quot;server.js\\&quot;]&quot;</span>
+            {'\n'}
+            {'  '}]{'\n'}
+            {'}'}
+          </>,
+          'captain-definition',
+        )}
+
+        {h2('none', 'When there is no file')}
+        {p(
+          <>
+            The repository is inspected instead, and the{' '}
+            {docLink('apps', 'layouts on the previous page')} are recognised. That is a
+            convenience, not a contract: a Dockerfile or a definition is what makes a build
+            reproducible, and the moment a project is worth deploying twice it is worth one of
+            the two.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
+    id: 'app-delivery',
+    group: 'Applications',
+    label: 'Domains & auto deploy',
+    title: 'Domains and auto deploy',
+    lede: 'Getting an app onto a hostname with a certificate, and getting a push to deploy it.',
+    body: () => (
+      <>
+        {h2('domains', 'Hostnames')}
+        {p(
+          <>
+            Add a hostname on the app's <strong>Overview</strong> tab and point its DNS at this
+            machine. The edge picks it up immediately — the control plane rewrites the routing
+            and reloads Caddy, which is a graceful reload, so nothing in flight is dropped.
+          </>,
+        )}
+        {p(
+          <>
+            On an instance with a domain configured, Caddy obtains a certificate for the
+            hostname on its first request, exactly as it does for the console. On a local
+            install there is nothing that can issue one, so app hostnames are served over plain
+            HTTP instead — the routing is the same either way.
+          </>,
+        )}
+        {note(
+          <>
+            An app created on an instance with a domain gets{' '}
+            {mono('<app>.<domain>')} for free. It only resolves if that name — or a wildcard —
+            points here, which is a DNS record, not something Cubicle can do for you.
+          </>,
+        )}
+
+        {h2('credentials', 'Private repositories')}
+        {p(
+          <>
+            <strong>Settings → Git credentials</strong> holds tokens, not accounts. There is no
+            OAuth app to authorise and nothing about this install is registered anywhere: create
+            a personal access token with the scope you are willing to give, paste it once, and
+            it is stored envelope-encrypted like every other secret here. Revoking it is
+            something you do at the provider, without telling us.
+          </>,
+        )}
+        {p(
+          <>
+            On GitHub a fine-grained token with{' '}
+            {mono('Contents: read-only')} on the repositories you deploy is enough. The token is
+            used to clone and never appears in a build log — the URL it is spliced into is
+            redacted before anything is written down.
+          </>,
+        )}
+
+        {h2('webhook', 'Push to deploy')}
+        {p(
+          <>
+            Every app has a webhook URL on its <strong>Overview</strong> tab. In the repository:
+            Settings → Webhooks → Add webhook, content type{' '}
+            {mono('application/json')}, and paste the URL as both the payload URL and the
+            secret. A push to the branch the app tracks then deploys it.
+          </>,
+        )}
+        {table(
+          ['Check', 'What happens'],
+          [
+            ['The secret in the URL', 'Compared in constant time. A wrong one is a 403.'],
+            [
+              'X-Hub-Signature-256',
+              'When the provider signs the payload, the signature is verified against the same secret.',
+            ],
+            ['The branch', 'A push to another branch is accepted and ignored, not an error.'],
+            ['Auto deploy', 'Off on the app means hooks are acknowledged and do nothing.'],
+          ],
+        )}
+        {p(
+          <>
+            The deployments list records how each one was asked for — manual, webhook, or the
+            CLI — and who by, so a release nobody remembers asking for has an answer next to it.
+          </>,
+        )}
+
+        {h2('rollback', 'When a deploy goes wrong')}
+        {p(
+          <>
+            Nothing moves until the new release answers, so a failed deploy leaves the previous
+            one serving. Fix what broke and deploy again; the failed attempt stays in the list
+            with its build log for as long as the app exists.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
     id: 'clusters',
     group: 'Guides',
     label: 'Clusters',

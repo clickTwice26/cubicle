@@ -61,6 +61,12 @@ const PAGES: { label: string; to: string; hint: string; icon: Item['icon'] }[] =
     hint: 'Namespaces and functions',
     icon: Terminal,
   },
+  {
+    label: 'Applications',
+    to: '/console/apps',
+    hint: 'Deployed containers, domains and builds',
+    icon: Server,
+  },
   { label: 'Global env', to: '/console/env', hint: 'Cluster-wide configuration', icon: Globe },
   {
     label: 'Logs & monitoring',

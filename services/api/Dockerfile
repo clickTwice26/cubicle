@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Build deps for asyncpg / argon2-cffi wheels that have no aarch64 wheel yet.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libpq-dev curl \
+    && apt-get install -y --no-install-recommends build-essential libpq-dev curl git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/api/pyproject.toml ./

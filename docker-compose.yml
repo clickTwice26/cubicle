@@ -34,6 +34,8 @@ services:
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/caddy/conf.d:/etc/caddy/conf.d:ro
+      # App routing, written by the control plane and reloaded on deploy.
+      - caddy_apps:/etc/caddy/apps:ro
       - caddy_data:/data
       - caddy_config:/config
     networks: [edge]
@@ -83,6 +85,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cubicle_data:/var/lib/cubicle
+      - caddy_apps:/etc/caddy/apps
     networks: [edge, core, fn]
     # Every isolate has a limit and the control plane had none, which made the
     # one process that must survive the only one that could take the host down
@@ -168,6 +171,7 @@ networks:
 
 volumes:
   caddy_data:
+  caddy_apps:
   caddy_config:
   pg_data:
   redis_data:

@@ -26,6 +26,7 @@ import { RuntimesCard } from '../components/RuntimesCard'
 import { UpdateCard } from '../components/UpdateCard'
 import { activeCluster } from '../lib/cluster'
 import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
+import { useCreateCredential, useDeleteCredential, useGitCredentials } from '../lib/apps'
 import {
   useApiKeys,
   useClusters,
@@ -119,6 +120,7 @@ export default function Settings() {
         <>
           <InstanceCard />
           <AssistantCard />
+      <GitCredentialsCard />
         </>
       ) : null}
 
@@ -401,6 +403,159 @@ function AssistantCard() {
           </span>
         </div>
       </div>
+    </Card>
+  )
+}
+
+/**
+ * Git credentials for application deploys.
+ *
+ * A token rather than an OAuth app: nothing about this instance is registered
+ * anywhere, the operator chooses the scope, and revoking it is something they
+ * do at the provider without telling us. Stored envelope-encrypted, shown back
+ * only as a hint.
+ */
+function GitCredentialsCard() {
+  const toast = useToast()
+  const { data: credentials } = useGitCredentials()
+  const create = useCreateCredential()
+  const remove = useDeleteCredential()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({
+    name: '',
+    provider: 'github',
+    username: 'x-access-token',
+    token: '',
+  })
+
+  const submit = () =>
+    create.mutate(
+      { ...form, name: form.name.trim(), token: form.token.trim() },
+      {
+        onSuccess: () => {
+          toast.push('Credential saved')
+          setOpen(false)
+          setForm({ name: '', provider: 'github', username: 'x-access-token', token: '' })
+        },
+        onError: (error) => toast.push(error.message, 'err'),
+      },
+    )
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <CardHeader
+        title="Git credentials"
+        subtitle="Tokens Cubicle uses to clone private repositories for applications"
+        action={
+          <Button size="sm" icon={<Plus size={13} />} onClick={() => setOpen(true)}>
+            Add token
+          </Button>
+        }
+      />
+      {(credentials ?? []).map((credential) => (
+        <div
+          key={credential.id}
+          className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3.5 last:border-b-0"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[13.5px] font-semibold">
+              {credential.name}
+              <Badge>{credential.provider}</Badge>
+            </div>
+            <div className="truncate font-mono text-[11.5px] text-ink-3">
+              {credential.username} · {credential.token_hint}
+            </div>
+          </div>
+          <ConfirmButton
+            as="button"
+            label="Remove"
+            confirmLabel="Confirm"
+            onConfirm={() =>
+              remove.mutate(credential.id, {
+                onSuccess: () => toast.push('Credential removed'),
+                onError: (error) => toast.push(error.message, 'err'),
+              })
+            }
+          />
+        </div>
+      ))}
+      {credentials && credentials.length === 0 ? (
+        <div className="px-5 py-6 text-[13px] text-ink-3">
+          None yet. Public repositories need no token.
+        </div>
+      ) : null}
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        width={520}
+        title="Add a git token"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={create.isPending}
+              disabled={!form.name.trim() || form.token.trim().length < 8}
+              onClick={submit}
+            >
+              Save token
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4">
+          <div className="rounded-[10px] border border-line bg-panel-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+            On GitHub: Settings → Developer settings → Personal access tokens. A fine-grained
+            token with <span className="font-mono">Contents: read-only</span> on the repositories
+            you plan to deploy is enough.
+          </div>
+          <Field
+            label="Name"
+            mono={false}
+            autoFocus
+            value={form.name}
+            placeholder="github — deploy"
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+          <div>
+            <span className="mb-1.5 block text-[12.5px] text-ink-2">Provider</span>
+            <div className="flex flex-wrap gap-2">
+              {['github', 'gitlab', 'bitbucket', 'generic'].map((provider) => (
+                <button
+                  key={provider}
+                  type="button"
+                  onClick={() => setForm({ ...form, provider })}
+                  className={
+                    form.provider === provider
+                      ? 'rounded-lg border border-accent bg-accent-soft px-3 py-1.5 text-[12.5px]'
+                      : 'rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink-2'
+                  }
+                >
+                  {provider}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Field
+            label="Username"
+            value={form.username}
+            onChange={(event) => setForm({ ...form, username: event.target.value })}
+            hint="GitHub ignores this on token auth. Other hosts do not."
+          />
+          <Field
+            label="Token"
+            type="password"
+            autoComplete="off"
+            value={form.token}
+            placeholder="github_pat_…"
+            onChange={(event) => setForm({ ...form, token: event.target.value })}
+            hint="Encrypted with the cluster root key. Never shown again."
+          />
+        </div>
+      </Modal>
     </Card>
   )
 }
