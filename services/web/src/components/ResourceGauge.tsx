@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useClusterResources } from '../lib/hooks'
-import type { Headroom } from '../lib/types'
+import type { Headroom, ResourceConsumer } from '../lib/types'
 import { cx } from './ui'
 
 /**
@@ -24,10 +25,23 @@ export function ResourceGauge() {
   if (isError || !data) return null
 
   return (
-    <div className="hidden items-center gap-3.5 rounded-[9px] border border-line px-3 py-1.5 xl:flex">
-      <Gauge label="mem" value={data.memory} format={memoryLabel} />
+    <div className="relative hidden items-center gap-3.5 rounded-[9px] border border-line px-3 py-1.5 xl:flex">
+      <Gauge
+        label="mem"
+        value={data.memory}
+        format={memoryLabel}
+        consumers={data.consumers}
+        resource="memory"
+      />
       <span className="h-4 w-px bg-line" />
-      <Gauge label="cpu" value={data.cpu} format={(n) => `${n.toFixed(1)}`} suffix=" cores" />
+      <Gauge
+        label="cpu"
+        value={data.cpu}
+        format={(n) => `${n.toFixed(1)}`}
+        suffix=" cores"
+        consumers={data.consumers}
+        resource="cpu"
+      />
       <span className="h-4 w-px bg-line" />
       <span
         className="font-mono text-[11.5px] text-ink-3"
@@ -44,12 +58,17 @@ function Gauge({
   value,
   format,
   suffix = '',
+  consumers = [],
+  resource,
 }: {
   label: string
   value: Headroom
   format: (n: number) => string
   suffix?: string
+  consumers?: ResourceConsumer[]
+  resource: 'memory' | 'cpu'
 }) {
+  const [open, setOpen] = useState(false)
   // Amber before it bites, red once it has — the same thresholds the ceilings
   // card uses, so the two never disagree about what "nearly full" means.
   const tone =
@@ -61,7 +80,15 @@ function Gauge({
     : `${format(value.held)}${suffix} committed · no ceiling set on this cluster`
 
   return (
-    <span className="flex items-center gap-2" title={title}>
+    <span
+      className="relative flex items-center gap-2"
+      title={title}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {open && consumers.length ? (
+        <Breakdown consumers={consumers} resource={resource} format={format} suffix={suffix} />
+      ) : null}
       <span className="text-[11px] tracking-[0.04em] text-ink-3 uppercase">{label}</span>
 
       {value.limited ? (
@@ -83,6 +110,84 @@ function Gauge({
           <span className="text-ink-3"> used</span>
         </span>
       )}
+    </span>
+  )
+}
+
+const KIND_LABEL: Record<ResourceConsumer['kind'], string> = {
+  app: 'app',
+  service: 'service',
+  function: 'function',
+}
+
+/**
+ * What is actually holding the resource, on hover.
+ *
+ * The gauge says how much is left; the first question after that is always
+ * which of these to go and shrink. Percentages are of what is committed, not
+ * of the ceiling — an operator looking at this wants the shares to add up to
+ * what they can see, not to a denominator that includes headroom.
+ */
+function Breakdown({
+  consumers,
+  resource,
+  format,
+  suffix,
+}: {
+  consumers: ResourceConsumer[]
+  resource: 'memory' | 'cpu'
+  format: (n: number) => string
+  suffix: string
+}) {
+  const value = (entry: ResourceConsumer) =>
+    resource === 'memory' ? entry.memory_mb : entry.cpus
+  const total = consumers.reduce((sum, entry) => sum + value(entry), 0)
+  const rows = [...consumers].sort((a, b) => value(b) - value(a)).filter((e) => value(e) > 0)
+
+  return (
+    <span className="animate-rise absolute top-[calc(100%+10px)] left-0 z-40 block w-[290px] cursor-default rounded-xl border border-line-strong bg-panel p-3 shadow-2xl">
+      <span className="mb-2 block text-[11px] font-bold tracking-[0.05em] text-ink-3 uppercase">
+        {resource === 'memory' ? 'Memory' : 'CPU'} committed
+      </span>
+      {rows.map((entry) => {
+        const pct = total ? (value(entry) / total) * 100 : 0
+        return (
+          <span key={`${entry.kind}:${entry.name}`} className="mb-1.5 block last:mb-0">
+            <span className="flex items-baseline gap-2 text-[12px]">
+              <span className="min-w-0 flex-1 truncate font-mono">
+                {entry.name}
+                {entry.instances > 1 ? (
+                  <span className="text-ink-3"> ×{entry.instances}</span>
+                ) : null}
+              </span>
+              <span className="flex-none text-[10.5px] text-ink-3">{KIND_LABEL[entry.kind]}</span>
+              <span className="flex-none font-mono tabular-nums">
+                {format(value(entry))}
+                {suffix}
+              </span>
+              <span className="w-9 flex-none text-right font-mono text-ink-3 tabular-nums">
+                {pct.toFixed(0)}%
+              </span>
+            </span>
+            <span className="mt-1 block h-1 overflow-hidden rounded-full bg-line">
+              <span
+                className={cx(
+                  'block h-full rounded-full',
+                  entry.kind === 'app'
+                    ? 'bg-accent'
+                    : entry.kind === 'service'
+                      ? 'bg-info'
+                      : 'bg-warn',
+                )}
+                style={{ width: `${Math.max(2, pct)}%` }}
+              />
+            </span>
+          </span>
+        )
+      })}
+      {rows.length === 0 ? (
+        <span className="block text-[12px] text-ink-3">Nothing running yet.</span>
+      ) : null}
     </span>
   )
 }

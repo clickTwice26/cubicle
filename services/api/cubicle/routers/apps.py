@@ -37,7 +37,9 @@ from ..logging_setup import log
 from ..models import App, AppDeployment, AppDomain, Cluster, GitCredential
 from ..runtime import apps as runtime
 from ..runtime import edge, services
+from ..runtime.invoker import quota_for
 from ..runtime.nodes import is_private, pick_node, public_address
+from ..runtime.pool import pool
 
 router = APIRouter(prefix="/api/apps", tags=["apps"])
 
@@ -280,6 +282,50 @@ async def republish_routes(cluster_id: uuid.UUID) -> None:
     await edge.apply(table, tls=tls)
 
 
+async def check_ceiling(
+    db, cluster: Cluster, *, memory_mb: int, cpus: float, exclude: App | None = None
+) -> None:
+    """Refuse an app the cluster has no room for.
+
+    The same ceiling isolates are held to, checked before anything is built:
+    finding out at the end of a five-minute build that there was never room for
+    the container is a worse way to learn it.
+    """
+    quota = await quota_for(db, cluster)
+    if quota is None:
+        return
+
+    held_mb = quota.reserved_mb
+    held_cpu = quota.reserved_cpu
+    if exclude is not None and exclude.status == "running":
+        # What this app holds today is not competing with what it is asking to
+        # hold tomorrow — the new allocation replaces the old one, so its
+        # current share counts as available to it.
+        held_mb -= exclude.memory_mb * max(1, exclude.replicas)
+        held_cpu -= exclude.cpus * max(1, exclude.replicas)
+
+    isolates = pool.snapshot(cluster=cluster.slug)
+    held_mb += sum(i["memory_mb"] for i in isolates)
+    held_cpu += sum(i["cpus"] for i in isolates)
+
+    if quota.memory_cap_mb and held_mb + memory_mb > quota.memory_cap_mb:
+        free = max(0, quota.memory_cap_mb - held_mb)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This app would hold {memory_mb} MB, and only {free} MB of the cluster's "
+            f"{quota.memory_cap_mb} MB ceiling is available to it. Raise the ceiling, or "
+            f"give it less.",
+        )
+    if quota.cpu_cap and held_cpu + cpus > quota.cpu_cap:
+        free = max(0.0, quota.cpu_cap - held_cpu)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This app would hold {cpus:.2f} cores, and only {free:.2f} of the cluster's "
+            f"{quota.cpu_cap} core ceiling is available to it. Raise the ceiling, or "
+            f"give it less.",
+        )
+
+
 async def link_env(db, cluster: Cluster, app: App) -> dict[str, str]:
     """Connection details for the things this app says it is linked to."""
     injected: dict[str, str] = {}
@@ -493,6 +539,14 @@ async def create_app(
     if exists is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"This cluster already has an app '{name}'.")
 
+    instances = max(1, payload.replicas)
+    await check_ceiling(
+        db,
+        cluster,
+        memory_mb=payload.memory_mb * instances,
+        cpus=payload.cpus * instances,
+    )
+
     app = App(
         cluster_id=cluster.id,
         name=name,
@@ -574,6 +628,17 @@ async def update_app(
                     domain.hostname = f"{new_name}.{base}"
             app.name = new_name
             renamed = True
+
+    wants_more = {"replicas", "memory_mb", "cpus"} & set(changes)
+    if wants_more:
+        instances = max(1, int(changes.get("replicas", app.replicas)))
+        await check_ceiling(
+            db,
+            cluster,
+            memory_mb=int(changes.get("memory_mb", app.memory_mb)) * instances,
+            cpus=float(changes.get("cpus", app.cpus)) * instances,
+            exclude=app,
+        )
 
     for field, value in changes.items():
         setattr(app, field, value)

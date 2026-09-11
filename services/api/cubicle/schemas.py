@@ -176,12 +176,25 @@ class UpdateProgress(BaseModel):
     exit_code: int | None = None
 
 
+class ResourceConsumer(BaseModel):
+    """One thing holding part of the cluster's memory and CPU."""
+
+    #: app · service · function
+    kind: str = "app"
+    name: str = ""
+    instances: int = 1
+    memory_mb: float = 0
+    cpus: float = 0
+    pct: float = 0
+
+
 class Headroom(BaseModel):
     """One resource against its ceiling. ``limited`` false means there isn't one."""
 
     limited: bool = False
     used: float = 0
-    #: Held by the cluster's own Postgres and Redis, not by any function.
+    #: Held by long-running containers — the cluster's own Postgres and Redis,
+    #: and its applications — rather than by an isolate.
     reserved: float = 0
     held: float = 0
     cap: float = 0
@@ -194,6 +207,8 @@ class ClusterResources(BaseModel):
     isolates: int = 0
     memory: Headroom = Field(default_factory=Headroom)
     cpu: Headroom = Field(default_factory=Headroom)
+    #: Largest first, so the console can answer "what is holding it".
+    consumers: list[ResourceConsumer] = Field(default_factory=list)
 
 
 class MarketplaceInstall(BaseModel):

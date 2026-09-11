@@ -403,11 +403,21 @@ export interface Headroom {
   pct: number
 }
 
+export interface ResourceConsumer {
+  kind: 'app' | 'service' | 'function'
+  name: string
+  instances: number
+  memory_mb: number
+  cpus: number
+  pct: number
+}
+
 export interface ClusterResources {
   cluster: string
   isolates: number
   memory: Headroom
   cpu: Headroom
+  consumers: ResourceConsumer[]
 }
 
 export interface RuntimeInfo {

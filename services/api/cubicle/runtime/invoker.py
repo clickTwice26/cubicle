@@ -27,6 +27,7 @@ from ..db import get_redis, session_scope
 from ..logging_setup import log
 from ..metrics import COLD_STARTS, GB_SECONDS, INVOCATION_SECONDS, INVOCATIONS
 from ..models import (
+    App,
     Cluster,
     EnvVar,
     Function,
@@ -232,6 +233,23 @@ async def quota_for(db: AsyncSession, cluster: Cluster) -> ClusterQuota | None:
     if not cluster.max_memory_mb and not cluster.max_cpu_cores:
         return None
 
+    reserved_mb, reserved_cpu = await reserved_for(db, cluster)
+    return ClusterQuota(
+        memory_cap_mb=cluster.max_memory_mb,
+        cpu_cap=cluster.max_cpu_cores,
+        reserved_mb=reserved_mb,
+        reserved_cpu=reserved_cpu,
+    )
+
+
+async def reserved_for(db: AsyncSession, cluster: Cluster) -> tuple[int, float]:
+    """Memory and CPU held by everything that runs continuously.
+
+    The managed data services and the applications. Both hold their allocation
+    for as long as they are up, so both are charged before an isolate is
+    allowed to ask for what is left — and both are counted on a cluster with no
+    ceiling too, where the console shows what is committed instead.
+    """
     services = (
         (
             await db.execute(
@@ -246,22 +264,33 @@ async def quota_for(db: AsyncSession, cluster: Cluster) -> ClusterQuota | None:
     )
     reserved_mb = 0
     for service in services:
-        reserved_mb += _memory_mb((service.config or {}).get("memory"))
+        reserved_mb += service_memory_mb((service.config or {}).get("memory"))
     # Services are not CPU-capped by the platform, so they are charged the same
     # share an isolate of that size would get. Better to over-count a running
     # database than to let it push isolates past the ceiling unseen.
     reserved_cpu = sum(
-        cpu_quota_for(_memory_mb((s.config or {}).get("memory"))) / 1_000_000_000 for s in services
-    )
-    return ClusterQuota(
-        memory_cap_mb=cluster.max_memory_mb,
-        cpu_cap=cluster.max_cpu_cores,
-        reserved_mb=reserved_mb,
-        reserved_cpu=reserved_cpu,
+        cpu_quota_for(service_memory_mb((s.config or {}).get("memory"))) / 1_000_000_000
+        for s in services
     )
 
+    # Applications hold their memory for as long as they run, exactly as the
+    # managed services do — so they are charged the same way. Counting them
+    # only in a dashboard would let a cluster hand out isolates it has already
+    # given to a container that is still holding them.
+    apps = (
+        (await db.execute(select(App).where(App.cluster_id == cluster.id, App.status == "running")))
+        .scalars()
+        .all()
+    )
+    for app in apps:
+        instances = max(1, app.replicas)
+        reserved_mb += app.memory_mb * instances
+        reserved_cpu += app.cpus * instances
 
-def _memory_mb(label: str | None) -> int:
+    return reserved_mb, round(reserved_cpu, 2)
+
+
+def service_memory_mb(label: str | None) -> int:
     """ "2 GB" or "512 MB" as megabytes."""
     if not label:
         return DEFAULT_SERVICE_MB

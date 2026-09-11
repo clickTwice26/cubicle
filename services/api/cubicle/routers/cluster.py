@@ -13,11 +13,11 @@ from sqlalchemy import func, select
 from .. import analytics, pricing
 from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin
 from ..logging_setup import log
-from ..models import Invocation, Node
+from ..models import App, Invocation, ManagedService, Node
 from ..runtime.engine import LOCAL_HOST, EngineError, engines
-from ..runtime.invoker import quota_for
+from ..runtime.invoker import reserved_for, service_memory_mb
 from ..runtime.nodes import allocation_by_node, format_spec, refresh_nodes, register_node
-from ..runtime.pool import pool
+from ..runtime.pool import cpu_quota_for, pool
 from ..schemas import ClusterResources, NodeCreate, NodeOut
 
 router = APIRouter(prefix="/api/cluster", tags=["cluster"])
@@ -247,19 +247,91 @@ async def resources(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal)
     the part an operator forgets when the numbers do not add up.
     """
     isolates = pool.snapshot(cluster=cluster.slug)
-    quota = await quota_for(db, cluster)
 
     used_mb = sum(i["memory_mb"] for i in isolates)
     used_cpu = round(sum(i["cpus"] for i in isolates), 2)
-    reserved_mb = quota.reserved_mb if quota else 0
-    reserved_cpu = round(quota.reserved_cpu, 2) if quota else 0.0
+    # Asked for directly rather than through the quota, which returns nothing
+    # at all when no ceiling is set — and an unlimited cluster still has apps
+    # and databases holding memory that belongs in the total.
+    reserved_mb, reserved_cpu = await reserved_for(db, cluster)
 
     return {
         "cluster": cluster.slug,
         "isolates": len(isolates),
         "memory": _headroom(cluster.max_memory_mb, used_mb, reserved_mb),
         "cpu": _headroom(cluster.max_cpu_cores, used_cpu, reserved_cpu),
+        "consumers": await _consumers(db, cluster, isolates, used_mb + reserved_mb),
     }
+
+
+async def _consumers(db, cluster, isolates: list[dict], total_mb: float) -> list[dict]:
+    """Who is holding the memory, largest first.
+
+    The gauge answers "how much is left"; this answers the question that
+    immediately follows it. Isolates are grouped by function rather than listed
+    one by one — eight containers of the same function is one line about that
+    function, not eight identical rows.
+    """
+    rows: list[dict] = []
+
+    apps = (
+        (await db.execute(select(App).where(App.cluster_id == cluster.id, App.status == "running")))
+        .scalars()
+        .all()
+    )
+    for app in apps:
+        instances = max(1, app.replicas)
+        rows.append(
+            {
+                "kind": "app",
+                "name": app.name,
+                "instances": instances,
+                "memory_mb": app.memory_mb * instances,
+                "cpus": round(app.cpus * instances, 2),
+            }
+        )
+
+    services = (
+        (
+            await db.execute(
+                select(ManagedService).where(
+                    ManagedService.cluster_id == cluster.id,
+                    ManagedService.status == "running",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for service in services:
+        memory_mb = service_memory_mb((service.config or {}).get("memory"))
+        rows.append(
+            {
+                "kind": "service",
+                "name": "PostgreSQL" if service.kind == "postgres" else "Redis",
+                "instances": 1,
+                "memory_mb": memory_mb,
+                "cpus": round(cpu_quota_for(memory_mb) / 1_000_000_000, 2),
+            }
+        )
+
+    grouped: dict[str, dict] = {}
+    for isolate in isolates:
+        name = isolate.get("function") or "function"
+        entry = grouped.setdefault(
+            name,
+            {"kind": "function", "name": name, "instances": 0, "memory_mb": 0.0, "cpus": 0.0},
+        )
+        entry["instances"] += 1
+        entry["memory_mb"] += isolate["memory_mb"]
+        entry["cpus"] += isolate.get("cpus", 0.0)
+    for entry in grouped.values():
+        entry["cpus"] = round(entry["cpus"], 2)
+    rows.extend(grouped.values())
+
+    for row in rows:
+        row["pct"] = round(row["memory_mb"] / total_mb * 100, 1) if total_mb else 0.0
+    return sorted(rows, key=lambda r: r["memory_mb"], reverse=True)[:12]
 
 
 def _headroom(cap: float, used: float, reserved: float) -> dict:
