@@ -268,10 +268,15 @@ async def republish_routes(cluster_id: uuid.UUID) -> None:
         if cluster is None:
             return
         table = await routing_table(db, cluster)
-        # An instance with a domain has Caddy terminating TLS, and app
-        # hostnames get their own certificates. Without one there is nothing to
-        # issue them, and the app is served over plain HTTP.
-        tls = bool(cluster.ingress_domain) or settings.domain not in ("", "localhost")
+        # Whether Caddy itself terminates TLS — not whether the deployment has
+        # a domain. Behind another web server it does not: that server holds
+        # the certificate and forwards plain HTTP here. Emitting a bare
+        # hostname there turns on Caddy's automatic HTTPS, and it answers the
+        # forwarded request with a redirect to the address the request already
+        # came from, which the browser follows back into the same loop.
+        tls = not settings.behind_proxy and (
+            bool(cluster.ingress_domain) or settings.domain not in ("", "localhost")
+        )
     await edge.apply(table, tls=tls)
 
 
