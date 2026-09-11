@@ -29,6 +29,7 @@ from slugify import slugify
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
 
+from .. import library
 from ..config import settings
 from ..crypto import decrypt, encrypt, mask
 from ..db import session_scope
@@ -79,6 +80,9 @@ class CredentialCreate(BaseModel):
 
 class AppCreate(BaseModel):
     name: str = Field(min_length=1, max_length=63)
+    #: A slug from the library. Fills in the image, port, volumes, links and
+    #: whatever environment the entry knows how to supply.
+    template: str | None = Field(default=None, max_length=63)
     source_kind: str = Field(default="git", pattern="^(git|image)$")
     repo_url: str = Field(default="", max_length=500)
     branch: str = Field(default="main", max_length=120)
@@ -444,6 +448,12 @@ async def hosting(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     }
 
 
+@router.get("/library")
+async def app_library(_: CurrentPrincipal):
+    """Images that run well here, with what each one needs already filled in."""
+    return {"apps": [entry.as_dict() for entry in library.catalogue()]}
+
+
 @router.get("/credentials")
 async def list_credentials(db: DbSession, cluster: CurrentCluster, _: CurrentPrincipal):
     rows = (
@@ -528,6 +538,22 @@ async def create_app(
     name = slugify(payload.name)[:63]
     if not name or name in RESERVED_NAMES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{payload.name}' is not a usable name.")
+
+    entry = None
+    if payload.template:
+        entry = library.get(payload.template)
+        if entry is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"No '{payload.template}' in the library."
+            )
+        # The entry describes the container; the form only names it and says
+        # how big. Anything the operator set explicitly is left alone.
+        payload.source_kind = "image"
+        payload.image_ref = entry.image
+        payload.port = entry.port
+        payload.memory_mb = max(payload.memory_mb, entry.memory_mb)
+        payload.cpus = max(payload.cpus, entry.cpus)
+
     if payload.source_kind == "git" and not payload.repo_url.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A git app needs a repository URL.")
     if payload.source_kind == "image" and not payload.image_ref.strip():
@@ -564,15 +590,26 @@ async def create_app(
         path_token=runtime.new_path_token(),
         status="created",
     )
+    if entry is not None:
+        app.volumes = entry.volumes
+        app.links = entry.links
     db.add(app)
     await db.flush()
-    write_env(app, payload.env)
+
+    base = apps_base_domain(cluster)
+    hostname = f"{name}.{base}" if base else ""
+    address = f"https://{hostname}" if hostname else settings.public_url.rstrip("/")
+    env = (
+        library.resolve_env(entry, supplied=payload.env, hostname=hostname, url=address)
+        if entry is not None
+        else payload.env
+    )
+    write_env(app, env)
 
     # A hostname of its own from the start, so the app has an address before it
     # has a release. On an install with a domain this resolves for free.
-    base = apps_base_domain(cluster)
     if base:
-        db.add(AppDomain(app_id=app.id, hostname=f"{name}.{base}", is_primary=True))
+        db.add(AppDomain(app_id=app.id, hostname=hostname, is_primary=True))
 
     await db.commit()
     app = await load_app(db, app.id, cluster)

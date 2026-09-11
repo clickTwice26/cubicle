@@ -18,11 +18,13 @@ import {
   useToast,
 } from '../components/ui'
 import {
+  useAppLibrary,
   useApps,
   useCreateApp,
   useGitCredentials,
   useHosting,
   type Application,
+  type LibraryApp,
 } from '../lib/apps'
 import { relativeTime } from '../lib/format'
 
@@ -332,8 +334,12 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const create = useCreateApp()
   const { data: credentials } = useGitCredentials()
 
+  const { data: library } = useAppLibrary()
   const [name, setName] = useState('')
-  const [kind, setKind] = useState<'git' | 'image'>('git')
+  const [kind, setKind] = useState<'git' | 'image' | 'library'>('library')
+  const [picked, setPicked] = useState<LibraryApp | null>(null)
+  const [filter, setFilter] = useState('')
+  const [envDraft, setEnvDraft] = useState<Record<string, string>>({})
   const [repo, setRepo] = useState('')
   const [branch, setBranch] = useState('main')
   const [credential, setCredential] = useState('')
@@ -341,18 +347,24 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [port, setPort] = useState('3000')
   const [deployNow, setDeployNow] = useState(true)
 
-  const ready = name.trim() && (kind === 'git' ? repo.trim() : image.trim())
+  const ready =
+    name.trim() &&
+    (kind === 'git' ? repo.trim() : kind === 'image' ? image.trim() : Boolean(picked))
 
   const submit = () =>
     create.mutate(
       {
         name: name.trim(),
-        source_kind: kind,
-        repo_url: repo.trim(),
-        branch: branch.trim() || 'main',
-        credential_id: credential || null,
-        image_ref: image.trim(),
-        port: Number(port) || 3000,
+        ...(kind === 'library' && picked
+          ? { template: picked.slug, source_kind: 'image' as const, env: envDraft }
+          : {
+              source_kind: kind as 'git' | 'image',
+              repo_url: repo.trim(),
+              branch: branch.trim() || 'main',
+              credential_id: credential || null,
+              image_ref: image.trim(),
+              port: Number(port) || 3000,
+            }),
         deploy_now: deployNow,
       },
       {
@@ -397,6 +409,9 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
         <div>
           <span className="mb-2 block text-[12.5px] text-ink-2">Source</span>
           <div className="flex flex-wrap gap-2">
+            <Chip active={kind === 'library'} onClick={() => setKind('library')}>
+              from the library
+            </Chip>
             <Chip active={kind === 'git'} onClick={() => setKind('git')}>
               git repository
             </Chip>
@@ -405,6 +420,29 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             </Chip>
           </div>
         </div>
+
+        {kind === 'library' ? (
+          <LibraryPicker
+            apps={library?.apps ?? []}
+            picked={picked}
+            filter={filter}
+            onFilter={setFilter}
+            onPick={(entry) => {
+              setPicked(entry)
+              setEnvDraft({})
+              // The name is the hostname, so the entry's own is the right
+              // default — and it is still editable above.
+              if (!name.trim()) setName(entry.slug)
+            }}
+            onClear={() => {
+              setPicked(null)
+              setEnvDraft({})
+              setFilter('')
+            }}
+            env={envDraft}
+            onEnv={(key, value) => setEnvDraft((current) => ({ ...current, [key]: value }))}
+          />
+        ) : null}
 
         {kind === 'git' ? (
           <>
@@ -441,7 +479,7 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
               </div>
             </div>
           </>
-        ) : (
+        ) : kind === 'image' ? (
           <Field
             label="Image"
             value={image}
@@ -449,15 +487,17 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             onChange={(event) => setImage(event.target.value)}
             hint="Pulled as-is. Nothing is built."
           />
-        )}
+        ) : null}
 
-        <Field
-          label="Port"
-          value={port}
-          placeholder="3000"
-          onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ''))}
-          hint="What the container listens on. A cubicle.json in the repo can override it."
-        />
+        {kind === 'library' ? null : (
+          <Field
+            label="Port"
+            value={port}
+            placeholder="3000"
+            onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ''))}
+            hint="What the container listens on. A cubicle.json in the repo can override it."
+          />
+        )}
 
         <button
           type="button"
@@ -476,5 +516,127 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
         </button>
       </div>
     </Modal>
+  )
+}
+
+/**
+ * The catalogue, inside the dialog.
+ *
+ * Picking an entry fills in the image, the port, the volumes and whatever
+ * environment it can work out for itself — so the common case is a name and a
+ * click. What is left on screen afterwards is only what genuinely needs a
+ * person: a timezone, a sign-up policy, occasionally nothing at all.
+ */
+function LibraryPicker({
+  apps,
+  picked,
+  filter,
+  onFilter,
+  onPick,
+  onClear,
+  env,
+  onEnv,
+}: {
+  apps: LibraryApp[]
+  picked: LibraryApp | null
+  filter: string
+  onFilter: (value: string) => void
+  onPick: (entry: LibraryApp) => void
+  onClear: () => void
+  env: Record<string, string>
+  onEnv: (key: string, value: string) => void
+}) {
+  const needle = filter.trim().toLowerCase()
+  const shown = needle
+    ? apps.filter((entry) =>
+        `${entry.name} ${entry.summary} ${entry.category}`.toLowerCase().includes(needle),
+      )
+    : apps
+
+  if (picked) {
+    // Only what is genuinely a choice. Fixed plumbing and values derived from
+    // the app's own address are applied without a word about them.
+    const asks = picked.env.filter((spec) => spec.prompt)
+
+    return (
+      <div className="grid gap-3">
+        <div className="flex items-start gap-3 rounded-[10px] border border-accent bg-accent-soft px-3.5 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">{picked.name}</div>
+            <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">
+              {picked.summary}
+            </div>
+            <div className="mt-1.5 font-mono text-[11px] text-ink-3">
+              {picked.image} · :{picked.port} · {picked.memory_mb} MB
+              {picked.volumes.length
+                ? ` · ${picked.volumes.length} volume${picked.volumes.length === 1 ? '' : 's'}`
+                : ''}
+              {picked.links.length ? ` · links ${picked.links.join(', ')}` : ''}
+            </div>
+          </div>
+          <Button size="sm" variant="ghost" className="flex-none" onClick={onClear}>
+            Change
+          </Button>
+        </div>
+
+        {picked.requires ? (
+          <div className="rounded-[9px] border border-line bg-panel-2 px-3.5 py-2.5 text-[12.5px] text-ink-2">
+            {picked.requires}
+          </div>
+        ) : null}
+
+        {asks.map((spec) => (
+          <Field
+            key={spec.key}
+            label={spec.label}
+            type={spec.secret ? 'password' : 'text'}
+            value={env[spec.key] ?? ''}
+            placeholder={
+              spec.generated ? 'generated if left blank' : spec.value || spec.key
+            }
+            onChange={(event) => onEnv(spec.key, event.target.value)}
+            hint={spec.help}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-2.5">
+      <input
+        value={filter}
+        autoFocus
+        onChange={(event) => onFilter(event.target.value)}
+        placeholder="Search the library…"
+        className="h-9 w-full rounded-[9px] border border-line-strong bg-bg px-3 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
+      />
+      <div className="grid max-h-[320px] gap-2 overflow-y-auto pr-1">
+        {shown.map((entry) => (
+          <button
+            key={entry.slug}
+            type="button"
+            onClick={() => onPick(entry)}
+            className="rounded-[10px] border border-line px-3.5 py-2.5 text-left transition hover:border-line-strong hover:bg-panel-2"
+          >
+            <span className="flex items-baseline gap-2">
+              <span className="text-[13.5px] font-semibold">{entry.name}</span>
+              <span className="text-[11px] text-ink-3">{entry.category}</span>
+              <span className="ml-auto font-mono text-[11px] text-ink-3">
+                {entry.memory_mb} MB
+              </span>
+            </span>
+            <span className="mt-0.5 block text-[12.5px] leading-relaxed text-ink-2">
+              {entry.summary}
+            </span>
+          </button>
+        ))}
+        {shown.length === 0 ? (
+          <span className="px-1 py-6 text-center text-[13px] text-ink-3">
+            Nothing matches that. Deploy it from an image or a repository instead.
+          </span>
+        ) : null}
+      </div>
+    </div>
   )
 }

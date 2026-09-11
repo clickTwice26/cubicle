@@ -167,6 +167,43 @@ export function useHosting() {
   })
 }
 
+export interface LibraryEnv {
+  key: string
+  label: string
+  help: string
+  value: string
+  secret: boolean
+  generated: boolean
+  derived: boolean
+  required: boolean
+  /** Whether it is worth putting in front of a person at all. */
+  prompt: boolean
+}
+
+export interface LibraryApp {
+  slug: string
+  name: string
+  summary: string
+  category: string
+  image: string
+  port: number
+  memory_mb: number
+  cpus: number
+  volumes: { path: string }[]
+  links: string[]
+  requires: string
+  docs: string
+  env: LibraryEnv[]
+}
+
+export function useAppLibrary() {
+  return useQuery({
+    queryKey: ['apps', 'library'],
+    queryFn: () => api.get<{ apps: LibraryApp[] }>(`${ROOT}/library`),
+    staleTime: 600_000,
+  })
+}
+
 export function useGitCredentials() {
   const scope = useActiveCluster()
   return useQuery({
@@ -185,6 +222,8 @@ function useAppMutation<T, V>(fn: (vars: V) => Promise<T>) {
 
 export interface CreateAppArgs {
   name: string
+  /** A library slug — fills in the image, port, volumes, links and env. */
+  template?: string
   source_kind: 'git' | 'image'
   repo_url?: string
   branch?: string
