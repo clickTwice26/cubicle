@@ -36,7 +36,7 @@ from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin, Re
 from ..logging_setup import log
 from ..models import App, AppDeployment, AppDomain, Cluster, GitCredential
 from ..runtime import apps as runtime
-from ..runtime import edge, services
+from ..runtime import dns, edge, services
 from ..runtime.invoker import quota_for
 from ..runtime.nodes import is_private, pick_node, public_address
 from ..runtime.pool import pool
@@ -712,6 +712,34 @@ async def set_env(
 # ── domains ──────────────────────────────────────────────────────────────────
 
 
+async def _point_dns(db, hostname: str, node_host: str) -> dict[str, str]:
+    """Make the record, if this instance was given a token that can.
+
+    Never fatal: the domain is routed either way, and an operator who has to
+    add the record by hand is better served by a line saying so than by a
+    failed request that also did not save their domain.
+    """
+    from ..models import Instance
+
+    instance = await db.get(Instance, 1)
+    if instance is None or not instance.acme_token_ciphertext:
+        return {"state": "manual", "detail": "no DNS token saved"}
+    try:
+        token = decrypt(instance.acme_token_ciphertext, aad="acme:token")
+    except Exception:  # noqa: BLE001 - a rotated master key is not this request's problem
+        return {"state": "manual", "detail": "the saved DNS token could not be read"}
+
+    try:
+        address = await public_address(node_host)
+        outcome = await dns.ensure_a_record(token, hostname, address)
+        return {"state": outcome, "detail": f"A {hostname} → {address}"}
+    except dns.DnsError as exc:
+        return {"state": "manual", "detail": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        log.warning("dns record not created", hostname=hostname, error=str(exc))
+        return {"state": "manual", "detail": "could not reach Cloudflare"}
+
+
 @router.post("/{app_id}/domains", status_code=status.HTTP_201_CREATED)
 async def add_domain(
     app_id: uuid.UUID,
@@ -743,8 +771,18 @@ async def add_domain(
     )
     await db.commit()
     await republish_routes(cluster.id)
-    log.info("app domain added", app=app.name, hostname=hostname, by=principal.user.email)
-    return serialize(await load_app(db, app_id, cluster))
+
+    node = await pick_node(db, cluster, app.node_pool)
+    record = await _point_dns(db, hostname, node.docker_host)
+
+    log.info(
+        "app domain added",
+        app=app.name,
+        hostname=hostname,
+        dns=record["state"],
+        by=principal.user.email,
+    )
+    return {**serialize(await load_app(db, app_id, cluster)), "dns": record}
 
 
 @router.delete("/{app_id}/domains/{domain_id}", status_code=status.HTTP_204_NO_CONTENT)

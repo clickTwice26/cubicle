@@ -229,8 +229,13 @@ export const useSetAppEnv = (id: string) => {
   })
 }
 
+/** What happened to the DNS record, alongside the updated app. */
+export interface DomainAdded extends Application {
+  dns: { state: 'created' | 'updated' | 'unchanged' | 'manual'; detail: string }
+}
+
 export const useAddDomain = (id: string) =>
-  useAppMutation<Application, { hostname: string; primary?: boolean }>((args) =>
+  useAppMutation<DomainAdded, { hostname: string; primary?: boolean }>((args) =>
     api.post(`${ROOT}/${id}/domains`, args),
   )
 

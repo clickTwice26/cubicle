@@ -31,6 +31,7 @@ import {
   subscribeEvents,
   useAddDomain,
   useApp,
+  useHosting,
   useAppEnv,
   useDeleteApp,
   useDeployApp,
@@ -228,6 +229,7 @@ export default function AppDetail() {
 
 function Overview({ app }: { app: Application }) {
   const toast = useToast()
+  const { data: hosting } = useHosting()
   const addDomain = useAddDomain(app.id)
   const removeDomain = useRemoveDomain(app.id)
   const [hostname, setHostname] = useState('')
@@ -264,7 +266,14 @@ function Overview({ app }: { app: Application }) {
         </Card>
 
         <Card className="overflow-hidden">
-          <CardHeader title="Domains" subtitle="Each gets a certificate on its first request" />
+          <CardHeader
+            title="Domains"
+            subtitle={
+              hosting?.edge_mode === 'proxy'
+                ? 'Your web server holds the certificate for these — Cubicle routes them'
+                : 'Each gets a certificate on its first request'
+            }
+          />
           {app.domains.length ? (
             app.domains.map((domain) => (
               <div
@@ -306,8 +315,14 @@ function Overview({ app }: { app: Application }) {
               addDomain.mutate(
                 { hostname: hostname.trim() },
                 {
-                  onSuccess: () => {
-                    toast.push('Domain added')
+                  onSuccess: (result) => {
+                    const dns = result.dns
+                    if (dns?.state === 'manual') {
+                      // Routed either way; the record is the part still owed.
+                      toast.push('Domain added — add its DNS record', 'info', dns.detail)
+                    } else {
+                      toast.push(`Domain added · DNS ${dns?.state ?? 'ready'}`, 'ok', dns?.detail)
+                    }
                     setHostname('')
                   },
                   onError: (error) => toast.push(error.message, 'err'),
