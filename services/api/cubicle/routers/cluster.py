@@ -14,6 +14,7 @@ from .. import analytics, pricing
 from ..deps import CurrentCluster, CurrentPrincipal, DbSession, RequireAdmin
 from ..logging_setup import log
 from ..models import App, Invocation, ManagedService, Node
+from ..runtime.apps import HOLDING_STATES
 from ..runtime.engine import LOCAL_HOST, EngineError, engines
 from ..runtime.invoker import reserved_for, service_memory_mb
 from ..runtime.nodes import allocation_by_node, format_spec, refresh_nodes, register_node
@@ -275,7 +276,11 @@ async def _consumers(db, cluster, isolates: list[dict], total_mb: float) -> list
     rows: list[dict] = []
 
     apps = (
-        (await db.execute(select(App).where(App.cluster_id == cluster.id, App.status == "running")))
+        (
+            await db.execute(
+                select(App).where(App.cluster_id == cluster.id, App.status.in_(HOLDING_STATES))
+            )
+        )
         .scalars()
         .all()
     )

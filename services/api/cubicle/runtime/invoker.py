@@ -37,6 +37,7 @@ from ..models import (
     LogEntry,
     ManagedService,
 )
+from .apps import HOLDING_STATES
 from .pool import (
     ClusterFullError,
     FunctionSpec,
@@ -278,7 +279,11 @@ async def reserved_for(db: AsyncSession, cluster: Cluster) -> tuple[int, float]:
     # only in a dashboard would let a cluster hand out isolates it has already
     # given to a container that is still holding them.
     apps = (
-        (await db.execute(select(App).where(App.cluster_id == cluster.id, App.status == "running")))
+        (
+            await db.execute(
+                select(App).where(App.cluster_id == cluster.id, App.status.in_(HOLDING_STATES))
+            )
+        )
         .scalars()
         .all()
     )

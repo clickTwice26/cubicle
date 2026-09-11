@@ -48,6 +48,14 @@ MAX_LOG_CHARS = 200_000
 DEFINITION_FILES = ("cubicle.json", "captain-definition")
 
 
+#: States in which an app is holding memory on a node. "deploying" belongs
+#: here: a deploy leaves the previous release serving until the new one is
+#: healthy, so an app mid-build is still very much running — counting only
+#: "running" makes it disappear from the ceiling for the length of a build,
+#: which is exactly when a second thing might be admitted into its memory.
+HOLDING_STATES = ("running", "deploying")
+
+
 class AppError(RuntimeError):
     """Something the operator should read, on the deploy page."""
 
