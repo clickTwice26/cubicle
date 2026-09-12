@@ -498,6 +498,60 @@ async def build_image(
         raise AppError(f"docker build failed: {exc}") from exc
 
 
+def dockerfile_ports(text: str) -> list[int]:
+    """The ports a Dockerfile declares for itself, in its final stage.
+
+    Read from the file rather than from the built image on purpose: an image
+    config carries every EXPOSE it inherited, so anything built FROM nginx
+    claims 80 as well as whatever it actually serves. The Dockerfile says which
+    one is its own, and in a multi-stage build only the last stage ships.
+    """
+    ports: list[int] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        head = line.split(None, 1)[0].upper()
+        if head == "FROM":
+            # A new stage discards what the previous one declared.
+            ports = []
+        elif head == "EXPOSE":
+            for token in line.split()[1:]:
+                number = token.split("/")[0]
+                if number.isdigit():
+                    ports.append(int(number))
+    return ports
+
+
+async def image_port(host: str, tag: str) -> int | None:
+    """The port an image says it listens on, from its own EXPOSE.
+
+    A Dockerfile that declares EXPOSE has already answered the question the
+    console would otherwise ask, and an image published by somebody else has
+    answered it too. Only a single exposed port is taken as an answer: an image
+    that exposes three has not said which one serves HTTP, and guessing there
+    would be worse than asking.
+    """
+
+    def _inspect(client: docker.DockerClient) -> int | None:
+        try:
+            image = client.images.get(tag)
+        except (NotFound, DockerException):
+            return None
+        exposed = ((image.attrs or {}).get("Config") or {}).get("ExposedPorts") or {}
+        ports = sorted(
+            int(spec.split("/")[0])
+            for spec in exposed
+            if spec.endswith("/tcp") and spec.split("/")[0].isdigit()
+        )
+        return ports[0] if len(ports) == 1 else None
+
+    try:
+        return await engines.call(host, _inspect)
+    except DockerException:
+        return None
+
+
 async def pull_image(*, host: str, image: str, deployment_id: str) -> None:
     await append_log(deployment_id, f"$ docker pull {image}")
 

@@ -1292,9 +1292,12 @@ export const DOCS: DocPage[] = [
         {h2('build', 'How it is built')}
         {p(
           <>
-            If the repository has a {mono('cubicle.json')} it is followed exactly. Otherwise the
-            tree is inspected, and the layouts below are recognised without one. Either way, the
-            build log records which of these happened, so it is never a guess.
+            A Dockerfile is the whole contract. A repository carrying one needs nothing else —
+            no file for Cubicle, no port to set, no setting to remember: it is built as it is,
+            and the port comes from its own {mono('EXPOSE')}. If the repository has a{' '}
+            {mono('cubicle.json')} that is followed exactly instead; failing both, the tree is
+            inspected and the layouts below are recognised without one. Either way, the build
+            log records which of these happened, so it is never a guess.
           </>,
         )}
         {table(
@@ -1316,6 +1319,39 @@ export const DOCS: DocPage[] = [
             Nothing here is magic and none of it is required. If the detection is wrong, or the
             project is not one of these, add a Dockerfile — or a{' '}
             {docLink('app-definition', 'cubicle.json')} that names one — and it is used instead.
+          </>,
+        )}
+
+        {h2('port', 'Which port it is served on')}
+        {p('Asked in this order, and the first answer wins:')}
+        {table(
+          ['Source', 'Notes'],
+          [
+            [
+              'port in cubicle.json',
+              'An explicit instruction, so nothing else is consulted.',
+            ],
+            [
+              'EXPOSE in the Dockerfile',
+              'Read from the file, not from the built image — an image built FROM nginx '
+                + 'inherits 80 as well, and only the Dockerfile says which port is its own. '
+                + 'In a multi-stage build, the final stage.',
+            ],
+            [
+              "The image's own EXPOSE",
+              'For an app running a published image rather than a build, when the image '
+                + 'exposes exactly one port.',
+            ],
+            ['The port on the app', 'What the console was given, defaulting to 3000.'],
+          ],
+        )}
+        {note(
+          <>
+            The app's port is updated to whatever was resolved, so the console always shows what
+            is actually being served rather than what was typed. Set a{' '}
+            {mono('healthCheckPath')} if it matters that the port is right: without one, a
+            container that started but is listening somewhere else counts as healthy, because
+            nothing was promised about what answers.
           </>,
         )}
 

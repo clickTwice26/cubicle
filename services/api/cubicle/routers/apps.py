@@ -1134,7 +1134,9 @@ async def _run_deploy(cluster_id: uuid.UUID, app_id: uuid.UUID, deployment_id: u
         if snapshot["source_kind"] == "image":
             tag = snapshot["image_ref"]
             await runtime.pull_image(host=host, image=tag, deployment_id=dep_key)
-            port = snapshot["port"]
+            port = await runtime.image_port(host, tag) or snapshot["port"]
+            if port != snapshot["port"]:
+                await runtime.append_log(dep_key, f"$ port {port}, from the image's EXPOSE")
             health_path = snapshot["health_path"]
         else:
             source = await runtime.fetch_source(
@@ -1168,7 +1170,22 @@ async def _run_deploy(cluster_id: uuid.UUID, app_id: uuid.UUID, deployment_id: u
                     deployment_id=dep_key,
                 )
             env = {**definition.env, **env}
-            port = definition.port or snapshot["port"]
+            # The definition is an instruction and wins. Otherwise the
+            # Dockerfile is asked, so a repository carrying one needs nothing
+            # configured anywhere — EXPOSE has already said it.
+            declared = None
+            if not definition.raw.get("port"):
+                body = definition.dockerfile_body
+                if body is None and definition.dockerfile:
+                    with contextlib.suppress(OSError):
+                        body = (source.path / definition.dockerfile).read_text()
+                found = runtime.dockerfile_ports(body or "")
+                declared = found[0] if found else None
+            if declared and declared != snapshot["port"]:
+                await runtime.append_log(
+                    dep_key, f"$ port {declared}, from EXPOSE in the Dockerfile"
+                )
+            port = declared or definition.port or snapshot["port"]
             health_path = snapshot["health_path"] or definition.health_path
 
         async with session_scope() as db:
