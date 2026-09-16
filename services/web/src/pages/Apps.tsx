@@ -1,6 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, ChevronDown, Github, Layers, Plus, Server } from '../components/Icons'
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Copy,
+  Github,
+  Layers,
+  Plus,
+  Server,
+} from '../components/Icons'
 import {
   Badge,
   Button,
@@ -26,6 +35,12 @@ import {
   type Application,
   type LibraryApp,
 } from '../lib/apps'
+import {
+  CAPTAIN_DEFINITION_EXAMPLE,
+  CUBICLE_JSON_EXAMPLE,
+  DEFINITION_KEYS,
+  deployPrompt,
+} from '../lib/appGuide'
 import { relativeTime } from '../lib/format'
 
 const TONE: Record<string, 'ok' | 'warn' | 'err' | 'idle'> = {
@@ -60,7 +75,11 @@ export default function Apps() {
         }
       />
 
-      <AddressGuide />
+      {/* Before and after: what the repository needs, then how the result is reached. */}
+      <div className="mb-5 grid gap-2.5">
+        <RepoGuide />
+        <AddressGuide />
+      </div>
 
       {isLoading ? (
         <Skeleton className="h-40 w-full" />
@@ -87,6 +106,240 @@ export default function Apps() {
   )
 }
 
+/** What a repository has to get right, whatever builds its image. */
+const CHECKS: [string, string][] = [
+  ['Listens on 0.0.0.0', 'not localhost, since the edge reaches it from another container'],
+  ['Plain HTTP on the exposed port', 'TLS is taken care of in front of it'],
+  ['Logs to stdout and stderr', 'which is what the Logs tab shows'],
+  ['Secrets from the Environment tab', 'never baked into the image'],
+  ['State in Postgres or Redis', 'the container disk is replaced on every deploy'],
+  ['A .dockerignore', 'keeping .git, node_modules and .env out of the build'],
+]
+
+/**
+ * What a repository needs before it is worth pointing Cubicle at.
+ *
+ * The honest answer is "a Dockerfile", so that comes first and the rest is
+ * framed as optional: a definition for when something needs saying, the
+ * CapRover file for projects that already have one, and a prompt that hands
+ * all of it to an assistant with the repository open. The prompt is reachable
+ * from the header too — it is the thing most people come here for, and
+ * expanding a card to find a button is one step too many.
+ */
+function RepoGuide() {
+  const { data: hosting } = useHosting()
+  const [open, setOpen] = useState(false)
+  const [preview, setPreview] = useState(false)
+  const prompt = useMemo(() => deployPrompt(hosting), [hosting])
+  const toggle = () => setOpen((value) => !value)
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-1.5 pr-3 transition hover:bg-panel-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={toggle}
+          className="flex min-w-0 flex-1 items-center gap-2.5 py-3.5 pl-5 text-left"
+        >
+          <span className="flex-none text-sm font-semibold">Preparing a repository</span>
+          <span className="hidden truncate text-[12.5px] text-ink-3 sm:inline">
+            A Dockerfile is all it needs · cubicle.json when something needs saying
+          </span>
+        </button>
+        {/* On a phone the title needs the room; the same button is inside the card. */}
+        <span className="hidden sm:block">
+          <PromptButton prompt={prompt} size="sm" variant="ghost" />
+        </span>
+        {/* The same toggle as the title, kept where the other card has its chevron. */}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden="true"
+          onClick={toggle}
+          className="grid h-8 w-[30px] flex-none place-items-center text-ink-3"
+        >
+          <ChevronDown size={14} className={cx('transition', open && 'rotate-180')} />
+        </button>
+      </div>
+
+      {open ? (
+        <div className="grid gap-4 border-t border-line px-5 py-4">
+          <Step
+            n="1"
+            title="A Dockerfile at the root — that is the whole contract"
+            body={
+              <>
+                <div>
+                  A repository with a Dockerfile and nothing else is built exactly as it is, with
+                  the repository as the build context. The port comes from its{' '}
+                  <Mono>EXPOSE</Mono> — the final stage's, in a multi-stage build — and the
+                  container is handed <Mono>PORT</Mono> as well, so there is nothing to set here.
+                </div>
+                <div className="mt-2.5 grid gap-x-5 gap-y-1.5 sm:grid-cols-2">
+                  {CHECKS.map(([head, tail]) => (
+                    <div key={head} className="flex gap-2">
+                      <Check size={13} className="mt-[3px] flex-none text-ok" />
+                      <span>
+                        <span className="font-medium text-ink">{head}</span> — {tail}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2.5 text-ink-3">
+                  No Dockerfile? Next.js, Vite and React, Node, plain HTML and Python with a
+                  Procfile get a generated one —{' '}
+                  <Link to="/docs/apps" className="underline underline-offset-2 hover:text-ink">
+                    see how it is built
+                  </Link>
+                  . That is a guess, though, and a Dockerfile is an instruction.
+                </div>
+              </>
+            }
+          />
+
+          <Step
+            n="2"
+            title="cubicle.json — only when something needs saying"
+            body={
+              <>
+                <div>
+                  At the root, next to the Dockerfile. Every key is optional, and at most one of{' '}
+                  <Mono>dockerfilePath</Mono>, <Mono>dockerfileLines</Mono> and{' '}
+                  <Mono>imageName</Mono> may be set — they are three answers to the same question.
+                </div>
+                {/* Side by side only once the example fits without scrolling sideways. */}
+                <div className="mt-2.5 grid items-start gap-3 xl:grid-cols-[auto_minmax(0,1fr)]">
+                  <Snippet filename="cubicle.json" value={CUBICLE_JSON_EXAMPLE} />
+                  <div className="overflow-hidden rounded-[9px] border border-line">
+                    {DEFINITION_KEYS.map(({ key, means }) => (
+                      <div
+                        key={key}
+                        className="grid gap-0.5 border-b border-line px-3 py-2 last:border-b-0 sm:grid-cols-[118px_minmax(0,1fr)] sm:gap-3"
+                      >
+                        <span className="font-mono text-[12px] text-ink">{key}</span>
+                        <span className="text-[12.5px] leading-snug">{means}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            }
+          />
+
+          <Step
+            n="3"
+            title="Coming from CapRover? Keep the captain-definition"
+            body={
+              <>
+                <div>
+                  It is read as-is: the key names are the same, so a project that deploys there
+                  deploys here without a second file to keep in step, and{' '}
+                  <Mono>cubicle.json</Mono> wins when a repository has both. Put an{' '}
+                  <Mono>EXPOSE</Mono> in its <Mono>dockerfileLines</Mono> and the port needs no
+                  setting either.
+                </div>
+                <div className="mt-2.5 max-w-[560px]">
+                  <Snippet filename="captain-definition" value={CAPTAIN_DEFINITION_EXAMPLE} />
+                </div>
+              </>
+            }
+          />
+
+          <Step
+            n="4"
+            title="Or have your AI assistant write it"
+            body={
+              <>
+                <div>
+                  One prompt carrying everything above — the build and port rules, the health
+                  check, the file format and this instance's own addresses. Paste it into Claude
+                  Code, Cursor, Copilot or ChatGPT with the repository open: it reads the project,
+                  writes the Dockerfile, <Mono>.dockerignore</Mono> and <Mono>cubicle.json</Mono>{' '}
+                  it actually needs, tries the build, and finishes with the environment variables
+                  to set here.
+                </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <PromptButton prompt={prompt} />
+                  <Button variant="ghost" onClick={() => setPreview((value) => !value)}>
+                    {preview ? 'Hide the prompt' : 'Show the prompt'}
+                  </Button>
+                </div>
+                {preview ? (
+                  <pre className="mt-2.5 mb-0 max-h-[360px] overflow-auto rounded-[9px] border border-line bg-bg px-3.5 py-3 font-mono text-[11.5px] leading-[1.6] whitespace-pre-wrap text-ink">
+                    {prompt}
+                  </pre>
+                ) : null}
+              </>
+            }
+          />
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
+/**
+ * Copies the setup prompt. A real button rather than the inline copy link,
+ * because on this page it is the action — and it says so when it worked.
+ */
+function PromptButton({
+  prompt,
+  variant = 'primary',
+  size = 'md',
+}: {
+  prompt: string
+  variant?: 'primary' | 'ghost'
+  size?: 'sm' | 'md'
+}) {
+  const toast = useToast()
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1800)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      size={size}
+      className="flex-none"
+      icon={copied ? <Check size={13} /> : <Copy size={13} />}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(prompt)
+          setCopied(true)
+        } catch {
+          toast.push('The browser blocked the clipboard — use Show the prompt instead', 'err')
+        }
+      }}
+    >
+      {copied ? 'Copied' : 'Copy AI prompt'}
+    </Button>
+  )
+}
+
+function Snippet({ filename, value }: { filename: string; value: string }) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-[9px] border border-line bg-bg">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5">
+        <span className="font-mono text-[11px] text-ink-3">{filename}</span>
+        <CopyButton value={value} />
+      </div>
+      <pre className="m-0 overflow-x-auto px-3.5 py-3 font-mono text-[11.5px] leading-[1.6] whitespace-pre text-ink">
+        {value.trimEnd()}
+      </pre>
+    </div>
+  )
+}
+
+function Mono({ children }: { children: ReactNode }) {
+  return <span className="font-mono text-[12px] text-ink">{children}</span>
+}
+
 /**
  * How an app is reached, with this instance's real values in it.
  *
@@ -104,9 +357,10 @@ function AddressGuide() {
   const record = hosting.wildcard_record
 
   return (
-    <Card className="mb-5 overflow-hidden">
+    <Card className="overflow-hidden">
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-2.5 px-5 py-3.5 text-left transition hover:bg-panel-2"
       >
@@ -333,6 +587,8 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const toast = useToast()
   const create = useCreateApp()
   const { data: credentials } = useGitCredentials()
+  const { data: hosting } = useHosting()
+  const prompt = useMemo(() => deployPrompt(hosting), [hosting])
 
   const { data: library } = useAppLibrary()
   const [name, setName] = useState('')
@@ -446,12 +702,18 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
 
         {kind === 'git' ? (
           <>
-            <Field
-              label="Repository"
-              value={repo}
-              placeholder="https://github.com/you/storefront"
-              onChange={(event) => setRepo(event.target.value)}
-            />
+            <div>
+              <Field
+                label="Repository"
+                value={repo}
+                placeholder="https://github.com/you/storefront"
+                onChange={(event) => setRepo(event.target.value)}
+              />
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-3">
+                <span>Needs a Dockerfile at its root, and nothing else.</span>
+                <CopyButton value={prompt} label="Copy a prompt that writes one" />
+              </div>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
                 label="Branch"
@@ -495,7 +757,11 @@ function NewAppModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             value={port}
             placeholder="3000"
             onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ''))}
-            hint="What the container listens on. A cubicle.json in the repo can override it."
+            hint={
+              kind === 'git'
+                ? 'Only a fallback: EXPOSE in the Dockerfile, or port in cubicle.json, wins.'
+                : 'Only a fallback: used when the image does not EXPOSE exactly one port.'
+            }
           />
         )}
 

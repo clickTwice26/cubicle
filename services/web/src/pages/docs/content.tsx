@@ -1,5 +1,8 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { Check, Copy } from '../../components/Icons'
+import { cx } from '../../components/ui'
+import { deployPrompt } from '../../lib/appGuide'
 import { CodeBlock } from './CodeBlock'
 
 export interface DocPage {
@@ -74,6 +77,49 @@ const docLink = (id: string, text: string) => (
     {text}
   </Link>
 )
+
+/** The setup prompt, copyable, and readable before it is pasted anywhere. */
+function PromptCard() {
+  const [copied, setCopied] = useState(false)
+  const prompt = deployPrompt()
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      /* clipboard blocked — the prompt is below, and selectable */
+    }
+  }
+
+  return (
+    <div className="mb-6 overflow-hidden rounded-xl border border-line bg-panel">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className="font-mono text-[11.5px] text-ink-3">prompt.md</span>
+        <button
+          type="button"
+          onClick={copy}
+          className={cx(
+            'ml-auto inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12.5px] font-semibold transition',
+            copied ? 'bg-ok-bg text-ok' : 'bg-accent text-accent-ink hover:brightness-[1.06]',
+          )}
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? 'Copied' : 'Copy AI prompt'}
+        </button>
+      </div>
+      <details className="group border-t border-line">
+        <summary className="cursor-pointer px-4 py-2.5 text-[13px] text-ink-2 transition select-none hover:text-ink">
+          Read it first
+        </summary>
+        <pre className="m-0 max-h-[420px] overflow-auto border-t border-line px-4.5 py-4 font-mono text-[12px] leading-[1.7] whitespace-pre-wrap text-ink">
+          {prompt}
+        </pre>
+      </details>
+    </div>
+  )
+}
 
 /** The card grid a section page opens with — what is in here, and where each part lives. */
 const index = (items: { to: string; title: string; body: string }[]) => (
@@ -1484,8 +1530,14 @@ export const DOCS: DocPage[] = [
               'The Dockerfile itself, as an array of strings, for repositories that would rather not carry one.',
             ],
             ['imageName', 'Skip building entirely and run this published image.'],
-            ['port', 'What the container listens on. Overrides the port set in the console.'],
-            ['healthCheckPath', 'Probed before traffic moves. A non-2xx keeps the old release.'],
+            [
+              'port',
+              'What the container listens on. Overrides EXPOSE and the port set in the console — leave it out when EXPOSE already says it.',
+            ],
+            [
+              'healthCheckPath',
+              'Probed before traffic moves. Anything but a status below 400 within 90 seconds keeps the old release.',
+            ],
             ['env', 'Defaults, overridden by anything set on the app itself.'],
             ['buildArgs', 'Passed to docker build as --build-arg.'],
           ],
@@ -1518,7 +1570,9 @@ export const DOCS: DocPage[] = [
             {'    '}
             <span className="text-ok">&quot;RUN npm ci --omit=dev&quot;</span>,{'\n'}
             {'    '}
-            <span className="text-ok">&quot;CMD [\\&quot;node\\&quot;, \\&quot;server.js\\&quot;]&quot;</span>
+            <span className="text-ok">&quot;EXPOSE 3000&quot;</span>,{'\n'}
+            {'    '}
+            <span className="text-ok">&quot;CMD [\&quot;node\&quot;, \&quot;server.js\&quot;]&quot;</span>
             {'\n'}
             {'  '}]{'\n'}
             {'}'}
@@ -1534,6 +1588,25 @@ export const DOCS: DocPage[] = [
             convenience, not a contract: a Dockerfile or a definition is what makes a build
             reproducible, and the moment a project is worth deploying twice it is worth one of
             the two.
+          </>,
+        )}
+
+        {h2('assistant', 'Having an assistant write it')}
+        {p(
+          <>
+            Everything on this page and {docLink('apps', 'the previous one')}, written as
+            instructions for an AI coding assistant. Paste it into Claude Code, Cursor, Copilot or
+            ChatGPT with the repository open: it reads the project, writes the Dockerfile,{' '}
+            {mono('.dockerignore')} and {mono('cubicle.json')} it actually needs, tries the build,
+            and finishes with a table of the environment variables to set on the app.
+          </>,
+        )}
+        <PromptCard />
+        {note(
+          <>
+            The copy on the Applications page is the same prompt with this instance&apos;s own
+            addresses filled in, which helps an assistant choose base paths — use that one when
+            you can.
           </>,
         )}
       </>

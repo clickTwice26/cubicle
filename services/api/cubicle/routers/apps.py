@@ -1174,7 +1174,7 @@ async def _run_deploy(cluster_id: uuid.UUID, app_id: uuid.UUID, deployment_id: u
             # Dockerfile is asked, so a repository carrying one needs nothing
             # configured anywhere — EXPOSE has already said it.
             declared = None
-            if not definition.raw.get("port"):
+            if not (definition.raw.get("port") or definition.raw.get("containerHttpPort")):
                 body = definition.dockerfile_body
                 if body is None and definition.dockerfile:
                     with contextlib.suppress(OSError):

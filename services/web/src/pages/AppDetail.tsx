@@ -47,8 +47,7 @@ import {
 } from '../lib/apps'
 import { relativeTime } from '../lib/format'
 
-const TABS = ['overview', 'deployments', 'logs', 'env', 'settings'] as const
-type Tab = (typeof TABS)[number]
+type Tab = 'overview' | 'deployments' | 'logs' | 'env' | 'settings'
 
 const STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | 'idle'> = {
   running: 'ok',
