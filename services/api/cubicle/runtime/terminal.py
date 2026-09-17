@@ -27,6 +27,7 @@ an API restart the same way an app's containers do.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 from dataclasses import dataclass
@@ -41,10 +42,6 @@ from ..logging_setup import log
 from .engine import engines
 
 TOOLBOX_NAME = "cubicle-toolbox"
-#: Rebuilt whenever the version changes, which is rare and cheap (it is a
-#: handful of Alpine packages) — simpler than tracking the Dockerfile's own
-#: hash, and it means an upgrade always gets a fresh toolbox.
-TOOLBOX_TAG = "cubicle/toolbox:{version}"
 
 #: A session name becomes a tmux target and nothing else — never shell text,
 #: never a path. Kept close to what tmux itself accepts, and short enough to
@@ -53,11 +50,32 @@ NAME_MAX = 40
 
 #: apk needs network access to install these; the image otherwise carries
 #: nothing — the shell it opens is the host's own, not this container's.
+#:
+#: ``remain-on-exit`` is the one setting that matters here: ``tmux
+#: new-session -d`` returns as soon as it has forked the pane, before nsenter
+#: has actually re-entered anything — so if nsenter fails (a host where
+#: --privileged is not quite enough, an AppArmor profile that still blocks
+#: setns, a Docker version that handles pid_mode=host differently), the
+#: pane's shell exits almost immediately, and tmux's default behaviour is to
+#: tear the whole session down with it. Without this, that failure is
+#: invisible: the session exists for a moment, then simply is not there any
+#: more, which looks exactly like a session that was never created rather
+#: than one that failed loudly. With it, the pane stays open showing
+#: whatever nsenter printed on its way out, which is the difference between
+#: a bug report and a diagnosis.
 TOOLBOX_DOCKERFILE = """\
 FROM alpine:3.20
 RUN apk add --no-cache bash tmux util-linux ncurses-terminfo
+RUN echo 'set -g remain-on-exit on' > /etc/tmux.conf
 CMD ["sleep", "infinity"]
 """
+
+#: Keyed to the Dockerfile's own content rather than the Cubicle version: a
+#: change here (like the remain-on-exit line above) needs a fresh toolbox
+#: the moment it ships, not only on a version that happens to bump. Tags
+#: churn only when this string actually changes, so a normal upgrade with no
+#: toolbox change reuses the image it already built.
+TOOLBOX_TAG = f"cubicle/toolbox:{hashlib.sha256(TOOLBOX_DOCKERFILE.encode()).hexdigest()[:12]}"
 
 #: The command every session's pane runs. Re-enters the host's mount, UTS,
 #: network and IPC namespaces (PID is already shared — see ``ensure_toolbox``);
@@ -120,10 +138,6 @@ def valid_name(name: str) -> bool:
     return bool(name) and len(name) <= NAME_MAX and all(c.isalnum() or c in "-_" for c in name)
 
 
-def _image_tag(version: str) -> str:
-    return TOOLBOX_TAG.format(version=version)
-
-
 def parse_sessions(output: str) -> list[SessionInfo]:
     """Turn ``tmux list-sessions -F ...`` output into structured rows.
 
@@ -159,7 +173,7 @@ def _epoch(raw: str) -> str:
 # ── the toolbox container ────────────────────────────────────────────────────
 
 
-async def ensure_toolbox(host: str, *, version: str) -> None:
+async def ensure_toolbox(host: str) -> None:
     """A running, privileged toolbox container on this node. Idempotent.
 
     ``privileged`` and ``pid_mode="host"`` are the two things Docker itself has
@@ -169,7 +183,7 @@ async def ensure_toolbox(host: str, *, version: str) -> None:
     shell instead, so a stopped toolbox never leaves anything of the host
     attached to it.
     """
-    tag = _image_tag(version)
+    tag = TOOLBOX_TAG
 
     def _ensure(client: docker.DockerClient) -> None:
         try:
@@ -205,7 +219,7 @@ async def ensure_toolbox(host: str, *, version: str) -> None:
                 # An upgrade: tmux sessions inside the old toolbox go with it.
                 # There is no way to carry them to a rebuilt image, the same
                 # as a control-plane upgrade already does to running isolates.
-                log.info("replacing terminal toolbox for a new version", host=host)
+                log.info("replacing terminal toolbox with a rebuilt image", host=host)
                 container.remove(force=True)
                 container = None
             elif container.status != "running":
@@ -232,8 +246,8 @@ async def ensure_toolbox(host: str, *, version: str) -> None:
 # ── sessions ─────────────────────────────────────────────────────────────────
 
 
-async def list_sessions(host: str, *, version: str) -> list[SessionInfo]:
-    await ensure_toolbox(host, version=version)
+async def list_sessions(host: str) -> list[SessionInfo]:
+    await ensure_toolbox(host)
 
     def _list(client: docker.DockerClient) -> list[SessionInfo]:
         container = client.containers.get(TOOLBOX_NAME)
@@ -256,7 +270,7 @@ async def list_sessions(host: str, *, version: str) -> list[SessionInfo]:
         raise TerminalError(f"could not list sessions on this node: {exc}") from exc
 
 
-async def create_session(host: str, name: str, *, version: str, cols: int, rows: int) -> None:
+async def create_session(host: str, name: str, *, cols: int, rows: int) -> None:
     """Create the session if it does not already exist. Never attaches.
 
     Deliberately not ``tmux new-session -A`` here: ``-A`` means "attach to it
@@ -265,7 +279,7 @@ async def create_session(host: str, name: str, *, version: str, cols: int, rows:
     below is the one that reattaches, with an actual terminal for tmux to hand
     the existing session to.
     """
-    existing = await list_sessions(host, version=version)
+    existing = await list_sessions(host)
     if any(s.name == name for s in existing):
         return
 
@@ -289,7 +303,7 @@ async def create_session(host: str, name: str, *, version: str, cols: int, rows:
         raise TerminalError(f"could not create the session: {exc}") from exc
 
 
-async def kill_session(host: str, name: str, *, version: str) -> None:
+async def kill_session(host: str, name: str) -> bool:
     def _kill(client: docker.DockerClient) -> bool:
         try:
             container = client.containers.get(TOOLBOX_NAME)
@@ -308,7 +322,7 @@ async def kill_session(host: str, name: str, *, version: str) -> None:
         raise TerminalError(f"could not end the session: {exc}") from exc
 
 
-async def rename_session(host: str, old: str, new: str, *, version: str) -> None:
+async def rename_session(host: str, old: str, new: str) -> None:
     def _rename(client: docker.DockerClient) -> None:
         container = client.containers.get(TOOLBOX_NAME)
         exec_id = client.api.exec_create(
@@ -322,7 +336,7 @@ async def rename_session(host: str, old: str, new: str, *, version: str) -> None
                 raise TerminalError(f"a session named '{new}' already exists")
             raise TerminalError(message or f"could not rename '{old}'")
 
-    await ensure_toolbox(host, version=version)
+    await ensure_toolbox(host)
     try:
         await engines.call(host, _rename)
     except DockerException as exc:
@@ -332,7 +346,7 @@ async def rename_session(host: str, old: str, new: str, *, version: str) -> None
 # ── the live attach ──────────────────────────────────────────────────────────
 
 
-async def open_shell(host: str, name: str, *, version: str, cols: int, rows: int) -> Shell:
+async def open_shell(host: str, name: str, *, cols: int, rows: int) -> Shell:
     """Attach an interactive exec to ``name``, creating it if it is new.
 
     Unlike :func:`create_session`, this uses ``-A``: there is now a real
@@ -341,7 +355,7 @@ async def open_shell(host: str, name: str, *, version: str, cols: int, rows: int
     both are well-defined with a live terminal, which is what made the
     detached path above deliberately avoid ``-A``.
     """
-    await ensure_toolbox(host, version=version)
+    await ensure_toolbox(host)
 
     def _open(client: docker.DockerClient) -> Shell:
         container = client.containers.get(TOOLBOX_NAME)

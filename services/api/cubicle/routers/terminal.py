@@ -28,7 +28,6 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from ..config import settings
 from ..db import session_scope
 from ..deps import (
     CurrentCluster,
@@ -142,7 +141,7 @@ async def list_sessions(
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node on this cluster.")
 
-    sessions = await runtime.list_sessions(target.docker_host, version=settings.version)
+    sessions = await runtime.list_sessions(target.docker_host)
     return {
         "enabled": True,
         "node_id": str(target.id),
@@ -171,9 +170,7 @@ async def create_session(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node on this cluster.")
 
     name = _validated_name(payload.name) if payload.name.strip() else _new_name()
-    await runtime.create_session(
-        target.docker_host, name, version=settings.version, cols=80, rows=24
-    )
+    await runtime.create_session(target.docker_host, name, cols=80, rows=24)
     log.info("terminal session created", node=target.name, session=name)
     return {"name": name, "node_id": str(target.id), "node_name": target.name}
 
@@ -189,7 +186,7 @@ async def delete_session(
     target = await _resolve_node(db, cluster, node)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node on this cluster.")
-    found = await runtime.kill_session(target.docker_host, name, version=settings.version)
+    found = await runtime.kill_session(target.docker_host, name)
     if not found:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No session named '{name}'.")
     log.info("terminal session ended", node=target.name, session=name, by=principal.user.email)
@@ -208,7 +205,7 @@ async def rename_session(
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such node on this cluster.")
     new_name = _validated_name(payload.name)
-    await runtime.rename_session(target.docker_host, name, new_name, version=settings.version)
+    await runtime.rename_session(target.docker_host, name, new_name)
     return {"name": new_name, "node_id": str(target.id)}
 
 
@@ -260,7 +257,7 @@ async def shell_ws(websocket: WebSocket, name: str) -> None:
     rows = _query_int(websocket, "rows", 24, minimum=5, maximum=200)
 
     try:
-        shell = await runtime.open_shell(host, name, version=settings.version, cols=cols, rows=rows)
+        shell = await runtime.open_shell(host, name, cols=cols, rows=rows)
     except runtime.TerminalError as exc:
         await websocket.close(code=WS_SERVER_ERROR, reason=str(exc)[:120])
         return

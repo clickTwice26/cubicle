@@ -327,7 +327,10 @@ if [ "$BEHIND_PROXY" -eq 1 ]; then
 Add this to nginx, then reload it. The buffering and timeout lines are not
 optional: Cubicle streams the live log tail and the activity dashboard over
 server-sent events, and nginx buffers proxied responses by default, which
-turns a live stream into a connection that appears to hang.
+turns a live stream into a connection that appears to hang. The Upgrade
+lines are not optional either — without them a WebSocket request (the
+terminal) is silently proxied as an ordinary HTTP request instead, which
+the console reports simply as "failed", with nothing more specific to go on.
 
 server {
     listen 443 ssl;
@@ -344,11 +347,32 @@ server {
         proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto \$scheme;
 
+        # WebSocket upgrade, for the terminal. \$http_upgrade is empty on an
+        # ordinary request, so this does not change how anything else here
+        # behaves.
+        proxy_set_header   Upgrade           \$http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+
         # Server-sent events: no buffering, and long enough to outlive a
-        # function's timeout.
+        # function's timeout. The terminal can sit open much longer than
+        # that, so it gets a separate, much longer timeout of its own.
         proxy_buffering    off;
         proxy_cache        off;
         proxy_read_timeout 15m;
+    }
+
+    location /api/terminal/ {
+        proxy_pass         http://127.0.0.1:$HTTP_PORT;
+        proxy_http_version 1.1;
+
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_set_header   Upgrade           \$http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+
+        proxy_read_timeout 24h;
     }
 }
 ──────────────────────────────────────────────────────────────────────────────
