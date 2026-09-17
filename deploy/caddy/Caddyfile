@@ -57,6 +57,21 @@ import /etc/caddy/apps/*.caddyfile
 	# about which file the block lives in, not about who wins.
 	import /etc/caddy/apps/paths/*.caddyfile
 
+	# Terminal sessions: a WebSocket that can sit open and idle far longer than
+	# ordinary API traffic. Caddy proxies the upgrade itself with no extra
+	# config either way — this block only exists to give it a read timeout long
+	# enough that an idle shell is not mistaken for a hung request, the same
+	# reasoning /api/invoke below gets its own fifteen minutes for a different
+	# kind of long-lived request. More specific than /api/*, so Caddy tries it
+	# first regardless of which block comes first in the file.
+	handle /api/terminal/* {
+		reverse_proxy api:8000 {
+			transport http {
+				read_timeout 24h
+			}
+		}
+	}
+
 	# Control plane API, health and Prometheus metrics.
 	handle /api/* {
 		reverse_proxy api:8000

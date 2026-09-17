@@ -24,6 +24,7 @@ const RedisBrowser = lazy(() => import('./pages/RedisBrowser'))
 const Apps = lazy(() => import('./pages/Apps'))
 const AppDetail = lazy(() => import('./pages/AppDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Terminal = lazy(() => import('./pages/Terminal'))
 
 function Loading() {
   return (
@@ -183,6 +184,14 @@ export default function App() {
           element={
             <Guarded>
               <Settings />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/terminal"
+          element={
+            <Guarded>
+              <Terminal />
             </Guarded>
           }
         />

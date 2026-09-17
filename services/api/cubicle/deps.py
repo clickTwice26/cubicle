@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, WebSocket, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -167,15 +167,12 @@ async def _principal_from_api_key(db: AsyncSession, token: str) -> Principal | N
     return None
 
 
-async def current_principal(request: Request, db: DbSession) -> Principal:
-    token = security.bearer_token(request)
-    if token:
-        principal = await _principal_from_api_key(db, token)
-        if principal is None:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid API key.")
-        return principal
-
-    cookie = request.cookies.get(settings.session_cookie)
+async def _principal_from_cookie(db: AsyncSession, cookie: str | None) -> Principal:
+    """The session half of ``current_principal`` — split out so a WebSocket,
+    which cannot send an ``Authorization`` header from browser JS and so only
+    ever carries the cookie, can authenticate the same way a request does
+    without duplicating the lookup.
+    """
     if not cookie:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in.")
     user_id = await security.read_session(cookie)
@@ -187,7 +184,47 @@ async def current_principal(request: Request, db: DbSession) -> Principal:
     return Principal(user, via="session")
 
 
+async def current_principal(request: Request, db: DbSession) -> Principal:
+    token = security.bearer_token(request)
+    if token:
+        principal = await _principal_from_api_key(db, token)
+        if principal is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid API key.")
+        return principal
+
+    return await _principal_from_cookie(db, request.cookies.get(settings.session_cookie))
+
+
 CurrentPrincipal = Annotated[Principal, Depends(current_principal)]
+
+
+async def websocket_principal(websocket: WebSocket, db: AsyncSession) -> Principal | None:
+    """Authenticate a WebSocket by its session cookie, without raising.
+
+    A WebSocket dependency that raises ``HTTPException`` mid-handshake is a
+    version-sensitive corner of FastAPI/Starlette rather than a clean 401 — so
+    this returns ``None`` on failure and leaves the route to close the socket
+    itself with a code a client can actually branch on. ``Depends`` is not
+    used for the same reason: this is called explicitly, before ``accept()``.
+    """
+    try:
+        return await _principal_from_cookie(db, websocket.cookies.get(settings.session_cookie))
+    except HTTPException:
+        return None
+
+
+async def websocket_cluster(
+    websocket: WebSocket, db: AsyncSession, principal: Principal
+) -> Cluster | None:
+    """The WebSocket counterpart of :func:`get_cluster`. See ``websocket_principal``."""
+    ref = websocket.query_params.get("cluster")
+    if ref:
+        cluster = await clusters.by_reference(db, ref)
+    else:
+        cluster = await clusters.first_accessible(db, principal.user)
+    if cluster is None or not await _principal_may_access(db, principal, cluster):
+        return None
+    return cluster
 
 
 def require_role(minimum: str):

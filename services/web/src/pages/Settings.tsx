@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Check, Plus } from '../components/Icons'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Check, Plus, Shield } from '../components/Icons'
 import {
   Badge,
   Button,
@@ -28,6 +28,7 @@ import { UpdateCard } from '../components/UpdateCard'
 import { activeCluster } from '../lib/cluster'
 import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
 import { useCreateCredential, useDeleteCredential, useGitCredentials } from '../lib/apps'
+import { useSetTerminalEnabled, useTerminalStatus } from '../lib/terminal'
 import {
   useApiKeys,
   useClusters,
@@ -121,7 +122,7 @@ export default function Settings() {
         <>
           <InstanceCard />
           <AssistantCard />
-      <GitCredentialsCard />
+          <GitCredentialsCard />
         </>
       ) : null}
 
@@ -139,6 +140,7 @@ export default function Settings() {
       {tab === 'maintenance' ? (
         <>
           <UpdateCard />
+          <TerminalAccessCard />
           <ResourceSync />
         </>
       ) : null}
@@ -410,6 +412,65 @@ function AssistantCard() {
 }
 
 /**
+ * Whether a real shell on the node's host is reachable from the console.
+ *
+ * Off by default, and the only card on this page that opts an *instance*
+ * rather than a person into something — every other setting here changes what
+ * an account may do; this one changes what the feature can do at all. The
+ * owner role gate on the terminal itself is the actual control; this is an
+ * operator deciding, once, whether that capability exists here.
+ */
+function TerminalAccessCard() {
+  const toast = useToast()
+  const { data: status } = useTerminalStatus()
+  const setEnabled = useSetTerminalEnabled()
+
+  if (!status) return <Skeleton className="mb-5 h-24 w-full" />
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <CardHeader
+        title="Terminal"
+        subtitle="A live shell on the node's host, opened from the console by an owner"
+        action={
+          status.enabled ? <Badge tone="accent">on</Badge> : <Badge tone="warn">off</Badge>
+        }
+      />
+      <div className="flex flex-wrap items-center gap-3.5 px-5 py-5">
+        <span className="grid h-9 w-9 flex-none place-items-center rounded-full border border-line bg-panel-2 text-ink-2">
+          <Shield size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <Checkbox
+            checked={status.enabled}
+            onChange={(next) =>
+              setEnabled.mutate(next, {
+                onSuccess: (data) =>
+                  toast.push(data.enabled ? 'Terminal access is on' : 'Terminal access is off'),
+                onError: (error) => toast.push(error.message, 'err'),
+              })
+            }
+            label="Reachable from the console"
+          />
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
+            Root on the node's host, not a container — every owner gets it while this is on.
+            Turning it off refuses new sessions; one already open keeps running until it ends.
+          </p>
+        </div>
+        {status.enabled ? (
+          <Link
+            to="/console/terminal"
+            className="flex-none text-[12.5px] font-medium text-ink underline decoration-line-strong underline-offset-2 hover:decoration-accent"
+          >
+            Open the terminal →
+          </Link>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
+/**
  * Git credentials for application deploys.
  *
  * A token rather than an OAuth app: nothing about this instance is registered
@@ -511,8 +572,8 @@ function GitCredentialsCard() {
         <div className="grid gap-4">
           <div className="rounded-[10px] border border-line bg-panel-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
             On GitHub: Settings → Developer settings → Personal access tokens. A fine-grained
-            token with <span className="font-mono">Contents: read-only</span> on the repositories
-            you plan to deploy is enough.
+            token with <span className="font-mono">Contents: read-only</span> on the
+            repositories you plan to deploy is enough.
           </div>
           <Field
             label="Name"
@@ -747,7 +808,9 @@ function SignInProtectionCard() {
       <CardHeader
         title="Sign-in protection"
         subtitle="Cloudflare Turnstile on the sign-in form, so an anonymous caller cannot spend this machine's CPU guessing passwords"
-        action={status.enabled ? <Badge tone="accent">on</Badge> : <Badge tone="warn">off</Badge>}
+        action={
+          status.enabled ? <Badge tone="accent">on</Badge> : <Badge tone="warn">off</Badge>
+        }
       />
 
       <div className="grid gap-4 px-5 py-5">
@@ -810,9 +873,9 @@ function SignInProtectionCard() {
         </div>
 
         <p className="m-0 border-t border-line pt-4 text-[12.5px] leading-relaxed text-ink-3">
-          Get a key pair from the Cloudflare dashboard under Turnstile. Turning this on is checked
-          against Cloudflare before it is saved, so a mistyped secret cannot lock you out of your
-          own instance. Nothing contacts Cloudflare until you turn it on.
+          Get a key pair from the Cloudflare dashboard under Turnstile. Turning this on is
+          checked against Cloudflare before it is saved, so a mistyped secret cannot lock you
+          out of your own instance. Nothing contacts Cloudflare until you turn it on.
         </p>
       </div>
     </Card>

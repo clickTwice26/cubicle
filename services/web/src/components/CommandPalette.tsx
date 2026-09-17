@@ -9,6 +9,7 @@ import {
   Grid,
   Layers,
   Lines,
+  Play,
   Search,
   Server,
   Sliders,
@@ -59,7 +60,7 @@ const PAGES: { label: string; to: string; hint: string; icon: Item['icon'] }[] =
     label: 'Function playground',
     to: '/console/playground',
     hint: 'Namespaces and functions',
-    icon: Terminal,
+    icon: Play,
   },
   {
     label: 'Applications',
@@ -79,6 +80,12 @@ const PAGES: { label: string; to: string; hint: string; icon: Item['icon'] }[] =
     to: '/console/cluster',
     hint: 'Nodes, isolates, GB-seconds',
     icon: Bars,
+  },
+  {
+    label: 'Terminal',
+    to: '/console/terminal',
+    hint: 'A live shell on the node',
+    icon: Terminal,
   },
   {
     label: 'Settings',

@@ -1317,8 +1317,8 @@ export const DOCS: DocPage[] = [
           <>
             <strong>Applications → New app</strong>. Give it a name, point it at a repository or
             a published image, and it is built and started. There is nothing to install on the
-            machine first: the control plane clones, builds and runs it with the Docker engine it
-            already uses for functions.
+            machine first: the control plane clones, builds and runs it with the Docker engine
+            it already uses for functions.
           </>,
         )}
         {table(
@@ -1373,20 +1373,17 @@ export const DOCS: DocPage[] = [
         {table(
           ['Source', 'Notes'],
           [
-            [
-              'port in cubicle.json',
-              'An explicit instruction, so nothing else is consulted.',
-            ],
+            ['port in cubicle.json', 'An explicit instruction, so nothing else is consulted.'],
             [
               'EXPOSE in the Dockerfile',
-              'Read from the file, not from the built image — an image built FROM nginx '
-                + 'inherits 80 as well, and only the Dockerfile says which port is its own. '
-                + 'In a multi-stage build, the final stage.',
+              'Read from the file, not from the built image — an image built FROM nginx ' +
+                'inherits 80 as well, and only the Dockerfile says which port is its own. ' +
+                'In a multi-stage build, the final stage.',
             ],
             [
               "The image's own EXPOSE",
-              'For an app running a published image rather than a build, when the image '
-                + 'exposes exactly one port.',
+              'For an app running a published image rather than a build, when the image ' +
+                'exposes exactly one port.',
             ],
             ['The port on the app', 'What the console was given, defaulting to 3000.'],
           ],
@@ -1394,10 +1391,10 @@ export const DOCS: DocPage[] = [
         {note(
           <>
             The app's port is updated to whatever was resolved, so the console always shows what
-            is actually being served rather than what was typed. Set a{' '}
-            {mono('healthCheckPath')} if it matters that the port is right: without one, a
-            container that started but is listening somewhere else counts as healthy, because
-            nothing was promised about what answers.
+            is actually being served rather than what was typed. Set a {mono('healthCheckPath')}{' '}
+            if it matters that the port is right: without one, a container that started but is
+            listening somewhere else counts as healthy, because nothing was promised about what
+            answers.
           </>,
         )}
 
@@ -1407,9 +1404,15 @@ export const DOCS: DocPage[] = [
           ['Step', 'On failure'],
           [
             ['Clone the branch', 'The deploy fails. Nothing that is running is touched.'],
-            ['Resolve the definition', 'The deploy fails, and the log says what it could not work out.'],
+            [
+              'Resolve the definition',
+              'The deploy fails, and the log says what it could not work out.',
+            ],
             ['Build the image', 'The deploy fails with the build output kept.'],
-            ['Start the new containers', 'The deploy fails; the previous release keeps serving.'],
+            [
+              'Start the new containers',
+              'The deploy fails; the previous release keeps serving.',
+            ],
             [
               'Wait for them to answer',
               'The deploy fails and the new containers are removed at the next deploy.',
@@ -1433,7 +1436,10 @@ export const DOCS: DocPage[] = [
               'Instances',
               'Immediately. Containers start or stop, and the edge load-balances across them round-robin.',
             ],
-            ['Memory and CPU', 'On the next release, since a container is sized when it starts.'],
+            [
+              'Memory and CPU',
+              'On the next release, since a container is sized when it starts.',
+            ],
             ['Environment', 'On the next release or restart — Restart to apply is on the tab.'],
             ['Port and health path', 'On the next release.'],
           ],
@@ -1442,8 +1448,8 @@ export const DOCS: DocPage[] = [
           <>
             The environment is stored encrypted, like{' '}
             {docLink('secrets', 'every other secret here')}, and injected when the container
-            starts. Nothing is written to the image, so rotating a value is an environment change
-            and a restart rather than a rebuild.
+            starts. Nothing is written to the image, so rotating a value is an environment
+            change and a restart rather than a rebuild.
           </>,
         )}
 
@@ -1451,8 +1457,8 @@ export const DOCS: DocPage[] = [
         {p(
           <>
             An app linked to this cluster's {docLink('services', 'managed Postgres or Redis')}{' '}
-            gets {mono('DATABASE_URL')} and {mono('REDIS_URL')} in its environment
-            automatically — the same connection the functions use, without a credential to copy.
+            gets {mono('DATABASE_URL')} and {mono('REDIS_URL')} in its environment automatically
+            — the same connection the functions use, without a credential to copy.
           </>,
         )}
         {p(
@@ -1468,7 +1474,10 @@ export const DOCS: DocPage[] = [
           ['Tab', 'Shows'],
           [
             ['Deployments', 'Every build, with its transcript. A running build streams live.'],
-            ['Logs', 'A live tail across every replica, tagged with which one wrote each line.'],
+            [
+              'Logs',
+              'A live tail across every replica, tagged with which one wrote each line.',
+            ],
             ['Overview', 'What is actually running right now, and on which release.'],
           ],
         )}
@@ -1486,10 +1495,9 @@ export const DOCS: DocPage[] = [
         {h2('shape', 'The file')}
         {p(
           <>
-            Put it at the root of the repository. Exactly one of{' '}
-            {mono('dockerfilePath')}, {mono('dockerfileLines')} or {mono('imageName')} may be
-            set — they are three answers to the same question, and setting two is refused rather
-            than silently resolved.
+            Put it at the root of the repository. Exactly one of {mono('dockerfilePath')},{' '}
+            {mono('dockerfileLines')} or {mono('imageName')} may be set — they are three answers
+            to the same question, and setting two is refused rather than silently resolved.
           </>,
         )}
         {code(
@@ -1546,10 +1554,10 @@ export const DOCS: DocPage[] = [
         {h2('caprover', 'captain-definition works too')}
         {p(
           <>
-            A repository that already carries a CapRover{' '}
-            {mono('captain-definition')} is read as-is: the two files say the same things with
-            the same key names, so a project that deploys there deploys here without a second
-            file to keep in step. {mono('cubicle.json')} wins when both are present.
+            A repository that already carries a CapRover {mono('captain-definition')} is read
+            as-is: the two files say the same things with the same key names, so a project that
+            deploys there deploys here without a second file to keep in step.{' '}
+            {mono('cubicle.json')} wins when both are present.
           </>,
         )}
         {code(
@@ -1572,7 +1580,9 @@ export const DOCS: DocPage[] = [
             {'    '}
             <span className="text-ok">&quot;EXPOSE 3000&quot;</span>,{'\n'}
             {'    '}
-            <span className="text-ok">&quot;CMD [\&quot;node\&quot;, \&quot;server.js\&quot;]&quot;</span>
+            <span className="text-ok">
+              &quot;CMD [\&quot;node\&quot;, \&quot;server.js\&quot;]&quot;
+            </span>
             {'\n'}
             {'  '}]{'\n'}
             {'}'}
@@ -1595,10 +1605,10 @@ export const DOCS: DocPage[] = [
         {p(
           <>
             Everything on this page and {docLink('apps', 'the previous one')}, written as
-            instructions for an AI coding assistant. Paste it into Claude Code, Cursor, Copilot or
-            ChatGPT with the repository open: it reads the project, writes the Dockerfile,{' '}
-            {mono('.dockerignore')} and {mono('cubicle.json')} it actually needs, tries the build,
-            and finishes with a table of the environment variables to set on the app.
+            instructions for an AI coding assistant. Paste it into Claude Code, Cursor, Copilot
+            or ChatGPT with the repository open: it reads the project, writes the Dockerfile,{' '}
+            {mono('.dockerignore')} and {mono('cubicle.json')} it actually needs, tries the
+            build, and finishes with a table of the environment variables to set on the app.
           </>,
         )}
         <PromptCard />
@@ -1712,10 +1722,9 @@ export const DOCS: DocPage[] = [
         )}
         {p(
           <>
-            On GitHub a fine-grained token with{' '}
-            {mono('Contents: read-only')} on the repositories you deploy is enough. The token is
-            used to clone and never appears in a build log — the URL it is spliced into is
-            redacted before anything is written down.
+            On GitHub a fine-grained token with {mono('Contents: read-only')} on the
+            repositories you deploy is enough. The token is used to clone and never appears in a
+            build log — the URL it is spliced into is redacted before anything is written down.
           </>,
         )}
 
@@ -1723,9 +1732,9 @@ export const DOCS: DocPage[] = [
         {p(
           <>
             Every app has a webhook URL on its <strong>Overview</strong> tab. In the repository:
-            Settings → Webhooks → Add webhook, content type{' '}
-            {mono('application/json')}, and paste the URL as both the payload URL and the
-            secret. A push to the branch the app tracks then deploys it.
+            Settings → Webhooks → Add webhook, content type {mono('application/json')}, and
+            paste the URL as both the payload URL and the secret. A push to the branch the app
+            tracks then deploys it.
           </>,
         )}
         {table(
@@ -2085,6 +2094,101 @@ export const DOCS: DocPage[] = [
     ),
   },
   {
+    id: 'terminal',
+    group: 'Guides',
+    label: 'Terminal',
+    title: 'Terminal',
+    lede: 'A real shell on a node’s host, opened from the browser — the console’s answer to "just SSH in".',
+    body: () => (
+      <>
+        {h2('what', 'What it actually opens')}
+        {p(
+          <>
+            Not a container. Every other shell reachable through Cubicle — an app&apos;s, an
+            isolate&apos;s — is a container&apos;s own filesystem and process tree. This one
+            re-enters the node&apos;s host namespaces directly, the same trick that underlies
+            every &quot;get a host shell out of a container&quot; tool: a small privileged
+            container the control plane keeps running, which uses {mono('nsenter')} to step into
+            the host&apos;s own mount, network, UTS and IPC namespaces before handing you a
+            shell. {mono('apt')}, {mono('systemctl')}, {mono('docker')}, editing a file under{' '}
+            {mono('/etc')} — all exactly as they would be over SSH, because it is the same
+            machine, not an impression of it.
+          </>,
+        )}
+        {p(
+          <>
+            <strong>tmux</strong> is what makes a session survive a dropped connection. The
+            WebSocket only ever attaches an existing or freshly created tmux session running
+            inside that same container, so closing a laptop lid and reopening the console
+            reattaches to the same shell, scrollback included, rather than losing it — exactly
+            like tmux over SSH.
+          </>,
+        )}
+
+        {h2('enable', 'Turning it on')}
+        {p(
+          <>
+            Off on every new instance. An owner turns it on from{' '}
+            <strong>Settings → Maintenance</strong>, or from the Terminal page itself the first
+            time they open it — both call the same switch, and it needs saying only once for the
+            whole instance.
+          </>,
+        )}
+        {note(
+          <>
+            This is the one feature here whose entire purpose is running arbitrary commands as
+            root on the machine it runs on. That is not an oversight to route around — it is the
+            feature — which is why it defaults off and stays behind the owner role specifically,
+            one level above admin. If that is not a capability this instance should have at all,
+            simplest is to leave it off.
+          </>,
+        )}
+
+        {h2('sessions', 'Sessions, and what ends one')}
+        {p('Multiple, and they outlive the tab that opened them:')}
+        {table(
+          ['Action', 'Effect'],
+          [
+            [
+              'Open a session',
+              'Starts (or reattaches to) a tmux session on the node and gives it a tab.',
+            ],
+            [
+              'Close a tab',
+              'Stops watching it in this browser. The shell keeps running — reopen it from the session list any time.',
+            ],
+            [
+              'End a session',
+              'Kills it. Whatever was running in it stops, the same as closing a real terminal window would.',
+            ],
+            [
+              'Reload the console, or reconnect after a dropped connection',
+              'Every open tab reattaches on its own — tmux is the thing actually keeping the session alive, not the browser tab.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            A session also survives a control-plane restart or an upgrade, the same way a
+            running app&apos;s containers do — it lives in the node&apos;s own toolbox
+            container, not in this database. Only replacing that container, which happens
+            automatically when Cubicle itself is upgraded, ends every session on that node at
+            once.
+          </>,
+        )}
+
+        {h2('nodes', 'More than one node')}
+        {p(
+          <>
+            A cluster with more than one node gets a picker above the session tabs. The default
+            is whichever node this control plane itself runs on — &quot;the VPS&quot; is what
+            most people mean without saying so.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
     id: 'config',
     group: 'Reference',
     label: 'cubicle.toml',
@@ -2236,9 +2340,10 @@ export const DOCS: DocPage[] = [
         )}
         {p(
           <>
-            Credentials are written to {mono('~/.cubicle/config.toml')} at mode 600. Create tokens
-            under <strong>Settings → API keys</strong>; setup issues the first one for you. Give a
-            token that leaves your own machine the narrowest scope and a single cluster.
+            Credentials are written to {mono('~/.cubicle/config.toml')} at mode 600. Create
+            tokens under <strong>Settings → API keys</strong>; setup issues the first one for
+            you. Give a token that leaves your own machine the narrowest scope and a single
+            cluster.
           </>,
         )}
 

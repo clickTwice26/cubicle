@@ -83,6 +83,14 @@ class Instance(Base, TimestampMixin):
     turnstile_site_key: Mapped[str] = mapped_column(String(120), default="")
     turnstile_secret_ciphertext: Mapped[str | None] = mapped_column(Text)
 
+    #: A real shell on a node's host, opened from the console. Off by default:
+    #: unlike every other feature here, this one's entire purpose is letting an
+    #: owner run arbitrary commands as root on the machine — it needs no
+    #: exploit and no misconfiguration, it *is* the access. The owner role gate
+    #: on every endpoint is already the primary control; this is the operator
+    #: choosing, once, whether that capability exists on this instance at all.
+    terminal_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class Cluster(Base, TimestampMixin):
     """One scheduling domain: its own nodes, namespaces, config and data services.

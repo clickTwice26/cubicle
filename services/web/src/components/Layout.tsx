@@ -19,6 +19,7 @@ import {
   Layers,
   Lines,
   Moon,
+  Play,
   Power,
   Search,
   Server,
@@ -82,14 +83,21 @@ export function ThemeToggle({ className }: { className?: string }) {
 const NAV = [
   { to: '/console', end: true, label: 'Overview', icon: Grid },
   { to: '/console/live', end: false, label: 'Live activity', icon: Bolt },
-  { to: '/console/playground', end: false, label: 'Function playground', icon: Terminal },
+  { to: '/console/playground', end: false, label: 'Function playground', icon: Play },
   { to: '/console/apps', end: false, label: 'Applications', icon: Server },
   { to: '/console/marketplace', end: false, label: 'Marketplace', icon: Store },
   { to: '/console/env', end: false, label: 'Global env', icon: Globe },
   { to: '/console/logs', end: false, label: 'Logs & monitoring', icon: Lines },
   { to: '/console/cluster', end: false, label: 'Cluster & metering', icon: Bars },
+  // A real shell on the host, not a console feature like the rest of this
+  // list — hidden from anyone who could not open it anyway.
+  { to: '/console/terminal', end: false, label: 'Terminal', icon: Terminal, ownerOnly: true },
   { to: '/console/settings', end: false, label: 'Settings', icon: Sliders },
 ] as const
+
+function visibleNav(role: string | undefined) {
+  return NAV.filter((item) => !('ownerOnly' in item && item.ownerOnly) || role === 'owner')
+}
 
 const NAV_ITEM =
   'flex h-[38px] w-full items-center gap-2.5 rounded-[9px] border-0 px-2.5 text-left text-[13.5px] font-medium transition'
@@ -225,7 +233,7 @@ export function ConsoleLayout({ children }: { children: React.ReactNode }) {
         <ClusterSwitcher collapsed={collapsed} />
 
         <nav className={cx('flex flex-1 flex-col gap-[3px]', collapsed ? 'px-2.5' : 'px-3')}>
-          {NAV.map(({ to, end, label, icon: Icon }) => (
+          {visibleNav(me?.role).map(({ to, end, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -386,6 +394,8 @@ function MobileNav({
   postgres?: string
   redis?: string
 }) {
+  const { data: me } = useMe()
+
   // Escape closes it, and the page underneath must not scroll while a drawer
   // is over it — on iOS that scrolls the thing you cannot see.
   useEffect(() => {
@@ -439,7 +449,7 @@ function MobileNav({
           <ClusterSwitcher collapsed={false} />
 
           <div className="flex flex-col gap-[3px] px-3">
-            {NAV.map(({ to, end, label, icon: Icon }) => (
+            {visibleNav(me?.role).map(({ to, end, label, icon: Icon }) => (
               <NavLink key={to} to={to} end={end} onClick={onClose} className={navClass}>
                 <Icon size={17} />
                 {label}
