@@ -514,6 +514,15 @@ class HostScript(Base, TimestampMixin):
     #: ``json`` insists; ``text`` never parses.
     output_mode: Mapped[str] = mapped_column(String(10), default="auto")
 
+    #: The most this script may return, in KB. Per script rather than
+    #: instance-wide because the sizes differ by two orders of magnitude
+    #: between a health check and a script proxying somebody else's API — and
+    #: for the second kind the size of the answer is not its author's to
+    #: choose. Going past it is reported as a failed run, never as a short
+    #: one: a body cut mid-value and served as 200 is the kind of bug that
+    #: costs somebody a day.
+    max_output_kb: Mapped[int] = mapped_column(Integer, default=1024)
+
     #: Which node's host. Null means wherever the control plane itself runs,
     #: which is what "the VPS" means on the single-machine install this is
     #: mostly for.

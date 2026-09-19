@@ -89,10 +89,27 @@ INTERPRETERS: dict[str, str] = {
 #: sanity ceiling, not a budget.
 MAX_SOURCE_BYTES = 512 * 1024
 
-#: How much of each stream is kept. Everything past it is still *read* — a
-#: program must never block writing to a pipe because this stopped listening —
-#: but not stored and not returned.
-MAX_OUTPUT_BYTES = 256 * 1024
+#: How much of each stream a run may return, when the script does not say.
+#:
+#: Everything past the limit is still *read* — a program must never block
+#: writing to a pipe because this stopped listening — but it is not returned,
+#: and a run that hits it is reported as truncated rather than as success. A
+#: script used as a proxy for somebody else's API is the case that makes this
+#: worth configuring: the size of the answer is not its author's to choose.
+DEFAULT_OUTPUT_KB = 1024
+
+#: The highest a script may be set to. Output is held in memory while it is
+#: read, so this multiplied by MAX_CONCURRENT_RUNS is the worst case a node can
+#: be asked to hold at once.
+MAX_OUTPUT_KB = 16 * 1024
+MIN_OUTPUT_KB = 1
+
+#: How much of each stream the *run history* keeps, which is a different
+#: question from what the caller is handed. History exists to be read by a
+#: person debugging at two in the morning; the first 64 KB answers that, and
+#: keeping megabytes per run of a script called every minute would make this
+#: table the largest thing in the database.
+MAX_STORED_CHARS = 64 * 1024
 
 MIN_TIMEOUT_S = 1
 MAX_TIMEOUT_S = 900
@@ -194,6 +211,9 @@ class Outcome:
     stderr: bytes
     duration_ms: float
     truncated: bool
+    #: The ceiling this run was given, so an error can name the number that
+    #: has to change rather than saying "too big".
+    limit_bytes: int = DEFAULT_OUTPUT_KB * 1024
 
     @property
     def ok(self) -> bool:
@@ -350,8 +370,8 @@ def _limiter() -> asyncio.Semaphore:
     return _slots
 
 
-def _drain(sock: Any) -> tuple[bytes, bytes, bool]:
-    """Read the exec to EOF, keeping at most ``MAX_OUTPUT_BYTES`` of each stream.
+def _drain(sock: Any, limit: int) -> tuple[bytes, bytes, bool]:
+    """Read the exec to EOF, keeping at most ``limit`` bytes of each stream.
 
     Reading continues past the ceiling on purpose. A program whose output is
     not being consumed blocks on the pipe, so abandoning the read early would
@@ -367,7 +387,7 @@ def _drain(sock: Any) -> tuple[bytes, bytes, bool]:
         kept = streams.get(stream_id)
         if kept is None:
             continue
-        room = MAX_OUTPUT_BYTES - len(kept)
+        room = limit - len(kept)
         if room <= 0:
             truncated = True
             continue
@@ -408,6 +428,7 @@ async def run(
     working_dir: str,
     timeout_s: int,
     stdin: bytes = b"",
+    max_output_kb: int = DEFAULT_OUTPUT_KB,
 ) -> Outcome:
     """Run ``source`` on ``host`` and come back with what it printed.
 
@@ -422,6 +443,7 @@ async def run(
         raise ScriptError("a working directory must be an absolute path.")
 
     timeout_s = max(MIN_TIMEOUT_S, min(MAX_TIMEOUT_S, timeout_s))
+    limit = max(MIN_OUTPUT_KB, min(MAX_OUTPUT_KB, max_output_kb)) * 1024
 
     try:
         await ensure_toolbox(host)
@@ -453,7 +475,7 @@ async def run(
         )["Id"]
         sock = client.api.exec_start(exec_id, tty=False, socket=True)
         try:
-            stdout, stderr, truncated = _drain(sock)
+            stdout, stderr, truncated = _drain(sock, limit)
         finally:
             with contextlib.suppress(Exception):
                 sock.close()
@@ -483,11 +505,19 @@ async def run(
                 stderr=b"cubicle: the node stopped answering while the script was running",
                 duration_ms=(time.perf_counter() - started) * 1000,
                 truncated=False,
+                limit_bytes=limit,
             )
         except ScriptError:
             raise
         except DockerException as exc:
             raise ScriptError(f"could not run the script on this node: {exc}") from exc
+
+    if truncated:
+        log.warning(
+            "host script output hit its limit and was cut",
+            host=host,
+            limit_kb=limit // 1024,
+        )
 
     return Outcome(
         exit_code=code,
@@ -495,6 +525,7 @@ async def run(
         stderr=stderr,
         duration_ms=(time.perf_counter() - started) * 1000,
         truncated=truncated,
+        limit_bytes=limit,
     )
 
 
@@ -612,6 +643,7 @@ async def probe_host(host: str) -> dict[str, str]:
             env={},
             working_dir="",
             timeout_s=15,
+            max_output_kb=64,
         )
     except Exception as exc:  # noqa: BLE001 - "never raises" is the contract
         # Deliberately every exception, not just ScriptError. This exists to
@@ -623,3 +655,20 @@ async def probe_host(host: str) -> dict[str, str]:
     facts = parse_probe(outcome.stdout_text()) if outcome.ok else {}
     _probes[host] = (now, facts)
     return facts
+
+
+def for_history(text: str, *, stream: str) -> str:
+    """The part of a stream worth keeping in the database.
+
+    Separate from the response limit on purpose. What a caller is handed has
+    to be the whole answer or an error; what the console shows a person a week
+    later only has to be enough to understand the run, and a megabyte of it
+    per run would cost far more than it explains.
+    """
+    if len(text) <= MAX_STORED_CHARS:
+        return text
+    return (
+        text[:MAX_STORED_CHARS]
+        + f"\n\n… [{len(text)} characters of {stream}; the first "
+        + f"{MAX_STORED_CHARS} are kept here]"
+    )

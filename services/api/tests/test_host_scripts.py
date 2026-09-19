@@ -20,6 +20,9 @@ from io import BytesIO
 import pytest
 
 from cubicle.runtime.hostscripts import (
+    DEFAULT_OUTPUT_KB,
+    MAX_OUTPUT_KB,
+    MAX_STORED_CHARS,
     MAX_TIMEOUT_S,
     NOT_STARTED,
     PROBED_COMMANDS,
@@ -27,6 +30,7 @@ from cubicle.runtime.hostscripts import (
     Outcome,
     ScriptError,
     clean_env,
+    for_history,
     inner_program,
     interpret_output,
     outer_program,
@@ -355,3 +359,36 @@ def test_the_probe_program_builds_with_its_printf_intact():
     # The whole list, in the loop, exactly once each.
     line = next(row for row in program.splitlines() if row.startswith("for c in "))
     assert line.removeprefix("for c in ").removesuffix("; do").split() == list(PROBED_COMMANDS)
+
+
+# ── the output ceiling ───────────────────────────────────────────────────────
+
+
+def test_the_default_ceiling_is_a_megabyte():
+    """Four times what it was. The old 256 KB was shared by every script and
+    mentioned nowhere, which is how a proxy script had its JSON cut mid-value
+    and handed back as a 200.
+    """
+    assert DEFAULT_OUTPUT_KB == 1024
+    assert MAX_OUTPUT_KB == 16 * 1024
+
+
+def test_history_keeps_a_readable_amount_of_a_short_stream_untouched():
+    assert for_history("all of it", stream="stdout") == "all of it"
+
+
+def test_history_trims_a_long_stream_and_says_it_did():
+    text = "x" * (MAX_STORED_CHARS + 5000)
+    kept = for_history(text, stream="stdout")
+    assert kept.startswith("x" * 100)
+    assert len(kept) < len(text)
+    assert str(len(text)) in kept
+    assert "stdout" in kept
+
+
+def test_the_history_limit_is_not_the_response_limit():
+    """Two different questions. What a caller is handed has to be the whole
+    answer or an error; what a person reads in the console a week later only
+    has to be enough to understand the run.
+    """
+    assert MAX_STORED_CHARS < DEFAULT_OUTPUT_KB * 1024

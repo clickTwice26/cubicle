@@ -188,7 +188,32 @@ def _respond(done: script_svc.Completed, script: HostScript, cluster_slug: str) 
         "X-Cubicle-Node": done.node_name,
         "X-Cubicle-Exit-Code": str(outcome.exit_code),
         "X-Cubicle-Duration-Ms": f"{outcome.duration_ms:.1f}",
+        # Always present, and always answerable. A client that needs to know
+        # the body is whole should be able to assert it rather than infer it
+        # from the body's own shape — inferring it is what a caller had to do
+        # when this header did not exist, and it only works for JSON.
+        "X-Cubicle-Truncated": "1" if outcome.truncated else "0",
     }
+
+    # Before the exit code is consulted: the program may have finished
+    # perfectly and still had its answer cut, and there is nothing in a
+    # successful exit that could tell anyone so.
+    if outcome.truncated and outcome.ok:
+        limit_kb = outcome.limit_bytes // 1024
+        return JSONResponse(
+            {
+                "error": "truncated",
+                "message": (
+                    f"The script printed more than its {limit_kb} KB output limit, so "
+                    "what it returned is cut off and is not the whole answer. Raise "
+                    f"'{script.name}' output limit in the console."
+                ),
+                "limit_bytes": outcome.limit_bytes,
+                "returned_bytes": len(outcome.stdout),
+            },
+            status_code=done.status_code,
+            headers=headers,
+        )
 
     if not outcome.ok:
         return JSONResponse(

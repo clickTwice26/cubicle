@@ -39,6 +39,7 @@ import {
   type RunResult,
   type ScriptDetail,
   type ScriptInput,
+  type ScriptsStatus,
   type ScriptSummary,
 } from '../lib/scripts'
 
@@ -125,7 +126,7 @@ export default function ScriptsPage() {
 
   return (
     <PageShell>
-      <Workspace maxTimeout={status.max_timeout_s} interpreters={status.interpreters} />
+      <Workspace limits={status} interpreters={status.interpreters} />
     </PageShell>
   )
 }
@@ -185,10 +186,10 @@ function EnableCard() {
 }
 
 function Workspace({
-  maxTimeout,
+  limits,
   interpreters,
 }: {
-  maxTimeout: number
+  limits: ScriptsStatus
   interpreters: { value: string; label: string }[]
 }) {
   const { data, isLoading } = useScripts()
@@ -265,7 +266,7 @@ function Workspace({
         <ScriptEditor
           key={selected}
           scriptId={selected}
-          maxTimeout={maxTimeout}
+          limits={limits}
           interpreters={interpreters}
           onDeleted={() => setSelected(null)}
         />
@@ -326,12 +327,12 @@ type Tab = 'code' | 'settings' | 'env' | 'runs'
 
 function ScriptEditor({
   scriptId,
-  maxTimeout,
+  limits,
   interpreters,
   onDeleted,
 }: {
   scriptId: string
-  maxTimeout: number
+  limits: ScriptsStatus
   interpreters: { value: string; label: string }[]
   onDeleted: () => void
 }) {
@@ -371,6 +372,7 @@ function ScriptEditor({
       draft.timeout_s !== script.timeout_s ||
       draft.method !== script.method ||
       draft.output_mode !== script.output_mode ||
+      draft.max_output_kb !== script.max_output_kb ||
       draft.auth_required !== script.auth_required ||
       draft.status !== script.status ||
       draft.node_id !== script.node_id ||
@@ -399,6 +401,7 @@ function ScriptEditor({
       timeout_s: draft.timeout_s,
       method: draft.method,
       output_mode: draft.output_mode,
+      max_output_kb: draft.max_output_kb,
       auth_required: draft.auth_required,
       status: draft.status,
       node_id: draft.node_id,
@@ -485,7 +488,7 @@ function ScriptEditor({
         {tab === 'settings' ? (
           <SettingsTab
             draft={draft}
-            maxTimeout={maxTimeout}
+            limits={limits}
             interpreters={interpreters}
             onChange={edit}
             onDelete={() =>
@@ -564,13 +567,13 @@ function CodeTab({
 
 function SettingsTab({
   draft,
-  maxTimeout,
+  limits,
   interpreters,
   onChange,
   onDelete,
 }: {
   draft: ScriptDetail
-  maxTimeout: number
+  limits: ScriptsStatus
   interpreters: { value: string; label: string }[]
   onChange: (patch: Partial<ScriptDetail>) => void
   onDelete: () => void
@@ -627,10 +630,21 @@ function SettingsTab({
           label="Timeout (seconds)"
           type="number"
           min={1}
-          max={maxTimeout}
+          max={limits.max_timeout_s}
           value={draft.timeout_s}
           onChange={(event) => onChange({ timeout_s: Number(event.target.value) })}
-          hint={`Up to ${maxTimeout}. The host enforces it.`}
+          hint={`Up to ${limits.max_timeout_s}. The host enforces it.`}
+        />
+
+        <Field
+          label="Response limit (KB)"
+          type="number"
+          min={1}
+          max={limits.max_output_kb}
+          value={draft.max_output_kb}
+          onChange={(event) => onChange({ max_output_kb: Number(event.target.value) })}
+          hint={`Up to ${limits.max_output_kb}. Past it the run answers 502, never a cut body.`}
+          className="sm:col-span-2"
         />
 
         <Select
@@ -762,7 +776,9 @@ function RunsTab({ scriptId }: { scriptId: string }) {
               <Stream label="stdout" body={entry.stdout} />
               <Stream label="stderr" body={entry.stderr} />
               {entry.truncated ? (
-                <p className="text-[12px] text-ink-3">Output was longer than the kept limit.</p>
+                <p className="text-[12px] text-err">
+                  Cut off at this script&apos;s response limit — the caller got a 502.
+                </p>
               ) : null}
             </div>
           ) : null}
@@ -782,15 +798,22 @@ function Stream({ label, body }: { label: string; body: string }) {
 }
 
 function Result({ result, onDismiss }: { result: RunResult; onDismiss: () => void }) {
-  const ok = result.exit_code === 0
+  const ok = result.exit_code === 0 && !result.truncated
   return (
     <Card className="overflow-hidden">
       <CardHeader
-        title={ok ? 'Ran successfully' : `Exited ${result.exit_code}`}
+        title={
+          result.truncated && result.exit_code === 0
+            ? 'Ran, but the output was cut off'
+            : ok
+              ? 'Ran successfully'
+              : `Exited ${result.exit_code}`
+        }
         subtitle={`${(result.duration_ms / 1000).toFixed(2)}s on ${result.node_name} · ${result.run_id}`}
         action={
           <div className="flex items-center gap-3">
             {result.timed_out ? <Badge tone="err">timed out</Badge> : null}
+            {result.truncated ? <Badge tone="err">truncated</Badge> : null}
             <Badge tone={ok ? 'ok' : 'err'}>exit {result.exit_code}</Badge>
             <button
               type="button"
@@ -803,6 +826,14 @@ function Result({ result, onDismiss }: { result: RunResult; onDismiss: () => voi
         }
       />
       <div className="space-y-3 px-5 py-4">
+        {result.truncated ? (
+          <div className="rounded-xl border border-err bg-err-bg px-4 py-3 text-[13px] leading-relaxed">
+            The script printed more than its{' '}
+            <strong>{Math.round(result.limit_bytes / 1024)} KB</strong> response limit, so what
+            you see below stops mid-stream. Callers get a 502 rather than a cut body — raise the
+            response limit on the Settings tab.
+          </div>
+        ) : null}
         {!result.stdout && !result.stderr ? (
           <p className="text-[13.5px] text-ink-3">It printed nothing.</p>
         ) : null}

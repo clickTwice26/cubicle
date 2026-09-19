@@ -51,6 +51,9 @@ class ScriptIn(BaseModel):
     timeout_s: int | None = Field(default=None, ge=runtime.MIN_TIMEOUT_S, le=runtime.MAX_TIMEOUT_S)
     method: str | None = None
     output_mode: str | None = None
+    max_output_kb: int | None = Field(
+        default=None, ge=runtime.MIN_OUTPUT_KB, le=runtime.MAX_OUTPUT_KB
+    )
     node_id: str | None = None
     auth_required: bool | None = None
     status: str | None = None
@@ -154,6 +157,8 @@ async def _apply(db, cluster: Cluster, script: HostScript, payload: ScriptIn) ->
         script.method = payload.method.upper()
     if payload.output_mode is not None:
         script.output_mode = payload.output_mode
+    if payload.max_output_kb is not None:
+        script.max_output_kb = payload.max_output_kb
     if payload.auth_required is not None:
         script.auth_required = payload.auth_required
     if payload.status is not None:
@@ -178,6 +183,8 @@ async def scripts_status(instance: InstanceDep, _: RequireOwner):
             {"value": value, "label": label} for value, label in runtime.INTERPRETERS.items()
         ],
         "max_timeout_s": runtime.MAX_TIMEOUT_S,
+        "max_output_kb": runtime.MAX_OUTPUT_KB,
+        "default_output_kb": runtime.DEFAULT_OUTPUT_KB,
     }
 
 
@@ -341,6 +348,7 @@ async def run_script(
         "stdout": done.outcome.stdout_text(),
         "stderr": done.outcome.stderr_text(),
         "truncated": done.outcome.truncated,
+        "limit_bytes": done.outcome.limit_bytes,
         "timed_out": done.outcome.timed_out,
     }
 

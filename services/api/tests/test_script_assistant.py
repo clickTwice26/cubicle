@@ -162,3 +162,54 @@ def test_writing_from_scratch_sends_no_current_script():
     """
     text = _render_script(brief(), None)
     assert "CURRENT SCRIPT" not in text
+
+
+# ── truncation is a failure, not a short answer ──────────────────────────────
+#
+# Lives here rather than beside the shell tests because it is about what a
+# caller is told, which is the same question the brief above is about: what
+# does the other side actually learn.
+
+
+def _outcome(*, exit_code=0, truncated=False):
+    from cubicle.runtime.hostscripts import Outcome
+
+    return Outcome(
+        exit_code=exit_code,
+        stdout=b"",
+        stderr=b"",
+        duration_ms=0.0,
+        truncated=truncated,
+        limit_bytes=1024 * 1024,
+    )
+
+
+def test_a_whole_answer_is_success():
+    from cubicle.scripts import status_for
+
+    assert status_for(_outcome()) == 200
+
+
+def test_a_cut_answer_is_a_bad_gateway_however_cleanly_it_exited():
+    """The exit code cannot express this: the program wrote every byte it
+    meant to and Cubicle kept only the first few. 200 with what survived is
+    the platform reporting success for its own truncation.
+    """
+    from cubicle.scripts import status_for
+
+    assert status_for(_outcome(exit_code=0, truncated=True)) == 502
+
+
+def test_the_scripts_own_verdict_outranks_truncation():
+    """ "Exited 3, here is stderr" tells an operator more than "the output was
+    too long", and a script that failed probably printed why.
+    """
+    from cubicle.scripts import status_for
+
+    assert status_for(_outcome(exit_code=3, truncated=True)) == 500
+
+
+def test_a_timeout_is_still_a_timeout_when_it_also_overran():
+    from cubicle.scripts import status_for
+
+    assert status_for(_outcome(exit_code=124, truncated=True)) == 504

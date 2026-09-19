@@ -2328,6 +2328,10 @@ print(json.dumps({
               'Response',
               'Auto parses stdout as JSON when it is JSON. JSON insists, and answers 502 when a script prints something else. Text never parses.',
             ],
+            [
+              'Response limit',
+              'How much the script may return, in KB. 1024 by default, up to 16384. Going past it answers 502 — never a cut body served as success.',
+            ],
             ['Node', 'Which machine. A script means a specific host, so it is never load-balanced.'],
             ['Paused', 'The URL answers 503 without running anything.'],
           ],
@@ -2347,9 +2351,34 @@ print(json.dumps({
         {p(
           <>
             A host with no {mono('timeout')} command refuses the run rather than starting
-            something nothing can stop. Output is capped at 256 KB per stream — the rest is
-            still read, so a chatty script never blocks, just not kept. At most eight scripts
-            run at once across the control plane; past that they queue.
+            something nothing can stop. At most eight scripts run at once across the control
+            plane; past that they queue.
+          </>,
+        )}
+
+        {h2('limits', 'When the output is too big')}
+        {p(
+          <>
+            Each script has a response limit — 1 MB unless you raise it, up to 16 MB on the
+            Settings tab. Output past it is still <em>read</em>, so a chatty script never blocks
+            on a full pipe, but it is not returned.
+          </>,
+        )}
+        {note(
+          <>
+            A run that hits the limit answers <strong>502 truncated</strong>, never 200 with the
+            part that fit. A body cut mid-value and served as success is indistinguishable from
+            the upstream being wrong, and it costs whoever is debugging it a day. Every response
+            also carries {mono('X-Cubicle-Truncated')}, so a caller can assert the body is whole
+            rather than infer it.
+          </>,
+        )}
+        {p(
+          <>
+            The run history is bounded separately, at 64 KB per stream, and says how much there
+            was. That is a different question: what a caller receives has to be the whole answer
+            or an error, while what the console shows you a week later only has to be enough to
+            understand the run.
           </>,
         )}
 

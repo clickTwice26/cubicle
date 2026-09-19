@@ -25,6 +25,7 @@ export interface ScriptSummary {
   timeout_s: number
   method: string
   output_mode: 'auto' | 'json' | 'text'
+  max_output_kb: number
   auth_required: boolean
   status: 'active' | 'paused'
   node_id: string | null
@@ -68,12 +69,15 @@ export interface RunResult {
   stderr: string
   truncated: boolean
   timed_out: boolean
+  limit_bytes: number
 }
 
 export interface ScriptsStatus {
   enabled: boolean
   interpreters: { value: string; label: string }[]
   max_timeout_s: number
+  max_output_kb: number
+  default_output_kb: number
 }
 
 export interface ScriptInput {
@@ -85,6 +89,7 @@ export interface ScriptInput {
   timeout_s?: number
   method?: string
   output_mode?: string
+  max_output_kb?: number
   node_id?: string | null
   auth_required?: boolean
   status?: string

@@ -132,17 +132,24 @@ async def resolve_node(db: AsyncSession, cluster: Cluster, script: HostScript) -
 
 
 def status_for(outcome: runtime.Outcome) -> int:
-    """Zero is 200 and everything else is a failure, with two worth naming.
+    """Zero is 200 and everything else is a failure, with three worth naming.
 
     A script that exits non-zero has said the request failed — there is no
     other channel for it to say so, and treating stdout as success regardless
     would make an exit code decorative.
+
+    Truncation is a failure too, and it is the one the exit code cannot
+    express: the program succeeded and wrote every byte it meant to, and
+    Cubicle kept only the first few. Answering 200 with what survived would
+    hand a caller a JSON document cut mid-value and call it an answer. The
+    script's own verdict is reported first when it has one, because "exited 3,
+    here is stderr" is more useful than "the output was too long".
     """
-    if outcome.ok:
-        return 200
-    if outcome.timed_out:
-        return 504
-    return 500
+    if not outcome.ok:
+        return 504 if outcome.timed_out else 500
+    if outcome.truncated:
+        return 502
+    return 200
 
 
 def serialize(script: HostScript, cluster: Cluster, *, node_name: str = "") -> dict:
@@ -156,6 +163,7 @@ def serialize(script: HostScript, cluster: Cluster, *, node_name: str = "") -> d
         "timeout_s": script.timeout_s,
         "method": script.method,
         "output_mode": script.output_mode,
+        "max_output_kb": script.max_output_kb,
         "auth_required": script.auth_required,
         "status": script.status,
         "node_id": str(script.node_id) if script.node_id else None,
@@ -226,6 +234,7 @@ async def execute(
         working_dir=script.working_dir,
         timeout_s=script.timeout_s,
         stdin=stdin,
+        max_output_kb=script.max_output_kb,
     )
     status_code = status_for(outcome)
 
@@ -275,8 +284,8 @@ async def _record(
                     trigger=trigger,
                     exit_code=outcome.exit_code,
                     duration_ms=outcome.duration_ms,
-                    stdout=outcome.stdout_text(),
-                    stderr=outcome.stderr_text(),
+                    stdout=runtime.for_history(outcome.stdout_text(), stream="stdout"),
+                    stderr=runtime.for_history(outcome.stderr_text(), stream="stderr"),
                     truncated=outcome.truncated,
                     status_code=status_code,
                     request_id=run_id,
