@@ -4,6 +4,7 @@ import {
   Bars,
   Bolt,
   Book,
+  Code,
   Database,
   Globe,
   Grid,
@@ -86,6 +87,12 @@ const PAGES: { label: string; to: string; hint: string; icon: Item['icon'] }[] =
     to: '/console/terminal',
     hint: 'A live shell on the node',
     icon: Terminal,
+  },
+  {
+    label: 'Scripts',
+    to: '/console/scripts',
+    hint: 'Programs that run on the host, behind a URL',
+    icon: Code,
   },
   {
     label: 'Settings',

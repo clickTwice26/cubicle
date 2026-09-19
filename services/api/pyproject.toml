@@ -50,6 +50,10 @@ ignore = ["S101", "B008", "S104"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]
+# The programs under test are built around paths inside the toolbox container
+# and on the node's host. Written out in full, or the test is not checking the
+# thing production runs.
+"tests/test_host_scripts.py" = ["S105", "S106", "S108"]
 "alembic/*" = ["E501"]
 # The isolate's /tmp is a tmpfs the control plane attaches, not a host path.
 "cubicle/runtime/pool.py" = ["S108", "ASYNC109"]

@@ -208,6 +208,12 @@ export const File = (p: Props) => (
   </Svg>
 )
 
+export const Code = (p: Props) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <path d="m8.5 8-4.5 4 4.5 4M15.5 8l4.5 4-4.5 4" />
+  </Svg>
+)
+
 export const Info = (p: Props) => (
   <Svg strokeWidth={1.8} {...p}>
     <circle cx="12" cy="12" r="9" />

@@ -98,6 +98,20 @@ def function_url(cluster: Cluster, ns: str = "", name: str = "") -> str:
     return root + "/"
 
 
+def script_url(cluster: Cluster, name: str) -> str:
+    """Where a host script answers.
+
+    Everything lives under ``/run/`` rather than following
+    :func:`cluster_root`, which would put the cluster slug first and give a
+    script a URL indistinguishable from a two-segment function path. One fixed
+    prefix means the front-end web server can route every script with a single
+    rule, and means a script can never collide with a namespace.
+    """
+    if cluster.ingress_domain:
+        return f"{_scheme()}://{cluster.ingress_domain}/run/{name}"
+    return f"{settings.public_url.rstrip('/')}/run/{cluster.slug}/{name}"
+
+
 def resource_suffix(cluster: Cluster) -> str:
     """Suffix for Docker names, so two clusters never fight over a container.
 

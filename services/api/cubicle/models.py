@@ -91,6 +91,13 @@ class Instance(Base, TimestampMixin):
     #: choosing, once, whether that capability exists on this instance at all.
     terminal_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    #: Scripts that run on a node's host, triggered by a URL. Off for the same
+    #: reason the terminal is, and separately from it: the terminal is an owner
+    #: at a keyboard, while this is a URL that starts a root process — the same
+    #: authority, reachable by anything that can reach the URL. Turning one on
+    #: is not a statement about the other.
+    host_scripts_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class Cluster(Base, TimestampMixin):
     """One scheduling domain: its own nodes, namespaces, config and data services.
@@ -459,6 +466,117 @@ class Trigger(Base, TimestampMixin):
     last_status: Mapped[str] = mapped_column(String(20), default="")
     last_error: Mapped[str | None] = mapped_column(Text)
     run_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ── host scripts ─────────────────────────────────────────────────────────────
+
+
+class HostScript(Base, TimestampMixin):
+    """A program that runs on a node's own host, reached by URL.
+
+    The deliberate opposite of :class:`Function`: no image, no build, no
+    container. What runs is a host process — the host's ``python3``, the host's
+    packages, the host's disk — started because an HTTP request arrived, with
+    its stdout as the response body and its exit code as the verdict. See
+    :mod:`cubicle.runtime.hostscripts` for how a containerised control plane
+    manages that, and :attr:`Instance.host_scripts_enabled` for why the whole
+    feature is off until somebody turns it on.
+
+    The source lives here rather than in versioned snapshots the way a
+    function's does. A function's versions exist because a build is expensive
+    and a rollback has to be able to reach an image that was already made;
+    there is nothing to roll back to here, because there is nothing to build —
+    the text in this column is the whole artifact.
+    """
+
+    __tablename__ = "host_scripts"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_host_script_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(63), index=True)
+    description: Mapped[str] = mapped_column(String(200), default="")
+
+    #: A bare command name resolved on the host's ``PATH``, an absolute path,
+    #: or ``shebang`` to let the script's own ``#!`` line decide.
+    interpreter: Mapped[str] = mapped_column(String(120), default="python3")
+    source: Mapped[str] = mapped_column(Text, default="")
+
+    #: Where the program starts. Blank means the run's own temporary directory
+    #: on the host, which is the only one guaranteed to exist.
+    working_dir: Mapped[str] = mapped_column(String(255), default="")
+    timeout_s: Mapped[int] = mapped_column(Integer, default=60)
+    method: Mapped[str] = mapped_column(String(10), default="POST")
+
+    #: ``auto`` answers JSON when the script printed JSON and text otherwise;
+    #: ``json`` insists; ``text`` never parses.
+    output_mode: Mapped[str] = mapped_column(String(10), default="auto")
+
+    #: Which node's host. Null means wherever the control plane itself runs,
+    #: which is what "the VPS" means on the single-machine install this is
+    #: mostly for.
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="SET NULL"), index=True
+    )
+
+    #: The script's own environment, envelope-encrypted as one JSON document.
+    #: Individually encrypted rows would buy nothing: it is read all at once,
+    #: written all at once, and never queried by key.
+    env_ciphertext: Mapped[str | None] = mapped_column(Text)
+
+    auth_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+
+    run_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_exit_code: Mapped[int | None] = mapped_column(Integer)
+
+    runs: Mapped[list[HostScriptRun]] = relationship(
+        back_populates="script", cascade="all, delete-orphan", order_by="HostScriptRun.ts.desc()"
+    )
+
+    @property
+    def path(self) -> str:
+        return f"/run/{self.name}"
+
+
+class HostScriptRun(Base):
+    """One execution, kept with everything it printed.
+
+    A function's output is a response and its logs are a stream; a script's
+    output *is* the record. Somebody debugging a cron-like webhook at two in
+    the morning wants the stderr of the run that failed, not a summary of it,
+    so both streams are stored as they came back — trimmed only by the ceiling
+    the runtime already applies while reading them.
+    """
+
+    __tablename__ = "host_script_runs"
+    __table_args__ = (Index("ix_host_script_runs_script_ts", "script_id", "ts"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    script_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("host_scripts.id", ondelete="CASCADE"), index=True
+    )
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clusters.id", ondelete="CASCADE"), index=True
+    )
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    #: ``url`` for a request that arrived, ``console`` for the run button.
+    trigger: Mapped[str] = mapped_column(String(12), default="url")
+    exit_code: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    stdout: Mapped[str] = mapped_column(Text, default="")
+    stderr: Mapped[str] = mapped_column(Text, default="")
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    status_code: Mapped[int] = mapped_column(Integer, default=200)
+    request_id: Mapped[str] = mapped_column(String(40), default="")
+    node_name: Mapped[str] = mapped_column(String(80), default="")
+
+    script: Mapped[HostScript] = relationship(back_populates="runs")
 
 
 # ── applications ─────────────────────────────────────────────────────────────

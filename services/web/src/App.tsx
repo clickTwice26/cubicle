@@ -25,6 +25,7 @@ const Apps = lazy(() => import('./pages/Apps'))
 const AppDetail = lazy(() => import('./pages/AppDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Terminal = lazy(() => import('./pages/Terminal'))
+const Scripts = lazy(() => import('./pages/Scripts'))
 
 function Loading() {
   return (
@@ -192,6 +193,14 @@ export default function App() {
           element={
             <Guarded>
               <Terminal />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/console/scripts"
+          element={
+            <Guarded>
+              <Scripts />
             </Guarded>
           }
         />

@@ -58,6 +58,8 @@ never rotated.
 | **Cluster & metering** | Node capacity and allocation, GB-seconds, measured egress, chargeback by namespace, and a cost comparison against public list prices |
 | **PostgreSQL / Redis** | Real instances provisioned on the cluster on demand, wired into every function with no credentials to copy |
 | **Database manager** | Browse and edit the managed PostgreSQL — tables, paginated rows with search and sorting, a row editor, table structure, and a SQL console |
+| **Terminal** | A real shell on the node's host, in the browser, with sessions that survive a dropped connection. Owner-only, and off until switched on |
+| **Scripts** | Programs that run on the host itself rather than in a container — the thing you would otherwise SSH in to run — each behind a URL. Owner-only, and off until switched on |
 | **Settings** | Instance configuration, API keys, and local user accounts with roles |
 | **Docs** | Installation, quickstart, the handler contract, secrets, `cubicle.toml`, and the CLI |
 

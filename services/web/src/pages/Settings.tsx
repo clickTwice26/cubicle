@@ -29,6 +29,7 @@ import { activeCluster } from '../lib/cluster'
 import { useAiStatus, useTestAi, useUpdateAiSettings } from '../lib/ai'
 import { useCreateCredential, useDeleteCredential, useGitCredentials } from '../lib/apps'
 import { useSetTerminalEnabled, useTerminalStatus } from '../lib/terminal'
+import { useScriptsStatus, useSetScriptsEnabled } from '../lib/scripts'
 import {
   useApiKeys,
   useClusters,
@@ -141,6 +142,7 @@ export default function Settings() {
         <>
           <UpdateCard />
           <TerminalAccessCard />
+          <ScriptsAccessCard />
           <ResourceSync />
         </>
       ) : null}
@@ -463,6 +465,64 @@ function TerminalAccessCard() {
             className="flex-none text-[12.5px] font-medium text-ink underline decoration-line-strong underline-offset-2 hover:decoration-accent"
           >
             Open the terminal →
+          </Link>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * Scripts that run on the host, behind a URL.
+ *
+ * Its own switch rather than the terminal's. The terminal is an owner at a
+ * keyboard; this is a URL that starts a root process, which is the same
+ * authority reachable by anything that can reach the URL — including, for a
+ * script whose key requirement has been turned off, anyone at all. Deciding
+ * one is not deciding the other.
+ */
+function ScriptsAccessCard() {
+  const toast = useToast()
+  const { data: status } = useScriptsStatus()
+  const setEnabled = useSetScriptsEnabled()
+
+  if (!status) return <Skeleton className="mb-5 h-24 w-full" />
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <CardHeader
+        title="Scripts"
+        subtitle="Programs that run on the node's host, triggered by a URL"
+        action={status.enabled ? <Badge tone="accent">on</Badge> : <Badge tone="warn">off</Badge>}
+      />
+      <div className="flex flex-wrap items-center gap-3.5 px-5 py-5">
+        <span className="grid h-9 w-9 flex-none place-items-center rounded-full border border-line bg-panel-2 text-ink-2">
+          <Shield size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <Checkbox
+            checked={status.enabled}
+            onChange={(next) =>
+              setEnabled.mutate(next, {
+                onSuccess: (data) =>
+                  toast.push(data.enabled ? 'Scripts are on' : 'Scripts are off'),
+                onError: (error) => toast.push(error.message, 'err'),
+              })
+            }
+            label="Scripts may be written and triggered"
+          />
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
+            A script is root on the host, not a container, started by an HTTP request. Turning
+            this off stops the URLs answering as well as hiding the page — a script mid-run
+            finishes.
+          </p>
+        </div>
+        {status.enabled ? (
+          <Link
+            to="/console/scripts"
+            className="flex-none text-[12.5px] font-medium text-ink underline decoration-line-strong underline-offset-2 hover:decoration-accent"
+          >
+            Open scripts →
           </Link>
         ) : null}
       </div>

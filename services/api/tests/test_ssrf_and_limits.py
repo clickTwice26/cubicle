@@ -13,7 +13,7 @@ import pytest
 
 from cubicle import marketplace
 from cubicle.config import settings
-from cubicle.routers.invoke import MAX_BODY_BYTES, _read_body, _TooLarge
+from cubicle.routers.invoke import MAX_BODY_BYTES, BodyTooLarge, read_body
 from cubicle.runtime import redisadmin
 
 # ── CUB-10: where a registry may live ────────────────────────────────────────
@@ -147,7 +147,7 @@ def _request(chunks: list[bytes], headers: dict[str, str] | None = None):
 
 @pytest.mark.anyio
 async def test_a_body_within_the_limit_arrives_whole():
-    body = await _read_body(_request([b"hello ", b"world"]))
+    body = await read_body(_request([b"hello ", b"world"]))
     assert body == b"hello world"
 
 
@@ -161,8 +161,8 @@ async def test_a_declared_length_over_the_limit_is_refused_before_anything_arriv
         yield b"x"
 
     request = SimpleNamespace(headers={"content-length": str(MAX_BODY_BYTES + 1)}, stream=stream)
-    with pytest.raises(_TooLarge):
-        await _read_body(request)
+    with pytest.raises(BodyTooLarge):
+        await read_body(request)
     assert sent == [], "the body was read despite a declared length over the limit"
 
 
@@ -171,8 +171,8 @@ async def test_a_body_that_lies_about_its_length_is_still_bounded():
     """A header is a claim. Chunked encoding does not even make the claim."""
     chunk = b"x" * (1024 * 1024)
     chunks = [chunk] * 10
-    with pytest.raises(_TooLarge):
-        await _read_body(_request(chunks))
+    with pytest.raises(BodyTooLarge):
+        await read_body(_request(chunks))
 
 
 @pytest.mark.anyio
@@ -186,8 +186,8 @@ async def test_reading_stops_at_the_limit_rather_than_at_the_end():
             read += 1
             yield b"y" * (1024 * 1024)
 
-    with pytest.raises(_TooLarge):
-        await _read_body(SimpleNamespace(headers={}, stream=stream))
+    with pytest.raises(BodyTooLarge):
+        await read_body(SimpleNamespace(headers={}, stream=stream))
     assert read <= 7, f"read {read} MB before giving up on a 6 MB limit"
 
 

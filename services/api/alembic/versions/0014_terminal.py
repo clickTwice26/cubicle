@@ -28,9 +28,7 @@ def upgrade() -> None:
     if "terminal_enabled" not in columns:
         op.add_column(
             "instance",
-            sa.Column(
-                "terminal_enabled", sa.Boolean(), nullable=False, server_default=sa.false()
-            ),
+            sa.Column("terminal_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         )
 
 

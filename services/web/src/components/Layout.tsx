@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Code,
   Database,
   Globe,
   Grid,
@@ -92,6 +93,9 @@ const NAV = [
   // A real shell on the host, not a console feature like the rest of this
   // list — hidden from anyone who could not open it anyway.
   { to: '/console/terminal', end: false, label: 'Terminal', icon: Terminal, ownerOnly: true },
+  // Programs on the host rather than in a container — same authority as the
+  // terminal above, so the same gate.
+  { to: '/console/scripts', end: false, label: 'Scripts', icon: Code, ownerOnly: true },
   { to: '/console/settings', end: false, label: 'Settings', icon: Sliders },
 ] as const
 

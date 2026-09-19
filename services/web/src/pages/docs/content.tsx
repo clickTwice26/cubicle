@@ -2189,6 +2189,183 @@ export const DOCS: DocPage[] = [
     ),
   },
   {
+    id: 'scripts',
+    group: 'Guides',
+    label: 'Scripts',
+    title: 'Scripts',
+    lede: 'A program that runs on the machine itself — no image, no container — behind a URL.',
+    body: () => (
+      <>
+        {h2('what', 'What a script is')}
+        {p(
+          <>
+            The deliberate opposite of a function. A function is built into an image and runs in
+            a container, isolated from the machine on purpose. A script is the thing you would
+            otherwise have opened an SSH session to run: it executes on the node&apos;s host, as
+            root, using the host&apos;s own {mono('python3')}, the host&apos;s packages, the
+            host&apos;s disk and the host&apos;s network. {mono('ps')} on that machine shows it
+            exactly as it would show the same command typed into a shell there.
+          </>,
+        )}
+        {p(
+          <>
+            What it gets in exchange for that is a URL. Hit the URL, the program runs, and what
+            it printed comes back as the response — the same arrangement a function has, with
+            nothing between the request and the host. See {docLink('terminal', 'Terminal')} for
+            the interactive version of the same access, and {docLink('functions', 'Functions')}{' '}
+            when what you actually want is isolation.
+          </>,
+        )}
+        {note(
+          <>
+            A script&apos;s URL starts a root process on your machine. Off on every new
+            instance, owner-only to write, and on its own switch rather than the
+            terminal&apos;s: an owner at a keyboard and a URL anyone may be handed are two
+            different decisions.
+          </>,
+        )}
+
+        {h2('enable', 'Turning it on')}
+        {p(
+          <>
+            An owner turns scripts on from <strong>Settings → Maintenance</strong>, or from the
+            Scripts page the first time they open it. Turning it back off stops the URLs
+            answering, not just the page from loading.
+          </>,
+        )}
+
+        {h2('contract', 'The contract')}
+        {p(
+          'A script reads its input the way any program run from a shell does, and says what it means with stdout and an exit code:',
+        )}
+        {table(
+          ['Channel', 'Meaning'],
+          [
+            ['stdin', 'The request body, byte for byte. Empty for a request that had none.'],
+            [
+              'stdout',
+              'The response. Print JSON and the caller gets JSON; print anything else and they get exactly those bytes.',
+            ],
+            [
+              'exit 0',
+              'Success — 200, with stdout as the body.',
+            ],
+            [
+              'exit non-zero',
+              'Failure — 500, with the exit code and the tail of stderr in a JSON error. There is no other way for a script to say a request failed.',
+            ],
+            [
+              'stderr',
+              'Kept with the run either way, and shown in the console. Never part of a successful response.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            The environment carries everything else about the request. {mono('CUBICLE_METHOD')},{' '}
+            {mono('CUBICLE_PATH')}, {mono('CUBICLE_QUERY')} and {mono('CUBICLE_HEADERS')} (the
+            last two as JSON), plus {mono('CUBICLE_RUN_ID')}, {mono('CUBICLE_SCRIPT')},{' '}
+            {mono('CUBICLE_CLUSTER')} and {mono('CUBICLE_TRIGGER')}. Those names are reserved —
+            anything you set yourself on the Environment tab is stored encrypted and set
+            alongside them.
+          </>,
+        )}
+        {code(`import json
+import os
+import sys
+
+payload = sys.stdin.read()
+
+print(json.dumps({
+    "ok": True,
+    "method": os.environ["CUBICLE_METHOD"],
+    "query": json.loads(os.environ["CUBICLE_QUERY"]),
+    "hostname": os.uname().nodename,
+    "received_bytes": len(payload),
+}))`)}
+
+        {h2('urls', 'The URL')}
+        {p('Every script answers under a fixed /run/ prefix, so one can never shadow a namespace:')}
+        {table(
+          ['Shape', 'When'],
+          [
+            ['/run/<script>', 'The cluster owning this hostname.'],
+            [
+              '/run/<cluster>/<script>',
+              'Always. This is the form the console shows for a cluster without its own domain.',
+            ],
+          ],
+        )}
+        {p(
+          <>
+            A script requires an API key by default, the same as a function —{' '}
+            {mono('Authorization: Bearer …')}, or a signed-in console session. Turning that off
+            on the Settings tab is how a webhook reaches it, and means anyone who learns the URL
+            can run the program. The method is fixed per script; anything else answers 405.
+          </>,
+        )}
+        {code(`curl -X POST https://cubicle.example.com/run/nightly-backup \\
+  -H "Authorization: Bearer $CUBICLE_API_KEY" \\
+  -d '{"target": "/srv/backups"}'`)}
+
+        {h2('settings', 'What you can set')}
+        {table(
+          ['Setting', 'What it does'],
+          [
+            [
+              'Interpreter',
+              'A command on the host’s PATH (python3, bash, node…), an absolute path to one, or "shebang" to make the file executable and let its own #! line decide.',
+            ],
+            [
+              'Working directory',
+              'Where the program starts. Blank means the run’s own temporary directory, which is the only one guaranteed to exist.',
+            ],
+            [
+              'Timeout',
+              'Up to 900 seconds, enforced on the host by timeout(1). A run that hits it is killed and answers 504.',
+            ],
+            [
+              'Response',
+              'Auto parses stdout as JSON when it is JSON. JSON insists, and answers 502 when a script prints something else. Text never parses.',
+            ],
+            ['Node', 'Which machine. A script means a specific host, so it is never load-balanced.'],
+            ['Paused', 'The URL answers 503 without running anything.'],
+          ],
+        )}
+
+        {h2('mechanism', 'How it reaches the host')}
+        {p(
+          <>
+            The same way the terminal does, through the same single privileged container per
+            node: the script is written into a tar, streamed across the namespace boundary with{' '}
+            {mono('nsenter')}, unpacked into a temporary directory on the host, and run there
+            under {mono('timeout')}. A tar rather than a command line because Linux caps one
+            argument at 128 KiB, which would otherwise have been a size limit on both your
+            script and every request body.
+          </>,
+        )}
+        {p(
+          <>
+            A host with no {mono('timeout')} command refuses the run rather than starting
+            something nothing can stop. Output is capped at 256 KB per stream — the rest is
+            still read, so a chatty script never blocks, just not kept. At most eight scripts
+            run at once across the control plane; past that they queue.
+          </>,
+        )}
+
+        {h2('runs', 'Runs')}
+        {p(
+          <>
+            The last fifty runs of each script are kept with everything they printed, whether
+            they came from a URL or the console&apos;s <strong>Run now</strong> button. That
+            button sends the same stdin and takes the same path a real request would, so testing
+            a script tests the thing that will actually run.
+          </>,
+        )}
+      </>
+    ),
+  },
+  {
     id: 'config',
     group: 'Reference',
     label: 'cubicle.toml',

@@ -83,6 +83,25 @@ import /etc/caddy/apps/*.caddyfile
 		reverse_proxy api:8000
 	}
 
+	# Host scripts: /run/<script>, or /run/<cluster>/<script>. One fixed prefix
+	# rather than a path shaped like a function's, so a script can never
+	# collide with a namespace and this needs exactly one rule. More specific
+	# than the function matcher below, which has no path of its own, so Caddy
+	# tries it first whatever the order in this file.
+	handle /run/* {
+		request_body {
+			max_size 6MB
+		}
+		rewrite * /api{uri}
+		reverse_proxy api:8000 {
+			# A script may legitimately run to its timeout, which is longer
+			# than any ordinary API call and shorter than a terminal session.
+			transport http {
+				read_timeout 15m
+			}
+		}
+	}
+
 	# Function invocations. Two shapes reach the control plane:
 	#   /<namespace>/<function>            → the cluster owning this hostname,
 	#                                        or the default cluster
@@ -94,6 +113,7 @@ import /etc/caddy/apps/*.caddyfile
 		not path /setup*
 		not path /assets/*
 		not path /fonts/*
+		not path /run/*
 		path_regexp fn ^/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?/?$
 	}
 	handle @invoke {

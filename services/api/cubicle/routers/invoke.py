@@ -112,11 +112,11 @@ async def _candidates(db: DbSession, namespace: str, name: str) -> list[str]:
 MAX_BODY_BYTES = 6 * 1024 * 1024
 
 
-class _TooLarge(Exception):
+class BodyTooLarge(Exception):
     """The body went past MAX_BODY_BYTES, so reading it was abandoned."""
 
 
-async def _read_body(request: Request) -> bytes:
+async def read_body(request: Request) -> bytes:
     """The request body, or nothing at all if it is too big.
 
     Read in chunks and abandoned the moment it goes past the limit. Calling
@@ -133,14 +133,14 @@ async def _read_body(request: Request) -> bytes:
     """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
-        raise _TooLarge
+        raise BodyTooLarge
 
     chunks: list[bytes] = []
     size = 0
     async for chunk in request.stream():
         size += len(chunk)
         if size > MAX_BODY_BYTES:
-            raise _TooLarge
+            raise BodyTooLarge
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -173,7 +173,7 @@ async def _invoke(
     # A function that does not exist is treated as though it required a key, so
     # the two are indistinguishable from outside. The cost is a worse message
     # for somebody who forgot theirs, which is the right way round.
-    if (fn is None or fn.auth_required) and not await _authorised(request, db, cluster):
+    if (fn is None or fn.auth_required) and not await authorised_for_cluster(request, db, cluster):
         return JSONResponse(
             {"error": "unauthorized", "message": "This endpoint requires an API key."},
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -210,8 +210,8 @@ async def _invoke(
         )
 
     try:
-        raw = await _read_body(request)
-    except _TooLarge:
+        raw = await read_body(request)
+    except BodyTooLarge:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Request body is too large."
         ) from None
@@ -279,7 +279,7 @@ async def _invoke(
     return PlainTextResponse(str(result.body), status_code=result.status_code, headers=headers)
 
 
-async def _authorised(request: Request, db, cluster: Cluster) -> bool:
+async def authorised_for_cluster(request: Request, db, cluster: Cluster) -> bool:
     """Whether this caller may invoke a protected function *in this cluster*.
 
     Being a valid credential somewhere on the instance is not enough. A key

@@ -15,7 +15,9 @@ from . import (
     observability,
     reconcile,
     redis_browser,
+    run,
     runtimes,
+    scripts,
     settings,
     setup,
     terminal,
@@ -40,12 +42,14 @@ ROUTERS = [
     redis_browser.router,
     reconcile.router,
     runtimes.router,
+    scripts.router,
     marketplace.router,
     settings.router,
     terminal.router,
     triggers.router,
     update.router,
     invoke.router,
+    run.router,
 ]
 
 __all__ = ["ROUTERS"]
