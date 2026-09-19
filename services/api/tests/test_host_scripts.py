@@ -22,6 +22,7 @@ import pytest
 from cubicle.runtime.hostscripts import (
     MAX_TIMEOUT_S,
     NOT_STARTED,
+    PROBED_COMMANDS,
     SHEBANG,
     Outcome,
     ScriptError,
@@ -29,7 +30,9 @@ from cubicle.runtime.hostscripts import (
     inner_program,
     interpret_output,
     outer_program,
+    parse_probe,
     payload_tar,
+    probe_source,
     valid_interpreter,
     valid_name,
     valid_working_dir,
@@ -299,3 +302,56 @@ def test_only_zero_is_success():
 
 def _outcome(exit_code: int) -> Outcome:
     return Outcome(exit_code=exit_code, stdout=b"", stderr=b"", duration_ms=0.0, truncated=False)
+
+
+# ── asking the machine what it is ────────────────────────────────────────────
+
+
+def test_the_probe_reads_back_as_facts():
+    facts = parse_probe("os=Ubuntu 24.04\nkernel=Linux 6.8.0\ncommands=python3 git jq\n")
+    assert facts == {
+        "os": "Ubuntu 24.04",
+        "kernel": "Linux 6.8.0",
+        "commands": "python3 git jq",
+    }
+
+
+def test_a_value_may_contain_the_separator():
+    """`python=Python 3.12.3 (main, x=y)` is one fact, not a parse error."""
+    assert parse_probe("python=Python 3.12.3 (main, x=y)")["python"] == "Python 3.12.3 (main, x=y)"
+
+
+def test_empty_and_malformed_probe_lines_are_dropped():
+    """A host with no node prints `node=` and one with no /etc/os-release
+    prints nothing at all — neither is a fact, and neither should become one.
+    """
+    facts = parse_probe("os=Debian\nnode=\nnot a line at all\n\n=novalue\n")
+    assert facts == {"os": "Debian"}
+
+
+def test_a_probe_that_said_nothing_is_no_facts_not_an_error():
+    assert parse_probe("") == {}
+
+
+def test_every_probed_command_survives_into_the_program():
+    """The probe's command list is interpolated into a shell `for` loop, so a
+    name with a space or a quote in it would silently break the loop.
+    """
+    for command in PROBED_COMMANDS:
+        assert command.replace("-", "").replace("_", "").isalnum(), command
+
+
+def test_the_probe_program_builds_with_its_printf_intact():
+    """The template is shell, so it is full of `%s` that printf owns and
+    `${...}` that the shell owns. Substituting the command list with either of
+    Python's formatting operators would try to claim those — this is the test
+    that the substitution leaves them alone.
+    """
+    program = probe_source()
+    assert "@@" not in program
+    assert "printf 'commands=%s\\n'" in program
+    assert "${PRETTY_NAME:-$NAME}" in program
+
+    # The whole list, in the loop, exactly once each.
+    line = next(row for row in program.splitlines() if row.startswith("for c in "))
+    assert line.removeprefix("for c in ").removesuffix("; do").split() == list(PROBED_COMMANDS)

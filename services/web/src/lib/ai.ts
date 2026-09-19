@@ -58,6 +58,53 @@ export interface GenerateArgs {
   history?: { role: 'user' | 'assistant'; content: string }[]
 }
 
+/**
+ * What a host script's brief carried. Almost none of a function's context
+ * applies — no namespace, no session, no data services — and the one thing it
+ * has instead is the machine itself, probed rather than assumed.
+ */
+export interface ScriptContextSent {
+  script: {
+    name: string
+    description: string
+    interpreter: string
+    method: string
+    path: string
+    working_dir: string
+    timeout_seconds: number
+    output_mode: string
+    auth_required: boolean
+  }
+  env_keys: string[]
+  /** os, kernel, arch, python, node, commands — whatever the probe found. */
+  host: Record<string, string>
+  siblings: { name: string; method: string; description: string }[]
+}
+
+export interface ScriptGeneration {
+  code: string
+  notes: string
+  model: string
+  usage: { prompt_tokens: number; completion_tokens: number }
+  duration_ms: number
+  context_sent: ScriptContextSent
+}
+
+export interface GenerateScriptArgs {
+  script_id: string
+  prompt: string
+  mode: 'write' | 'edit'
+  code?: string
+  history?: { role: 'user' | 'assistant'; content: string }[]
+}
+
+export function useGenerateScript() {
+  return useMutation({
+    mutationFn: (args: GenerateScriptArgs) =>
+      api.post<ScriptGeneration>(`${ROOT}/generate-script`, args),
+  })
+}
+
 export function useAiStatus() {
   return useQuery({
     queryKey: ['ai', 'status'],

@@ -496,3 +496,130 @@ async def run(
         duration_ms=(time.perf_counter() - started) * 1000,
         truncated=truncated,
     )
+
+
+# ── what is actually on the machine ──────────────────────────────────────────
+#
+# Only the assistant uses this, and only to stop guessing. A model asked to
+# write a host script without it will reach for `apt-get` on an Alpine box,
+# `python3.12` syntax on a host with 3.9, or `jq` on a machine that has never
+# had it. Asking the machine costs one exec and removes a whole class of
+# confidently wrong answers.
+
+#: Commands worth knowing about before writing a script for this host. Short
+#: on purpose: a roll call of everything in /usr/bin would cost more context
+#: than it is worth, and these are the ones a script actually reaches for.
+PROBED_COMMANDS = (
+    "python3",
+    "python",
+    "bash",
+    "node",
+    "npm",
+    "ruby",
+    "perl",
+    "php",
+    "go",
+    "docker",
+    "systemctl",
+    "service",
+    "psql",
+    "mysql",
+    "redis-cli",
+    "sqlite3",
+    "git",
+    "curl",
+    "wget",
+    "jq",
+    "rsync",
+    "tar",
+    "zip",
+    "openssl",
+    "ffmpeg",
+    "apt-get",
+    "dnf",
+    "yum",
+    "apk",
+    "pacman",
+    "pip3",
+    "crontab",
+    "nginx",
+)
+
+#: Substituted by :func:`probe_source` rather than by ``%`` or ``str.format``:
+#: this is shell, so it is full of ``%s`` that printf owns and ``${...}`` that
+#: the shell owns, and both of Python's formatting operators would try to claim
+#: them. A marker nothing else uses cannot be misread by either.
+_COMMANDS_MARKER = "@@COMMANDS@@"
+
+PROBE_TEMPLATE = """\
+printf 'kernel=%s\\n' "$(uname -sr 2>/dev/null)"
+printf 'arch=%s\\n' "$(uname -m 2>/dev/null)"
+if [ -r /etc/os-release ]; then
+  . /etc/os-release 2>/dev/null
+  printf 'os=%s\\n' "${PRETTY_NAME:-$NAME}"
+fi
+printf 'shell=%s\\n' "$(readlink -f /bin/sh 2>/dev/null || echo /bin/sh)"
+python3 -V 2>&1 | head -1 | sed 's/^/python=/'
+node -v 2>/dev/null | head -1 | sed 's/^/node=/'
+found=
+for c in @@COMMANDS@@; do
+  if command -v "$c" >/dev/null 2>&1; then found="$found $c"; fi
+done
+printf 'commands=%s\\n' "${found# }"
+"""
+
+
+def probe_source() -> str:
+    return PROBE_TEMPLATE.replace(_COMMANDS_MARKER, " ".join(PROBED_COMMANDS))
+
+
+#: How long a probe is reused. The answer changes when somebody installs
+#: something, which is rare, and a stale answer for a few minutes is a far
+#: smaller cost than an exec on every keystroke-driven request.
+PROBE_TTL_S = 300.0
+
+_probes: dict[str, tuple[float, dict[str, str]]] = {}
+
+
+def parse_probe(text: str) -> dict[str, str]:
+    """``key=value`` lines into a dict, ignoring anything that is not one."""
+    facts: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if sep and key and value:
+            facts[key] = value
+    return facts
+
+
+async def probe_host(host: str) -> dict[str, str]:
+    """What this machine is and what it has, cached. Never raises.
+
+    Best effort by design: the assistant is better off with a brief that says
+    nothing about the host than with no answer at all, so a node that will not
+    answer simply contributes nothing here.
+    """
+    cached = _probes.get(host)
+    now = time.monotonic()
+    if cached is not None and now - cached[0] < PROBE_TTL_S:
+        return cached[1]
+
+    try:
+        outcome = await run(
+            host,
+            source=probe_source(),
+            interpreter="sh",
+            env={},
+            working_dir="",
+            timeout_s=15,
+        )
+    except Exception as exc:  # noqa: BLE001 - "never raises" is the contract
+        # Deliberately every exception, not just ScriptError. This exists to
+        # enrich a prompt; there is no failure here worth turning into a failed
+        # request, and a brief without host facts still produces an answer.
+        log.warning("host probe failed", host=host, error=str(exc))
+        return {}
+
+    facts = parse_probe(outcome.stdout_text()) if outcome.ok else {}
+    _probes[host] = (now, facts)
+    return facts

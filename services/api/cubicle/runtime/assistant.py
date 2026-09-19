@@ -30,8 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..crypto import DecryptionError, decrypt, mask
 from ..logging_setup import log
-from ..models import Cluster, EnvVar, Function, FunctionSecret, Group, Instance
-from . import invoker, services
+from ..models import Cluster, EnvVar, Function, FunctionSecret, Group, HostScript, Instance
+from . import hostscripts, invoker, services
 
 #: How many earlier turns are replayed, and how much of each. A chat that
 #: grows without bound eventually costs more in context than the answer is
@@ -120,6 +120,81 @@ about it changed.
 - Prefer the standard library. Add a dependency only when it genuinely earns \
 its place, and pin it exactly.
 """
+
+SCRIPT_BRIEF = """\
+You write host scripts for Cubicle, a self-hosted platform. A host script is \
+NOT a serverless function and NOT a container workload: it is an ordinary \
+program that runs directly on the machine, as root, started because an HTTP \
+request arrived. Write it the way you would write a script somebody is about \
+to run over SSH on that box.
+
+THE CONTRACT
+- stdin is the request body, byte for byte. Read it if you need it; it is \
+empty for a request that had none. Never block waiting for input that may not \
+come — read stdin to EOF once, or not at all.
+- stdout is the response. Print JSON and the caller receives JSON; print \
+anything else and they receive exactly those bytes. Print nothing and they \
+receive an empty body.
+- The exit code is the verdict. Exit 0 for success. Exit non-zero to make the \
+request a 500 — that is the only way to say the request failed.
+- stderr is kept with the run and shown in the console. It is never part of a \
+successful response, so it is the right place for progress and diagnostics.
+
+WHAT IT KNOWS ABOUT THE REQUEST — environment variables, always set:
+- CUBICLE_METHOD   the HTTP method
+- CUBICLE_PATH     the path it was called on
+- CUBICLE_QUERY    query parameters, as a JSON object
+- CUBICLE_HEADERS  request headers, lower-cased keys, as a JSON object
+- CUBICLE_RUN_ID, CUBICLE_SCRIPT, CUBICLE_CLUSTER, CUBICLE_TRIGGER
+Anything else listed below as configured is also in the environment. Use only \
+the names listed as existing; never hard-code a credential and never echo one.
+
+WHERE IT RUNS
+- The real host filesystem, as root. There is no sandbox, no read-only mount \
+and no container boundary. Destructive commands really are destructive.
+- The working directory is whatever the script is configured with; when that \
+is blank it is a fresh temporary directory that is deleted afterwards.
+- Only what is installed on that machine is available. The facts below say \
+what that is — do not assume a package manager, an interpreter version or a \
+tool that is not listed. If something essential is missing, say so in notes \
+rather than silently installing it.
+- The script is killed at its timeout, so long work must fit inside it or be \
+started detached deliberately.
+
+STYLE
+- Complete, runnable file content for the configured interpreter — never a \
+diff, never an ellipsis, never a placeholder.
+- Fail loudly and early: for shell, `set -eu` and quote every expansion; for \
+Python, let an unexpected exception exit non-zero rather than swallowing it.
+- Validate input from stdin and the query before acting on it. This endpoint \
+may be reachable without a key.
+- Be conservative with anything destructive. Prefer a dry run, an explicit \
+opt-in flag read from the query, or a narrow path over a broad `rm -rf`.
+- Do not print secrets. A failing run returns the tail of stderr to the caller.
+- Comment only what is not obvious.
+"""
+
+SCRIPT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "code": {
+            "type": "string",
+            "description": (
+                "The complete script, for the configured interpreter. No markdown fences."
+            ),
+        },
+        "notes": {
+            "type": "string",
+            "description": (
+                "Two or three sentences for the operator: what the script does, anything "
+                "destructive about it, and anything they must do themselves such as "
+                "installing a command or adding an environment variable."
+            ),
+        },
+    },
+    "required": ["code", "notes"],
+    "additionalProperties": False,
+}
 
 RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -498,6 +573,241 @@ async def generate(
     }
 
 
+# ── host scripts ─────────────────────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class ScriptBrief:
+    """The live facts about one host script. Values are never in here.
+
+    Separate from :class:`Brief` rather than a variant of it, because almost
+    nothing carries over: a script has no namespace, no session context, no
+    data-service bindings and no isolate. What it has instead — an interpreter,
+    a working directory, and a specific machine with specific things installed
+    on it — is exactly what :class:`Brief` has no room for.
+    """
+
+    script: dict[str, Any]
+    env_keys: list[str] = field(default_factory=list)
+    host: dict[str, str] = field(default_factory=dict)
+    siblings: list[dict[str, Any]] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "script": self.script,
+            "env_keys": self.env_keys,
+            "host": self.host,
+            "siblings": self.siblings,
+        }
+
+
+async def build_script_brief(
+    db: AsyncSession,
+    cluster: Cluster,
+    script: HostScript,
+    node_host: str | None,
+    env_keys: list[str],
+) -> ScriptBrief:
+    """What this script is, and what the machine it runs on actually has.
+
+    The host probe is the interesting half. Without it a model writes
+    ``apt-get`` for an Alpine box and reaches for tools that are not there;
+    with it, the same model writes something that runs. It is best effort — a
+    node that will not answer contributes nothing rather than failing the
+    request.
+    """
+    siblings = (
+        (await db.execute(select(HostScript).where(HostScript.cluster_id == cluster.id)))
+        .scalars()
+        .all()
+    )
+    host_facts = await hostscripts.probe_host(node_host) if node_host is not None else {}
+
+    return ScriptBrief(
+        script={
+            "name": script.name,
+            "description": script.description,
+            "interpreter": script.interpreter,
+            "method": script.method,
+            "path": script.path,
+            "working_dir": script.working_dir or "(a fresh temporary directory)",
+            "timeout_seconds": script.timeout_s,
+            "output_mode": script.output_mode,
+            "auth_required": script.auth_required,
+        },
+        # Names only, handed in already decrypted-and-discarded by the caller:
+        # this module reads no ciphertext, so it cannot leak a value it never had.
+        env_keys=sorted(env_keys),
+        host=host_facts,
+        siblings=[
+            {"name": row.name, "method": row.method, "description": row.description}
+            for row in sorted(siblings, key=lambda r: r.name)
+            if row.id != script.id
+        ],
+    )
+
+
+def _render_script(brief: ScriptBrief, current_code: str | None) -> str:
+    script = brief.script
+    interpreter = script["interpreter"]
+    written_for = (
+        "whatever its own #! line says — write that line yourself"
+        if interpreter == "shebang"
+        else interpreter
+    )
+
+    lines = [
+        "THIS SCRIPT",
+        f"- endpoint: {script['method']} {script['path']}",
+        f"- written for: {written_for}",
+        f"- working directory: {script['working_dir']}",
+        f"- killed after: {script['timeout_seconds']}s",
+        f"- response mode: {script['output_mode']}"
+        + (
+            " (stdout MUST be valid JSON)"
+            if script["output_mode"] == "json"
+            else " (stdout is returned as text, never parsed)"
+            if script["output_mode"] == "text"
+            else " (JSON if stdout is JSON, otherwise text)"
+        ),
+        "- reachable without a key: "
+        + ("no" if script["auth_required"] else "YES — treat every input as hostile"),
+    ]
+    if script["description"]:
+        lines.append(f"- described as: {script['description']}")
+
+    lines.append("")
+    if brief.host:
+        lines.append("THE MACHINE IT RUNS ON (probed just now):")
+        for label, key in (
+            ("os", "os"),
+            ("kernel", "kernel"),
+            ("architecture", "arch"),
+            ("/bin/sh is", "shell"),
+            ("python3", "python"),
+            ("node", "node"),
+        ):
+            if brief.host.get(key):
+                lines.append(f"- {label}: {brief.host[key]}")
+        if brief.host.get("commands"):
+            lines.append(f"- commands present: {brief.host['commands']}")
+            lines.append(
+                "- anything not in that list is NOT installed. Do not call it, and do "
+                "not assume a package manager that is not listed."
+            )
+    else:
+        lines.append(
+            "THE MACHINE IT RUNS ON: could not be probed. Assume very little — POSIX "
+            "sh and coreutils only — and say in notes what the script depends on."
+        )
+
+    lines.append("")
+    if brief.env_keys:
+        lines.append(
+            "ENVIRONMENT VARIABLES CONFIGURED ON THIS SCRIPT (values withheld): "
+            + ", ".join(brief.env_keys)
+        )
+    else:
+        lines.append("ENVIRONMENT: nothing configured on this script beyond the CUBICLE_* set.")
+
+    if brief.siblings:
+        lines += ["", "OTHER SCRIPTS ON THIS CLUSTER:"]
+        lines += [
+            f"- {row['method']} /run/{row['name']}"
+            + (f" — {row['description']}" if row["description"] else "")
+            for row in brief.siblings
+        ]
+
+    if current_code:
+        lines += ["", "CURRENT SCRIPT:", "```", current_code[:MAX_CODE_IN], "```"]
+
+    return "\n".join(lines)
+
+
+async def generate_script(
+    *,
+    config: AiConfig,
+    brief: ScriptBrief,
+    prompt: str,
+    mode: str,
+    current_code: str | None,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    if not config.configured:
+        raise AssistantError("Cubicle AI has no API key yet. Add one under Settings → Cubicle AI.")
+    prompt = prompt.strip()
+    if not prompt:
+        raise AssistantError("Describe what the script should do.")
+    if len(prompt) > MAX_PROMPT:
+        raise AssistantError(f"That prompt is longer than {MAX_PROMPT} characters.")
+
+    turns: list[dict[str, str]] = []
+    for entry in (history or [])[-MAX_HISTORY:]:
+        role = entry.get("role")
+        content = (entry.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            turns.append({"role": role, "content": content[:MAX_HISTORY_CHARS]})
+
+    rendered = _render_script(brief, current_code if mode == "edit" else None)
+    instruction = (
+        "Rewrite the current script to satisfy the request below. Keep what already "
+        "works, change what the request asks for, and return the complete file."
+        if mode == "edit"
+        else "Write the script from scratch for the request below. Return the complete file."
+    )
+
+    messages = [
+        {"role": "system", "content": SCRIPT_BRIEF},
+        *turns,
+        {"role": "user", "content": f"{instruction}\n\n{rendered}\n\nREQUEST\n{prompt}"},
+    ]
+
+    started = time.perf_counter()
+    payload: dict[str, Any] = {
+        "model": config.model,
+        "messages": messages,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "cubicle_script", "strict": True, "schema": SCRIPT_SCHEMA},
+        },
+        "temperature": 0.1,
+    }
+    cap = "max_completion_tokens" if "openai.com" in config.base_url else "max_tokens"
+    payload[cap] = config.max_output_tokens
+
+    body = await _post(
+        config,
+        payload,
+        json_fallback=(
+            'Reply with a single JSON object holding exactly the keys "code" (string) '
+            'and "notes" (string).'
+        ),
+    )
+    choice = (body.get("choices") or [{}])[0]
+    result = _parse((choice.get("message") or {}).get("content") or "")
+
+    usage = body.get("usage") or {}
+    log.info(
+        "assistant generated a host script",
+        model=body.get("model", config.model),
+        mode=mode,
+        prompt_tokens=usage.get("prompt_tokens"),
+        completion_tokens=usage.get("completion_tokens"),
+        ms=round((time.perf_counter() - started) * 1000),
+    )
+    return {
+        "code": result["code"],
+        "notes": result.get("notes") or "",
+        "model": body.get("model", config.model),
+        "usage": {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        },
+        "duration_ms": round((time.perf_counter() - started) * 1000),
+        "context_sent": brief.as_dict(),
+    }
+
+
 async def check(config: AiConfig) -> dict[str, Any]:
     """A one-token round trip, so a saved key is verified rather than assumed."""
     if not config.configured:
@@ -518,7 +828,9 @@ async def check(config: AiConfig) -> dict[str, Any]:
     }
 
 
-async def _post(config: AiConfig, payload: dict[str, Any]) -> dict[str, Any]:
+async def _post(
+    config: AiConfig, payload: dict[str, Any], *, json_fallback: str = ""
+) -> dict[str, Any]:
     """One request, with the retries that make this portable across providers."""
     url = config.base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {config.api_key}"}
@@ -542,7 +854,7 @@ async def _post(config: AiConfig, payload: dict[str, Any]) -> dict[str, Any]:
             # server does not take it. Drop that one and try again rather than
             # making the operator discover it from a provider error string.
             if response.status_code == 400 and attempt < 2:
-                dropped = _drop_unsupported(payload, detail)
+                dropped = _drop_unsupported(payload, detail, json_fallback)
                 if dropped:
                     log.info("assistant retrying without parameter", parameter=dropped)
                     continue
@@ -551,15 +863,18 @@ async def _post(config: AiConfig, payload: dict[str, Any]) -> dict[str, Any]:
     raise AssistantError("The model rejected every form of that request.")
 
 
-def _drop_unsupported(payload: dict[str, Any], detail: str) -> str | None:
+def _drop_unsupported(payload: dict[str, Any], detail: str, json_fallback: str = "") -> str | None:
     lowered = detail.lower()
     if "response_format" in lowered or "json_schema" in lowered:
         # Fall back to plain JSON mode; the schema is described in the prompt.
         if payload.get("response_format", {}).get("type") == "json_schema":
             payload["response_format"] = {"type": "json_object"}
-            payload["messages"][0]["content"] += (
-                "\n\nReply with a single JSON object holding exactly the keys "
-                '"code" (string), "requirements" (array of strings) and "notes" (string).'
+            payload["messages"][0]["content"] += "\n\n" + (
+                json_fallback
+                or (
+                    "Reply with a single JSON object holding exactly the keys "
+                    '"code" (string), "requirements" (array of strings) and "notes" (string).'
+                )
             )
             return "response_format.json_schema"
         payload.pop("response_format", None)

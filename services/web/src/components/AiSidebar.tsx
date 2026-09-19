@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bolt, Check, ChevronDown, X } from './Icons'
 import { Badge, Button, Chip, cx, useToast } from './ui'
-import { useAiStatus, useGenerate, type ContextSent, type Generation } from '../lib/ai'
+import {
+  useAiStatus,
+  useGenerate,
+  useGenerateScript,
+  type ContextSent,
+  type Generation,
+  type ScriptContextSent,
+  type ScriptGeneration,
+} from '../lib/ai'
 import { collapse, diffLines, diffStats } from '../lib/diff'
 
 /**
@@ -16,14 +24,28 @@ import { collapse, diffLines, diffStats } from '../lib/diff'
  * Each turn also carries what was sent. The assistant is the one feature that
  * talks to something off this machine, so "what did it see" is readable rather
  * than promised.
+ *
+ * Two things are written here, and the difference between them is real: a
+ * function is Python against Cubicle's own runtime, and a host script is any
+ * program at all running as root on the machine. They need different briefs,
+ * different artifacts and different warnings — but the same conversation, the
+ * same diff and the same rule that nothing applies without being asked. So the
+ * chat is one component with a `kind`, rather than two that drift.
  */
+
+type Result = Generation | ScriptGeneration
+
+/** Functions come back with files beside the code; scripts are just the code. */
+function isFunctionResult(result: Result): result is Generation {
+  return 'requirements' in result
+}
 
 export interface Turn {
   id: string
   role: 'user' | 'assistant'
   text: string
   /** Present on assistant turns that produced a file. */
-  result?: Generation
+  result?: Result
   applied?: boolean
   failed?: boolean
   /** The editor buffer at the moment Apply ran, so the diff is what changed. */
@@ -109,28 +131,65 @@ function useResizable() {
   }
 }
 
-export function AiSidebar({
-  open,
-  onClose,
-  functionId,
-  currentCode,
-  requirements,
-  readme,
-  sessionId,
-  onApply,
-}: {
+interface Shared {
   open: boolean
   onClose: () => void
-  functionId: string
+  /** The editor buffer, unsaved changes included. */
   currentCode: string
+}
+
+/** A function: Python, with requirements and a README alongside it. */
+export interface FunctionTarget extends Shared {
+  kind: 'function'
+  functionId: string
   requirements: string
   readme: string
   sessionId: string
   onApply: (code: string, requirements: string[], readme: string) => void
-}) {
+}
+
+/** A host script: one file, for whatever interpreter it is configured with. */
+export interface ScriptTarget extends Shared {
+  kind: 'script'
+  scriptId: string
+  onApply: (code: string) => void
+}
+
+/** What changes between the two, gathered so the differences are readable
+ *  in one place rather than scattered through the component. */
+const COPY = {
+  function: {
+    artifact: 'handler.py',
+    wrote: 'Rewrote handler.py.',
+    editHint: 'Editing what is open in the editor, including changes you have not deployed.',
+    writeHint: 'Starting from nothing — the current file is not sent.',
+    footer:
+      'Nothing it produces is deployed. It lands as an unsaved draft and you deploy it yourself.',
+    editPlaceholder: 'Validate the body and write the order to Postgres…',
+    writePlaceholder: 'A webhook that verifies a signature header and stores the payload…',
+    lead: 'Describe what the handler should do and it writes one.',
+  },
+  script: {
+    artifact: 'the script',
+    wrote: 'Rewrote the script.',
+    editHint: 'Editing what is open in the editor, including changes you have not saved.',
+    writeHint: 'Starting from nothing — the current script is not sent.',
+    footer:
+      'Nothing it produces runs. It lands as an unsaved draft, and running it is still something you do yourself — on the real machine, as root.',
+    editPlaceholder: 'Also prune images older than a week, and report how much it freed…',
+    writePlaceholder: 'Back up the Postgres volume to /srv/backups and keep the last seven…',
+    lead: 'Describe what the script should do and it writes one for this machine.',
+  },
+} as const
+
+export function AiSidebar(props: FunctionTarget | ScriptTarget) {
+  const { open, onClose, currentCode, kind } = props
   const toast = useToast()
   const { data: status } = useAiStatus()
-  const generate = useGenerate()
+  const generateFunction = useGenerate()
+  const generateScript = useGenerateScript()
+  const generate = kind === 'function' ? generateFunction : generateScript
+  const copy = COPY[kind]
 
   const [turns, setTurns] = useState<Turn[]>([])
   const [prompt, setPrompt] = useState('')
@@ -156,40 +215,51 @@ export function AiSidebar({
     setPrompt('')
     setTurns((current) => [...current, { id: nextId(), role: 'user', text }])
 
-    generate.mutate(
-      {
-        function_id: functionId,
-        prompt: text,
-        mode,
-        code: currentCode,
-        requirements,
-        readme,
-        session_id: sessionId,
-        // Only what was said, not the code: the current buffer is sent
-        // separately and replaying old files would waste the context window.
-        history: turns.map((turn) => ({
-          role: turn.role,
-          content: turn.role === 'assistant' ? (turn.result?.notes ?? turn.text) : turn.text,
-        })),
-      },
-      {
-        onSuccess: (result) =>
-          setTurns((current) => [
-            ...current,
-            {
-              id: nextId(),
-              role: 'assistant',
-              text: result.notes || 'Rewrote handler.py.',
-              result,
-            },
-          ]),
-        onError: (error) =>
-          setTurns((current) => [
-            ...current,
-            { id: nextId(), role: 'assistant', text: error.message, failed: true },
-          ]),
-      },
-    )
+    // Only what was said, not the code: the current buffer is sent separately
+    // and replaying old files would waste the context window.
+    const history = turns.map((turn) => ({
+      role: turn.role,
+      content: turn.role === 'assistant' ? (turn.result?.notes ?? turn.text) : turn.text,
+    }))
+
+    const handlers = {
+      onSuccess: (result: Result) =>
+        setTurns((current) => [
+          ...current,
+          {
+            id: nextId(),
+            role: 'assistant' as const,
+            text: result.notes || copy.wrote,
+            result,
+          },
+        ]),
+      onError: (error: Error) =>
+        setTurns((current) => [
+          ...current,
+          { id: nextId(), role: 'assistant' as const, text: error.message, failed: true },
+        ]),
+    }
+
+    if (props.kind === 'function') {
+      generateFunction.mutate(
+        {
+          function_id: props.functionId,
+          prompt: text,
+          mode,
+          code: currentCode,
+          requirements: props.requirements,
+          readme: props.readme,
+          session_id: props.sessionId,
+          history,
+        },
+        handlers,
+      )
+    } else {
+      generateScript.mutate(
+        { script_id: props.scriptId, prompt: text, mode, code: currentCode, history },
+        handlers,
+      )
+    }
   }
 
   const apply = (turn: Turn) => {
@@ -197,11 +267,20 @@ export function AiSidebar({
     // Captured before onApply, because after it the buffer is the new file and
     // there is nothing left to compare against.
     const from = currentCode
-    onApply(turn.result.code, turn.result.requirements, turn.result.readme)
+    const result = turn.result
+    if (props.kind === 'function' && isFunctionResult(result)) {
+      props.onApply(result.code, result.requirements, result.readme)
+    } else if (props.kind === 'script') {
+      props.onApply(result.code)
+    }
     setTurns((current) =>
       current.map((t) => (t.id === turn.id ? { ...t, applied: true, appliedFrom: from } : t)),
     )
-    toast.push('Applied to the editor — deploy when you are ready')
+    toast.push(
+      props.kind === 'function'
+        ? 'Applied to the editor — deploy when you are ready'
+        : 'Applied to the editor — read it before you run it',
+    )
   }
 
   return (
@@ -290,26 +369,26 @@ export function AiSidebar({
               className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4"
             >
               {turns.length === 0 ? (
-                <Empty mode={mode} />
+                <Empty mode={mode} copy={copy} />
               ) : (
                 <div className="grid min-w-0 gap-3">
                   {turns.map((turn) => (
                     <Message
                       key={turn.id}
                       turn={turn}
-                      readme={readme}
+                      readme={props.kind === 'function' ? props.readme : ''}
                       onApply={() => apply(turn)}
                     />
                   ))}
                 </div>
               )}
-              {generate.isPending ? <Working /> : null}
+              {generate.isPending ? <Working kind={kind} /> : null}
             </div>
 
             <div className="flex-none border-t border-line px-4 py-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Chip active={mode === 'edit'} onClick={() => setMode('edit')}>
-                  edit this file
+                  {kind === 'function' ? 'edit this file' : 'edit this script'}
                 </Chip>
                 <Chip active={mode === 'write'} onClick={() => setMode('write')}>
                   write from scratch
@@ -329,11 +408,7 @@ export function AiSidebar({
                 value={prompt}
                 spellCheck={false}
                 rows={3}
-                placeholder={
-                  mode === 'edit'
-                    ? 'Validate the body and write the order to Postgres…'
-                    : 'A webhook that verifies a signature header and stores the payload…'
-                }
+                placeholder={mode === 'edit' ? copy.editPlaceholder : copy.writePlaceholder}
                 onChange={(event) => setPrompt(event.target.value)}
                 onKeyDown={(event) => {
                   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') send()
@@ -370,32 +445,50 @@ export function AiSidebar({
  * provider's internal stages, so nothing here claims a step has finished. It
  * only says the request is still out.
  */
-const WAITING = [
-  'Reading your handler',
-  'Thinking it through',
-  'Weighing the edge cases',
-  'Consulting the runtime brief',
-  'Choosing the shape',
-  'Writing the handler',
-  'Checking the imports',
-  'Pinning what it needs',
-  'Reading it back',
-  'Tidying the edges',
-  'Nearly there',
-]
+const WAITING = {
+  function: [
+    'Reading your handler',
+    'Thinking it through',
+    'Weighing the edge cases',
+    'Consulting the runtime brief',
+    'Choosing the shape',
+    'Writing the handler',
+    'Checking the imports',
+    'Pinning what it needs',
+    'Reading it back',
+    'Tidying the edges',
+    'Nearly there',
+  ],
+  // The first two are not decoration: a script's brief really does start by
+  // asking the machine what it is and what it has.
+  script: [
+    'Asking the machine what it is',
+    'Reading what is installed',
+    'Thinking it through',
+    'Weighing the edge cases',
+    'Choosing the shape',
+    'Writing the script',
+    'Checking what it calls',
+    'Guarding the destructive parts',
+    'Reading it back',
+    'Tidying the edges',
+    'Nearly there',
+  ],
+} as const
 
-function Working() {
+function Working({ kind }: { kind: 'function' | 'script' }) {
   const [index, setIndex] = useState(0)
+  const words = WAITING[kind]
 
   useEffect(() => {
-    // Walks forward and then holds on the last one: cycling back to "Reading
-    // your handler" after twenty seconds would read as a stall.
+    // Walks forward and then holds on the last one: cycling back to the first
+    // one after twenty seconds would read as a stall.
     const timer = window.setInterval(
-      () => setIndex((n) => Math.min(n + 1, WAITING.length - 1)),
+      () => setIndex((n) => Math.min(n + 1, words.length - 1)),
       2100,
     )
     return () => window.clearInterval(timer)
-  }, [])
+  }, [words.length])
 
   return (
     <div className="animate-turn-in mt-3 mr-4 flex items-center gap-2.5 rounded-xl rounded-bl-[4px] border border-line bg-panel-2 px-3.5 py-2.5">
@@ -410,25 +503,26 @@ function Working() {
       </span>
       {/* Keyed so each word replays the fade rather than swapping in place. */}
       <span key={index} className="animate-word text-[12.5px] text-ink-2">
-        {WAITING[index]}…
+        {words[index]}…
       </span>
     </div>
   )
 }
 
-function Empty({ mode }: { mode: 'edit' | 'write' }) {
+function Empty({
+  mode,
+  copy,
+}: {
+  mode: 'edit' | 'write'
+  copy: (typeof COPY)[keyof typeof COPY]
+}) {
   return (
     <div className="rounded-xl border border-dashed border-line px-4 py-6 text-[12.5px] leading-relaxed text-ink-3">
-      Describe what the handler should do and it writes one.
+      {copy.lead}
       <div className="mt-2.5 text-ink-2">
-        {mode === 'edit'
-          ? 'Editing what is open in the editor, including changes you have not deployed.'
-          : 'Starting from nothing — the current file is not sent.'}
+        {mode === 'edit' ? copy.editHint : copy.writeHint}
       </div>
-      <div className="mt-2.5">
-        Nothing it produces is deployed. It lands as an unsaved draft and you deploy it
-        yourself.
-      </div>
+      <div className="mt-2.5">{copy.footer}</div>
     </div>
   )
 }
@@ -464,7 +558,8 @@ function Message({
 
       {turn.result ? (
         <>
-          {turn.result.requirements.length || turn.result.readme?.trim() ? (
+          {isFunctionResult(turn.result) &&
+          (turn.result.requirements.length || turn.result.readme?.trim()) ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {turn.result.requirements.map((line) => (
                 <span
@@ -503,7 +598,11 @@ function Message({
             <Diff before={turn.appliedFrom} after={turn.result.code} />
           ) : null}
 
-          <Sent context={turn.result.context_sent} />
+          {isFunctionResult(turn.result) ? (
+            <Sent context={turn.result.context_sent} />
+          ) : (
+            <SentScript context={turn.result.context_sent} />
+          )}
         </>
       ) : null}
     </div>
@@ -624,6 +723,62 @@ function Sent({ context }: { context: ContextSent }) {
             </div>
           ) : null}
           <div className="text-ink-2">Values of env and secrets are never sent.</div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * What left the machine for a host-script turn.
+ *
+ * Worth reading for a different reason than a function's: the interesting part
+ * is not which names were sent but that the brief describes *this machine* —
+ * its distribution, its interpreter versions, which commands exist. That is
+ * what stops the model writing `apt-get` for an Alpine box, and it is a fact
+ * about the host, so it is shown rather than claimed.
+ */
+function SentScript({ context }: { context: ScriptContextSent }) {
+  const [open, setOpen] = useState(false)
+  const commands = context.host.commands ? context.host.commands.split(/\s+/).length : 0
+  const counts = [
+    context.host.os ? 'host probed' : 'host not probed',
+    `${context.env_keys.length} env name${context.env_keys.length === 1 ? '' : 's'}`,
+    `${commands} command${commands === 1 ? '' : 's'}`,
+  ]
+
+  return (
+    <div className="mt-2 border-t border-line pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-1.5 text-[11.5px] text-ink-3 transition hover:text-ink"
+      >
+        <ChevronDown size={12} className={cx('transition', open && 'rotate-180')} />
+        What was sent · {counts.join(' · ')}
+      </button>
+      {open ? (
+        <div className="mt-2 grid gap-1.5 font-mono text-[11px] text-ink-3">
+          <div>
+            /run/{context.script.name} · {context.script.method} · {context.script.interpreter}{' '}
+            · {context.script.timeout_seconds}s
+          </div>
+          {context.host.os ? <div>{context.host.os}</div> : null}
+          {context.host.kernel || context.host.arch ? (
+            <div>{[context.host.kernel, context.host.arch].filter(Boolean).join(' · ')}</div>
+          ) : null}
+          {context.host.python || context.host.node ? (
+            <div>{[context.host.python, context.host.node].filter(Boolean).join(' · ')}</div>
+          ) : null}
+          {context.host.commands ? (
+            <div className="break-all">commands: {context.host.commands}</div>
+          ) : null}
+          {context.env_keys.length ? (
+            <div className="break-all">names only: {context.env_keys.join(', ')}</div>
+          ) : null}
+          <div className="text-ink-2">
+            Values of the script&apos;s environment are never sent — only the names.
+          </div>
         </div>
       ) : null}
     </div>

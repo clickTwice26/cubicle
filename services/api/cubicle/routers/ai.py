@@ -18,7 +18,9 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
+from .. import scripts as script_svc
 from ..crypto import encrypt
 from ..deps import (
     CurrentCluster,
@@ -27,8 +29,10 @@ from ..deps import (
     InstanceDep,
     RequireAdmin,
     RequireDeveloper,
+    RequireOwner,
 )
 from ..logging_setup import log
+from ..models import HostScript
 from ..runtime import assistant
 from .functions import current_version, load_function
 
@@ -54,6 +58,15 @@ class GenerateRequest(BaseModel):
     #: Playground session, so the assistant can see the shape of the live context.
     session_id: str | None = Field(default=None, max_length=120)
     #: Earlier turns of this conversation, oldest first.
+    history: list[Turn] = Field(default_factory=list, max_length=assistant.MAX_HISTORY)
+
+
+class GenerateScriptRequest(BaseModel):
+    script_id: uuid.UUID
+    prompt: str = Field(min_length=1, max_length=assistant.MAX_PROMPT)
+    mode: str = Field(default="edit", pattern="^(write|edit)$")
+    #: The unsaved editor buffer, so the assistant edits what is on screen.
+    code: str | None = Field(default=None, max_length=assistant.MAX_CODE_IN)
     history: list[Turn] = Field(default_factory=list, max_length=assistant.MAX_HISTORY)
 
 
@@ -144,6 +157,66 @@ async def generate(
         "assistant used",
         cluster=cluster.slug,
         function=f"{fn.group.ns}/{fn.name}",
+        mode=payload.mode,
+        by=principal.user.email,
+    )
+    return result
+
+
+@router.post("/generate-script")
+async def generate_script(
+    payload: GenerateScriptRequest,
+    db: DbSession,
+    cluster: CurrentCluster,
+    instance: InstanceDep,
+    principal: RequireOwner,
+):
+    """Write a host script, with the machine's own facts in the brief.
+
+    Owner, not developer: writing a host script is writing a root process for
+    that machine, so this asks for the same role the Scripts page itself does.
+    Generating one still deploys nothing — it comes back as an unsaved draft.
+    """
+    if not instance.host_scripts_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Host scripts are off for this instance.")
+
+    script = (
+        await db.execute(
+            select(HostScript).where(
+                HostScript.id == payload.script_id, HostScript.cluster_id == cluster.id
+            )
+        )
+    ).scalar_one_or_none()
+    if script is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such script.")
+
+    node = await script_svc.resolve_node(db, cluster, script)
+    brief = await assistant.build_script_brief(
+        db,
+        cluster,
+        script,
+        node.docker_host if node is not None else None,
+        # Names only. Decrypted here and immediately reduced to keys, so the
+        # assistant module keeps its property of never holding a secret.
+        env_keys=list(script_svc.load_env(script)),
+    )
+
+    try:
+        result = await assistant.generate_script(
+            config=assistant.config_for(instance),
+            brief=brief,
+            prompt=payload.prompt,
+            mode=payload.mode,
+            current_code=payload.code if payload.code is not None else script.source,
+            history=[turn.model_dump() for turn in payload.history],
+        )
+    except assistant.AssistantError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    log.info(
+        "assistant used for a host script",
+        cluster=cluster.slug,
+        script=script.name,
         mode=payload.mode,
         by=principal.user.email,
     )

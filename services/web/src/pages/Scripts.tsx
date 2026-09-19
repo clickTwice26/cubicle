@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { AiSidebar } from '../components/AiSidebar'
 import { CodeEditor } from '../components/CodeEditor'
-import { Play, Plus, Shield } from '../components/Icons'
+import { Bolt, Play, Plus, Shield } from '../components/Icons'
 import {
   Badge,
   Button,
@@ -345,6 +346,7 @@ function ScriptEditor({
   const [envText, setEnvText] = useState('')
   const [requestBody, setRequestBody] = useState('')
   const [result, setResult] = useState<RunResult | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
 
   useEffect(() => {
     if (!script) return
@@ -438,6 +440,9 @@ function ScriptEditor({
           </span>
           {draft.status === 'paused' ? <Badge tone="warn">paused</Badge> : null}
           {!draft.auth_required ? <Badge tone="warn">no key required</Badge> : null}
+          <Button icon={<Bolt size={13} />} onClick={() => setAiOpen(true)}>
+            Cubicle AI
+          </Button>
           <Button
             variant="primary"
             icon={<Play size={13} />}
@@ -501,6 +506,17 @@ function ScriptEditor({
       </Card>
 
       {result ? <Result result={result} onDismiss={() => setResult(null)} /> : null}
+
+      {/* The assistant only ever produces a draft. Saving it, and then running
+          it against the real machine, both stay deliberate second actions. */}
+      <AiSidebar
+        kind="script"
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        scriptId={scriptId}
+        currentCode={draft.source}
+        onApply={(source) => edit({ source })}
+      />
     </div>
   )
 }

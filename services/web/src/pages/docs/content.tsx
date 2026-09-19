@@ -2362,6 +2362,36 @@ print(json.dumps({
             a script tests the thing that will actually run.
           </>,
         )}
+
+        {h2('ai', 'Writing one with Cubicle AI')}
+        {p(
+          <>
+            The <strong>Cubicle AI</strong> button beside the editor opens the same assistant the
+            function playground has, briefed for host scripts instead: the contract above, and
+            the live facts about this particular script — its interpreter, its timeout, its
+            working directory, and whether its URL needs a key.
+          </>,
+        )}
+        {p(
+          <>
+            It also asks the machine. Before each request the node is probed for its
+            distribution, kernel, architecture, interpreter versions and which of a list of
+            common commands actually exist, and that goes into the brief. It is the difference
+            between a model that writes {mono('apt-get')} for an Alpine box and one that writes{' '}
+            {mono('apk')} — and it is told the list is exhaustive, so it stops reaching for tools
+            the host does not have. The probe is cached per node for five minutes and is best
+            effort: a node that will not answer produces a brief that says so and warns the model
+            to assume very little.
+          </>,
+        )}
+        {note(
+          <>
+            Names of the script&apos;s environment variables are sent; values never are. Nothing
+            it writes runs — a generation lands as an unsaved draft, and saving it and running it
+            are still two deliberate actions of yours. Read it first: this is a root process on
+            your machine, and a model that has been told so is still a model.
+          </>,
+        )}
       </>
     ),
   },

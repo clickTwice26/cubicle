@@ -518,6 +518,7 @@ export default function FunctionWorkbench() {
       {/* The assistant only ever produces a draft; deploying stays a
               deliberate second action, exactly as it is for typed changes. */}
       <AiSidebar
+        kind="function"
         open={aiOpen}
         onClose={() => setAiOpen(false)}
         functionId={functionId}
